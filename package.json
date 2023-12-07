@@ -31,6 +31,8 @@
     "xelis-explorer": "github:xelis-project/xelis-explorer"
   },
   "devDependencies": {
-    "g45-react": "^0.1.8"
+    "g45-react": "^0.1.8",
+    "shx": "^0.3.4",
+    "wrangler": "^3.19.0"
   }
 }
