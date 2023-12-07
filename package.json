@@ -28,7 +28,7 @@
     "react-router-dom": "^6.7.0",
     "recharts": "^2.9.2",
     "reset-css": "^5.0.2",
-    "xelis-explorer": "file:../xelis-explorer/xelis-explorer-0.2.0.tgz"
+    "xelis-explorer": "github:xelis-project/xelis-explorer"
   },
   "devDependencies": {
     "g45-react": "^0.1.8"
