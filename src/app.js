@@ -22,7 +22,7 @@ function SubApp() {
   }
 
   return <>
-    <Helmet titleTemplate='%s · XELIS Explorer'>
+    <Helmet titleTemplate='%s · XELIS Stats'>
       {currentTheme === `xelis` && <link rel="preload" as="image" href="public/img/bg_xelis.jpg" />}
       {currentTheme === `light` && <link rel="preload" as="image" href="public/img/bg_xelis_light.jpg" />}
       {currentTheme === `dark` && <link rel="preload" as="image" href="public/img/bg_xelis_dark.jpg" />}

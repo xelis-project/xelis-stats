@@ -69,7 +69,7 @@ function Layout() {
       version: `v${packageJSON.version}`,
       links: [
         { href: `https://xelis.io`, title: t('Home'), icon: <Icon name="home" /> },
-        { href: `https://explorer.xelis.io`, title: t('Explorer'), icon: <Icon name="window-maximize" /> },
+        { href: EXPLORER_LINK, title: t('Explorer'), icon: <Icon name="window-maximize" /> },
         { href: `https://docs.xelis.io`, title: t('Documentation'), icon: <Icon name="book" /> },
         { href: `https://github.com/xelis-project`, title: `GitHub`, icon: <Icon name="github" type="brands" /> },
         { href: `https://discord.gg/z543umPUdj`, title: `Discord`, icon: <Icon name="discord" type="brands" /> },
