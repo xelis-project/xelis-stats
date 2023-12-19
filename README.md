@@ -1,6 +1,6 @@
 # XELIS Stats
 
-Official Statistics platform for XELIS blockchain.
+Statistics platform for XELIS blockchain.
 
 - Price history from multiple markets.
 - Complete indexed blockchain (blocks, txs and accounts).
