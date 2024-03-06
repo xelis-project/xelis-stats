@@ -8,11 +8,7 @@ import { useLang } from 'g45-react/hooks/useLang'
 import Button from 'xelis-explorer/src/components/button'
 import { scaleOnHover } from 'xelis-explorer/src/style/animate'
 import theme from 'xelis-explorer/src/style/theme'
-//import DateTimeRangePicker from '@wojtekmaj/react-datetimerange-picker'
-//import '@wojtekmaj/react-datetimerange-picker/dist/DateTimeRangePicker.css'
-import DateTimePicker from 'react-datetime-picker'
-import 'react-datetime-picker/dist/DateTimePicker.css'
-import prettyMs from 'pretty-ms'
+import { useNavigate } from 'react-router-dom'
 
 const style = {
   container: css`
@@ -85,6 +81,11 @@ const style = {
         display: flex;
         gap: .5em;
         flex-direction: column;
+
+        > :nth-child(1) {
+          font-size: 1.1em;
+          opacity: .8;
+        }  
       }
     }
   `,
@@ -98,17 +99,18 @@ const style = {
 
     > :nth-child(3) {
       display: flex;
-      gap: .35em;
+      gap: .5em;
       flex-direction: column;
 
       > div {
         display: flex;
-        gap: .25em;
+        gap: .5em;
         align-items: center;
         padding: .5em;
         border-radius: .5em;
         border: thin solid var(--text-color);
         color: var(--text-color);
+        background: var(--table-td-bg-color);
         cursor: pointer;
         white-space: nowrap;
         user-select: none;
@@ -118,10 +120,11 @@ const style = {
 }
 
 function useControls(props) {
-  const { sources, source, query, setQuery, list, chartColumn } = props
+  const { sources, source, dataSource, query, setQuery, list, chartColumn } = props
   const { t } = useLang()
 
   const [opened, setOpened] = useState(false)
+  const navigate = useNavigate()
 
   const sourceList = useMemo(() => {
     return sources.map((source) => {
@@ -180,7 +183,7 @@ function useControls(props) {
 
   const render = <OffCanvas maxWidth={500} position="right" opened={opened} className={style.container}>
     <div>
-      <div>Controls</div>
+      <div>{t(`Controls`)}</div>
       <button onClick={() => setOpened(false)}><Icon name="close" /></button>
     </div>
     <div>
@@ -191,26 +194,29 @@ function useControls(props) {
     <div>
       <div>
         <div>Data Source</div>
-        <Dropdown items={sourceList} value={query.data_source} onChange={(item) => {
-          setQuery({ data_source: item.key }) // reset query and apply new data_source
+        <Dropdown items={sourceList} value={dataSource} onChange={(item) => {
+          navigate(`/views/${item.key}`)
+          //setQuery({ data_source: item.key }) // reset query and apply new data_source
         }} />
       </div>
       {(source.filters || []).map((component, index) => {
         return cloneElement(component, { key: index, query, setQuery })
       })}
       <div>
-        <div>View</div>
+        <div>{t(`View`)}</div>
         <Dropdown items={viewTypes} value={query.view} onChange={(item) => {
           setQuery({ ...query, view: item.key })
         }} />
       </div>
       {query.view === `chart` && <>
         <div>
-          <div>Chart (Main)</div>
+          <div>{t(`Chart Type`)}</div>
           <Dropdown items={chartTypes} value={query.chart_view} onChange={(item) => {
             setQuery({ ...query, chart_view: item.key })
           }} />
-          <div>Key</div>
+        </div>
+        <div>
+          <div>{t(`Key`)}</div>
           <Dropdown items={chartColumns} value={query.chart_key} onChange={(item) => {
             setQuery({ ...query, chart_key: item.key })
           }} />
@@ -250,12 +256,12 @@ function MinMaxCheckbox(props) {
   const { t } = useLang()
 
   const checked = useMemo(() => {
-    if (query.minMax === `false`) return false
+    if (query.min_max === `false`) return false
     return true
   }, [query])
 
   const onChange = useCallback((e) => {
-    setQuery({ ...query, minMax: e.target.checked ? `true` : `false` })
+    setQuery({ ...query, min_max: e.target.checked ? `true` : `false` })
   }, [query])
 
   return <div>

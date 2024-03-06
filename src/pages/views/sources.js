@@ -3,68 +3,82 @@ import { formatHashRate, formatSize, formatXelis } from 'xelis-explorer/src/util
 import { useLang } from 'g45-react/hooks/useLang'
 import prettyMs from 'pretty-ms'
 
-import supabase from '../../hooks/useSupabase'
-import { FilterMarketAssets, FilterMarketExchanges, FilterUnitRange, FilterTimeRange } from './filters'
+import { FilterMarketAssets, FilterMarketExchanges, FilterUnitPeriod, FilterTimePeriod } from './filters'
 import supplyEmissionData from '../../data/supply_emission.json'
+import { fetchView } from '../../hooks/useFetchView'
 
 function useSources() {
   const { t } = useLang()
 
-  const getBlocksTime = useCallback(({ range }) => {
-    return supabase
-      .rpc(`get_blocks_time`, { time_range: range }, { count: 'exact' })
-      .order(`time`, { ascending: false })
+  const getBlocksTime = useCallback(({ period }) => {
+    return fetchView(`get_blocks_time(*)`, { count: true, param: [period], order: [`time:desc`] })
   }, [])
 
-  const getBlocksTimeNew = useCallback(async (query) => {
-    let { start_timestamp, end_timestamp } = query
-    //end_timestamp = Math.round(new Date().getTime() / 1000)
-    //start_timestamp = end_timestamp - 31536000
-    return supabase
-      .rpc(`get_blocks_time_new`, { start_timestamp, end_timestamp }, { count: 'exact' })
-      .order(`time`, { ascending: false })
+  const getMarketHistoryTime = useCallback((params) => {
+    let { period, asset } = params
+
+    const interval = 60 * 60
+    const where = []
+    if (asset) {
+      where.push(`asset:eq:${asset}`)
+    }
+
+    return fetchView(`get_market_history_time(*)`, { count: true, param: [period], where, order: [`time:desc`] })
   }, [])
 
-  const getMarketHistoryTimeNew = useCallback((params) => {
-    let { start_timestamp, end_timestamp, asset } = params
-    const query = supabase.rpc(`get_market_history_new`, { start_timestamp, end_timestamp }, { count: `exact` })
-    if (asset) query.eq(`asset`, asset)
-    query.order(`time`, { ascending: false })
-    return query
+  const getBlocksTopo = useCallback(({ period }) => {
+    return fetchView(`get_blocks_topo(*)`, { count: true, param: [period], order: [`max_topo:desc`] })
   }, [])
 
-  const getBlocksRange = useCallback(({ range }) => {
-    return supabase
-      .rpc(`get_blocks_range`, { range }, { count: `exact` })
-      .order(`max_topo`, { ascending: false })
-      .limit(250)
+  const getExchangeHistoryTime = useCallback((params) => {
+    let { period, asset, exchange } = params
+
+    const where = []
+    if (asset) {
+      where.push(`asset:eq:${asset}`)
+    }
+
+    if (exchange) {
+      where.push(`exchange:eq:${exchange}`)
+    }
+
+    return fetchView(`get_market_history_exchange_time(*)`, { count: true, param: [period], where, order: [`time:desc`] })
   }, [])
 
-  const getMarketHistoryTime = useCallback(({ range }) => {
-    return supabase
-      .rpc(`get_market_history`, { time_range: range }, { count: `exact` })
-      .order(`time`, { ascending: false })
+  const getMinersBlocksTime = useCallback(({ period }) => {
+    return fetchView(`get_miners_blocks_time(*)`, { count: true, param: [period], order: [`time:desc`] })
   }, [])
 
-  const getExchangeHistoryTimeNew = useCallback((params) => {
-    let { start_timestamp, end_timestamp, asset, exchange } = params
-    const query = supabase.rpc(`get_market_history_exchange_new`, { start_timestamp, end_timestamp }, { count: `exact` })
-    if (asset) query.eq(`asset`, asset)
-    if (exchange) query.eq(`exchange`, exchange)
-    query.order(`time`, { ascending: false })
-    return query
+  const getAccountsCountTime = useCallback(({ period }) => {
+    return fetchView(`get_accounts_count_time(*)`, { count: true, param: [period], order: [`time:desc`] })
   }, [])
 
-  const getExchangeHistoryTime = useCallback(({ range }) => {
-    return supabase
-      .rpc(`get_market_history_exchange`, { time_range: range }, { count: `exact` })
-      .order(`time`, { ascending: false })
+  const getAccountsActiveTime = useCallback(({ period }) => {
+    return fetchView(`get_accounts_active_time(*)`, { count: true, param: [period], order: [`time:desc`] })
   }, [])
 
-  const getMinersBlocksTime = useCallback(({ range }) => {
-    return supabase
-      .rpc(`get_miners_blocks_time`, { time_range: range }, { count: `exact` })
-      .order(`time`, { ascending: false })
+  const getAccountsTxsTime = useCallback(({ period }) => {
+    return fetchView(`get_accounts_txs_time(*)`, { count: true, param: [period], order: [`time:desc`] })
+  }, [])
+
+  const getMinersCountTime = useCallback(({ period }) => {
+    return fetchView(`get_miners_count_time(*)`, { count: true, param: [period], order: [`time:desc`] })
+  }, [])
+
+  const getTransactionsTime = useCallback(({ period }) => {
+    return fetchView(`get_txs_time(*)`, { count: true, param: [period], order: [`time:desc`] })
+  }, [])
+
+  const getTransactions = useCallback(() => {
+    return fetchView(`transactions`, { count: true, order: [`nonce:desc`] })
+  }, [])
+
+  const getAccounts = useCallback(() => {
+    return fetchView(`accounts`, { count: true, order: [`timestamp:desc`] })
+  }, [])
+
+  const getBlocks = useCallback(() => {
+    return fetchView(`blocks`, { count: true, order: [`topoheight:desc`] })
   }, [])
 
   const timeItemRowKey = useCallback((item) => {
@@ -72,27 +86,78 @@ function useSources() {
   }, [])
 
   const getSupplyEmission = useCallback(() => {
-    const data = Object.assign([], supplyEmissionData).map((item, i) => {
+    const rows = Object.assign([], supplyEmissionData).map((item, i) => {
       return { ...item, year: i }
     }).reverse() // https://stackoverflow.com/questions/65408588/lightweight-charts-uncaught-error-value-is-null
-    return Promise.resolve({ data })
+    return Promise.resolve({ rows })
   }, [])
 
   return useMemo(() => [
+    {
+      key: `blocks`,
+      title: t(`Blocks`),
+      description: t(`List all blocks.`),
+      rowKey: `topoheight`,
+      getData: getBlocks,
+      timeFormatter: (v) => v,
+      columns: [
+        { key: `hash`, title: t(`Hash`), views: [`table`] },
+        { key: `topoheight`, title: t(`Topoheight`), views: [`table`] },
+        { key: `timestamp`, title: t(`Timestamp`), views: [`table`] },
+        { key: `block_type`, title: t(`Block Type`), views: [`table`] },
+        { key: `cumulative_difficulty`, title: t(`Cumulative Difficulty`) },
+        { key: `supply`, title: t(`Supply`) },
+        { key: `difficulty`, title: t(`Difficulty`) },
+        { key: `reward`, title: t(`Reward`) },
+        { key: `height`, title: t(`Height`), views: [`table`] },
+        { key: `miner`, title: t(`Miner`), views: [`table`] },
+        { key: `nonce`, title: t(`Nonce`), views: [`table`] },
+        { key: `total_fees`, title: t(`Total Fees`) },
+        { key: `total_size_in_bytes`, title: t(`Total Size`) },
+        { key: `tx_count`, title: t(`TX Count`) },
+        { key: `version`, title: t(`Version`), views: [`table`] },
+      ]
+    },
+    {
+      key: `accounts`,
+      title: t(`Accounts`),
+      description: t(`List all accounts.`),
+      getData: getAccounts,
+      columns: [
+        { key: `addr`, title: t(`Hash`), views: [`table`] },
+        { key: `timestamp`, title: t(`Timestamp`), views: [`table`] },
+        { key: `topoheight`, title: t(`Topoheight`), views: [`table`] },
+      ]
+    },
+    {
+      key: `transactions`,
+      title: t(`Transactions`),
+      description: t(`List all transactions.`),
+      rowKey: `hash`,
+      getData: getTransactions,
+      timeFormatter: (v) => v,
+      columns: [
+        { key: `hash`, title: t(`Hash`), views: [`table`] },
+        { key: `fee`, title: t(`Fee`) },
+        { key: `nonce`, title: t(`Nonce`), views: [`table`] },
+        { key: `owner`, title: t(`owner`), views: [`table`] },
+        { key: `signature`, title: t(`Signature`), views: [`table`] },
+        { key: `executed_in_block`, title: t(`Block`), views: [`table`] },
+        { key: `version`, title: t(`Version`), views: [`table`] },
+        { key: `total_transfers`, title: t(`Transfers`) },
+      ]
+    },
     {
       key: `blocks_by_time`,
       title: t(`Blocks (Time)`),
       description: t(`Aggregate data of blocks through time-based interval.`),
       rowKey: timeItemRowKey,
-      //getQuery: getBlocksTime,
-      getData: getBlocksTimeNew,
+      getData: getBlocksTime,
       filters: [
-        <FilterTimeRange />
+        <FilterTimePeriod />
       ],
-      //range: `time`,
-      //defaultRangeValue: 'day',
       columns: [
-        { key: `time`, title: t(`Range (Time)`), format: (v) => new Date(v).toLocaleString(), views: [`table`] },
+        { key: `time`, title: t(`Period (Time)`), format: (v) => new Date(v).toLocaleString(), views: [`table`] },
 
         { key: `block_count`, title: t(`Block Count (sum)`), format: (v) => `${v.toLocaleString()}` },
         { key: `cumulative_block_count`, title: t(`Block Count (cumulative)`), format: (v) => `${v.toLocaleString()}` },
@@ -139,16 +204,16 @@ function useSources() {
     },
     {
       key: `blocks_by_range`,
-      title: t(`Blocks (Topo)`),
+      title: t(`Blocks (Topoheight)`),
       description: t(`Aggregate data of blocks by topo height.`),
       rowKey: `max_topo`,
       filters: [
-        <FilterUnitRange />
+        <FilterUnitPeriod />
       ],
-      getData: getBlocksRange,
+      getData: getBlocksTopo,
       timeFormatter: (v) => v,
       columns: [
-        { key: `topo_range`, title: t(`Range (Topo)`), format: (v, item) => `${item.min_topo} - ${item.max_topo}`, views: [`table`] },
+        { key: `topo_range`, title: t(`Period (Topo)`), format: (v, item) => `${item.min_topo} - ${item.max_topo}`, views: [`table`] },
 
         { key: `avg_difficulty`, title: t(`Hash Rate (avg)`), format: (v) => formatHashRate(v / 15) },
 
@@ -169,15 +234,14 @@ function useSources() {
     },
     {
       key: `market_history`,
-      title: t(`Market History`),
-      description: t(`Aggregate data of multiple market exchanges.`),
+      title: t(`Market History (Time)`),
+      description: t(`Aggregate data of multiple market exchanges through time-based interval.`),
       rowKey: timeItemRowKey,
       filters: [
-        <FilterTimeRange />,
+        <FilterTimePeriod />,
         <FilterMarketAssets />
       ],
-      //range: `time`,
-      getData: getMarketHistoryTimeNew,
+      getData: getMarketHistoryTime,
       columns: [
         { key: `time`, title: t(`Time`), format: (v) => new Date(v).toLocaleString(), views: [`table`] },
         { key: `asset`, title: t(`Asset`), views: [`table`] },
@@ -193,7 +257,7 @@ function useSources() {
         { key: `trade_count`, title: t(`Trade Count`) },
         { key: `total_price`, title: t(`Total Price`) },
         {
-          key: `price_candle`, title: t(`Price`),
+          key: `price_candle`, title: t(`Price & Volume`),
           candle: { highKey: `max_price`, lowKey: `min_price`, openKey: `first_price`, closeKey: `last_price` },
           bottomChartKey: "sum_quantity"
         }
@@ -216,15 +280,15 @@ function useSources() {
     },
     {
       key: `get_market_history_exchange`,
-      title: t(`Exchange History`),
-      description: t(`Market history of a specific exchange.`),
+      title: t(`Exchange History (Time)`),
+      description: t(`Market history of a specific exchange through time-based interval.`),
       rowKey: timeItemRowKey,
       filters: [
-        <FilterTimeRange />,
+        <FilterTimePeriod />,
         <FilterMarketAssets />,
         <FilterMarketExchanges />
       ],
-      getData: getExchangeHistoryTimeNew,
+      getData: getExchangeHistoryTime,
       columns: [
         { key: `time`, title: t(`Time`), format: (v) => new Date(v).toLocaleString(), views: [`table`] },
         { key: `asset`, title: t(`Asset`), views: [`table`] },
@@ -241,8 +305,9 @@ function useSources() {
         { key: `trade_count`, title: t(`Trade Count`) },
         { key: `total_price`, title: t(`Total Price`) },
         {
-          key: `price_candle`, title: t(`Price`),
-          candle: { highKey: `max_price`, lowKey: `min_price`, openKey: `first_price`, closeKey: `last_price` }
+          key: `price_candle`, title: t(`Price & Volume`),
+          candle: { highKey: `max_price`, lowKey: `min_price`, openKey: `first_price`, closeKey: `last_price` },
+          bottomChartKey: "sum_quantity"
         }
       ],
     },
@@ -250,30 +315,92 @@ function useSources() {
       key: `get_txs_time`,
       title: t(`Transactions (Time)`),
       description: t(`Aggregate data of transactions through time-based interval.`),
-      range: `time`,
       rowKey: timeItemRowKey,
+      getData: getTransactionsTime,
+      filters: [
+        <FilterTimePeriod />,
+      ],
+      columns: [
+        { key: `time`, title: t(`Time`), format: (v) => new Date(v).toLocaleString(), views: [`table`] },
+        { key: `transfer_count`, title: t(`Transfer Count`) },
+      ]
     },
     {
       key: `get_miners_count_time`,
-      title: t(`Miners (Time)`),
+      title: t(`Total Miners (Time)`),
       description: t(`Number of miners through time-based interval.`),
-      range: `time`,
       rowKey: timeItemRowKey,
+      getData: getMinersCountTime,
+      filters: [
+        <FilterTimePeriod />,
+      ],
+      columns: [
+        { key: `time`, title: t(`Time`), format: (v) => new Date(v).toLocaleString(), views: [`table`] },
+        { key: `miner_count`, title: t(`Miner Count`) },
+      ]
     },
     {
       key: `get_miners_blocks_time`,
       title: t(`Miners Blocks (Time)`),
       description: t(`Miner data by address through time-based interval.`),
-      range: `time`,
       rowKey: timeItemRowKey,
-      getQuery: getMinersBlocksTime,
+      getData: getMinersBlocksTime,
+      filters: [
+        <FilterTimePeriod />,
+      ],
       columns: [
         { key: `time`, title: t(`Time`), format: (v) => new Date(v).toLocaleString(), views: [`table`] },
         { key: `miner`, title: t(`Miner`), views: [`table`] },
-        { key: `total_blocks`, title: t(`Total Blocks`), views: [`table`], format: (v) => `${v.toLocaleString()}` },
-        { key: `total_reward`, title: t(`Total Reward`), views: [`table`], format: (v) => formatXelis(v) },
+        { key: `total_blocks`, title: t(`Total Blocks`), format: (v) => `${v.toLocaleString()}` },
+        { key: `total_reward`, title: t(`Total Reward`), format: (v) => formatXelis(v) },
       ]
-    }
+    },
+    {
+      key: `get_accounts_count_time`,
+      title: t(`Total Accounts (Time)`),
+      description: t(`Number of accounts through time-based interval.`),
+      rowKey: timeItemRowKey,
+      getData: getAccountsCountTime,
+      filters: [
+        <FilterTimePeriod />,
+      ],
+      columns: [
+        { key: `time`, title: t(`Time`), format: (v) => new Date(v).toLocaleString(), views: [`table`] },
+        { key: `account_count`, title: t(`Accounts`) },
+        { key: `cumulative_account_count`, title: t(`Total Accounts`) },
+      ]
+    },
+    {
+      key: `get_accounts_active_time`,
+      title: t(`Active Accounts (Time)`),
+      description: t(`Number of active/inactive accounts through time-based interval.`),
+      rowKey: timeItemRowKey,
+      getData: getAccountsActiveTime,
+      filters: [
+        <FilterTimePeriod />,
+      ],
+      columns: [
+        { key: `time`, title: t(`Time`), format: (v) => new Date(v).toLocaleString(), views: [`table`] },
+        { key: `active_accounts`, title: t(`Active Accounts`) },
+        { key: `inactive_accounts`, title: t(`Inactive Accounts`) },
+      ]
+    },
+    {
+      key: `get_accounts_txs_time`,
+      title: t(`Account Transactions (Time)`),
+      description: t(`Account fees & transactions through time-based interval.`),
+      rowKey: timeItemRowKey,
+      getData: getAccountsTxsTime,
+      filters: [
+        <FilterTimePeriod />,
+      ],
+      columns: [
+        { key: `time`, title: t(`Time`), format: (v) => new Date(v).toLocaleString(), views: [`table`] },
+        { key: `addr`, title: t(`Address`) },
+        { key: `total_txs`, title: t(`Total Transactions`) },
+        { key: `total_fees`, title: t(`Total Fees`) },
+      ]
+    },
   ], [t])
 }
 

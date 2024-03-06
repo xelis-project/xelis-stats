@@ -8,9 +8,11 @@ import { opacity } from 'xelis-explorer/src/style/animate'
 import Footer from 'xelis-explorer/src/layout/footer'
 import Menu from 'xelis-explorer/src/layout/menu'
 import Header from 'xelis-explorer/src/layout/header'
+import { style } from 'xelis-explorer/src/layout/layout'
 
 import packageJSON from '../../package.json'
 
+/*
 export const style = {
   background: css`
     position: fixed;
@@ -53,7 +55,7 @@ export const style = {
       ${opacity()}
     }
   `
-}
+}*/
 
 function Layout() {
   const location = useLocation()
@@ -76,7 +78,7 @@ function Layout() {
       ],
       pages: [
         { link: `/`, title: t('Dashboard') },
-        { link: `/database`, title: t(`Database`) },
+        { link: `/views`, title: t(`Database`) },
       ]
     }
   }, [t])
@@ -84,24 +86,29 @@ function Layout() {
   const links = useMemo(() => {
     return [
       { path: `/`, title: t(`Dashboard`), icon: <Icon name="dashboard" /> },
-      { path: `/database`, title: t(`Database`), icon: <Icon name="database" /> },
+      { path: `/views`, title: t(`Database`), icon: <Icon name="database" /> },
     ]
   }, [t])
 
-  return <>
-    <div className={style.background} />
-    <div className={style.container}>
-      <div className={style.layoutFlex}>
-        <div className="layout-max-width">
-          <Header title={t(`Statistics`)} menu={<Menu links={links} />} />
-          <div data-opacity={firstLoad} key={location.key}> {/* Keep location key to re-trigger page transition animation */}
-            <Outlet />
-          </div>
-        </div>
-        <Footer {...footerProps} />
-      </div>
+  return <div className={style.container}>
+    <div className={style.bg}>
+      <div className="noise" />
+      <div className="circle" />
+      <div className="mid-light" />
+      <div className="top-light" />
+      <div className="right-light" />
+      <div className="darker" />
     </div>
-  </>
+    <div className={style.layoutFlex}>
+      <div className="layout-max-width">
+        <Header title={t(`Statistics`)} menu={<Menu links={links} />} />
+        <div data-opacity={firstLoad} key={location.key}> {/* Keep location key to re-trigger page transition animation */}
+          <Outlet />
+        </div>
+      </div>
+      <Footer {...footerProps} />
+    </div>
+  </div>
 }
 
 export default Layout

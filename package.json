@@ -14,8 +14,8 @@
     "start": "npm run start-dev:cf"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.38.4",
     "@wojtekmaj/react-datetimerange-picker": "^5.4.4",
+    "await-to-js": "^3.0.0",
     "dayjs": "^1.11.10",
     "file-saver": "^2.0.5",
     "goober": "^2.1.10",
@@ -31,8 +31,8 @@
     "xelis-explorer": "github:xelis-project/xelis-explorer"
   },
   "devDependencies": {
-    "g45-react": "^0.1.8",
+    "g45-react": "^0.1.9",
     "shx": "^0.3.4",
-    "wrangler": "^3.19.0"
+    "wrangler": "^3.28.1"
   }
 }

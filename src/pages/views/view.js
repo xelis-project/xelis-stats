@@ -11,6 +11,9 @@ import useQueryString from 'g45-react/hooks/useQueryString'
 import useControls from './controls'
 import useSources from './sources'
 import useTheme from 'xelis-explorer/src/hooks/useTheme'
+import to from 'await-to-js'
+import { useParams } from 'react-router-dom'
+import Icon from 'g45-react/components/fontawesome_icon'
 
 // This makes sure controls panel is always open if screen is larger
 glob`
@@ -124,9 +127,11 @@ const style = {
   `
 }
 
-function ViewStats() {
+function ViewStats(props) {
+  const { dataSource } = useParams()
+
   const [list, setList] = useState([])
-  const [loading, setLoading] = useState()
+  const [loading, setLoading] = useState(true)
   //const [count, setCount] = useState()
   const [err, setErr] = useState()
   const { t } = useLang()
@@ -136,8 +141,8 @@ function ViewStats() {
 
   const sources = useSources()
   const source = useMemo(() => {
-    return sources.find((s) => s.key === query.data_source) || {}
-  }, [query.data_source])
+    return sources.find((s) => s.key === dataSource) || {}
+  }, [dataSource])
 
   // we use memo here to avoid fetch the query again on datasource change
   /*const getQuery = useMemo(() => {
@@ -154,13 +159,11 @@ function ViewStats() {
       setErr(err)
     }
 
-    const { error, data, count } = await source.getData(query)
+    const [err, data] = await to(source.getData(query))
+    if (err) return resErr(err)
 
-    //const query2 = getQuery({ range: query.range })
-    //const { error, data, count } = await query2.range(0, 250 - 1)
-    if (error) return resErr(err)
     //setCount(count)
-    setList(data)
+    setList(data.rows)
     setLoading(false)
     setErr(null)
   }, [source.getData, query.refetch])
@@ -180,7 +183,7 @@ function ViewStats() {
     return (source.columns || []).find((column) => column.key === query.chart_key)
   }, [source, query])
 
-  const controls = useControls({ sources, source, query, setQuery, list, chartColumn })
+  const controls = useControls({ sources, source, dataSource, query, setQuery, list, chartColumn })
 
   // load trading view chart
   useEffect(() => {
@@ -307,7 +310,7 @@ function ViewStats() {
     if (minLineRef.current) seriesRef.current.removePriceLine(minLineRef.current)
     if (maxLineRef.current) seriesRef.current.removePriceLine(maxLineRef.current)
 
-    if (query.minMax !== `false` && data.length > 0) {
+    if (query.min_max !== `false` && data.length > 0) {
       minLineRef.current = seriesRef.current.createPriceLine(minLine)
       maxLineRef.current = seriesRef.current.createPriceLine(maxLine)
     }
@@ -339,7 +342,7 @@ function ViewStats() {
     }
 
     chartRef.current.timeScale().fitContent()
-  }, [list, chartColumn, query.chart_view, query.minMax, currentTheme])
+  }, [list, chartColumn, query.chart_view, query.min_max, currentTheme])
 
   useEffect(() => {
     /*window.setInterval(() => {
@@ -380,14 +383,19 @@ function ViewStats() {
 
   return <div className={style.container}>
     <Helmet bodyAttributes={{ [`data-layout`]: `stats` }}>
-      <title>Data</title>
+      <title>{source.title}</title>
     </Helmet>
     {controls.tab}
     <div ref={chartDivRef} style={{ display: query.view === `chart` ? `block` : `none` }}>
       <div>
         <a href="https://tradingview.github.io/lightweight-charts/">Powered by Lightweight Charts™</a>
-        {/*list.length === 0 && <div>NO DATA</div>*/}
       </div>
+      {loading && <div>
+        <Icon name="circle-notch" className="fa-spin" />
+      </div>}
+      {(!loading && list.length === 0) && <div>
+        NO DATA
+      </div>}
     </div>
     <div style={{ display: query.view === `table` ? `block` : `none` }}>
       <TableFlex data={list} rowKey={source.rowKey} err={err} loading={loading} emptyText={t('No data')}

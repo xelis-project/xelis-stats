@@ -12,7 +12,7 @@ const style = {
     grid-template-columns: 1fr;
     margin-top: 2em;
 
-    ${theme.query.minMobile} {
+    ${theme.query.minDesktop} {
       grid-template-columns: 1fr 1fr;
     }
 
@@ -23,6 +23,7 @@ const style = {
       cursor: pointer;
       text-decoration: none;
       color: var(--text-color);
+      border: thin solid ${theme.apply({ xelis: `#39746d`, dark: `#414141`, light: `#b9b9b9` })};
       ${scaleOnHover()}
 
       > :nth-child(1) {
@@ -45,7 +46,7 @@ function DisplayList() {
   return <div className={style.container}>
     {sources.map((source) => {
       const { key, title, description } = source
-      const link = `/database?data_source=${key}`
+      const link = `/views/${key}`
       return <Link key={key} to={link}>
         <div>{title}</div>
         <div>{description}</div>

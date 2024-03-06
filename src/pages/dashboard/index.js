@@ -5,13 +5,15 @@ import { useLang } from 'g45-react/hooks/useLang'
 import prettyMs from 'pretty-ms'
 import { formatHashRate, formatSize, formatXelis, reduceText } from 'xelis-explorer/src/utils'
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Helmet } from 'react-helmet-async'
+import DotLoading from 'xelis-explorer/src/components/dotLoading'
+import { Link } from 'react-router-dom'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 dayjs.extend(utc)
 
 import Box, { BoxChart, BoxTable } from './box'
-import supabase from '../../hooks/useSupabase'
-import { Helmet } from 'react-helmet-async'
+import { useFetchView } from '../../hooks/useFetchView'
 
 const style = {
   title: css`
@@ -50,6 +52,37 @@ const style = {
     width: 12em;
     text-align: center;
     color: var(--text-color);
+  `,
+  topStats: css`
+    padding: 1em;
+    margin-bottom: 2em;
+    background-color: ${theme.apply({ xelis: ` rgb(0 0 0 / 50%)`, dark: ` rgb(0 0 0 / 50%)`, light: ` rgb(255 255 255 / 50%)` })};
+    border-radius: 0.5em;
+    color: var(--text-color);
+    display: flex;
+    gap: 2.5em;
+    overflow: auto;
+    justify-content: space-between;
+
+    > div {
+      display: flex;
+      gap: .3em;
+      flex-direction: column;
+
+      > :nth-child(1) {
+        font-size: .9em;
+        opacity: .6;
+      }
+
+      > :nth-child(2) {
+        font-size: 1.5em;
+        white-space: nowrap;
+      }
+    }
+
+    .loading {
+      opacity: .6;
+    }
   `,
   container: css`
     display: flex;
@@ -145,52 +178,15 @@ function percentageDiff(value1, value2) {
   return `-${percentageDiff}%`
 }
 
-function useFetchSupabase(props) {
-  const { getQuery, offset = 0, limit = 100, setLoadingOnReload = false } = props
-
-  const [loading, setLoading] = useState(false)
-  const [err, setErr] = useState()
-  const [data, setData] = useState([])
-  const [count, setCount] = useState(0)
-
-  const load = useCallback(async (reload) => {
-    if (!reload || (reload && setLoadingOnReload)) setLoading(true)
-
-    const resErr = (err) => {
-      setLoading(false)
-      setErr(err)
-    }
-
-    const query = getQuery()
-    const { error, data, count } = await query.range(offset, limit - 1)
-    if (error) return resErr(err)
-
-    setCount(count)
-    setData(data)
-    setLoading(false)
-    setErr(null)
-  }, [offset, limit, setLoadingOnReload])
-
-  useEffect(() => {
-    load()
-  }, [load])
-
-  const reload = useCallback(() => {
-    load(true)
-  }, [load])
-
-  return { loading, err, data, count, reload }
-}
-
 function BoxMarketCap(props) {
   const { marketHistoryDaily, blocksDaily } = props
 
   const { t } = useLang()
 
   const dataChart = useMemo(() => {
-    const data = marketHistoryDaily.data.map((item, index) => {
+    const data = marketHistoryDaily.rows.map((item, index) => {
       const { time, last_price } = item
-      const { supply = 0 } = blocksDaily.data[index] || {}
+      const { supply = 0 } = blocksDaily.rows[index] || {}
       const shiftSupply = supply / Math.pow(10, 5)
       return { time, market_cap: last_price * shiftSupply }
     })
@@ -241,21 +237,21 @@ function BoxExchanges(props) {
   const boxData = useMemo(() => {
     let value = `--`
 
-    const statsData = stats.data[0] || {}
-    const lastBlockDate = dayjs(statsData.last_block_timestamp || 0).utc().format('YYYY-MM-DD')
+    const statsData = stats.rows[0] || {}
+    //const lastBlockDate = dayjs(statsData.last_block_timestamp || 0).utc().format('YYYY-MM-DD')
 
-    if (stats.data[0]) {
-      value = stats.data[0].exchange_count
+    if (stats.rows[0]) {
+      value = stats.rows[0].exchange_count
     }
 
     const data = []
-    for (let i = 0; i < marketHistoryExchangeDaily.data.length; i++) {
-      const item = marketHistoryExchangeDaily.data[i]
-      const date = item.time.split('T')[0]
+    for (let i = 0; i < marketHistoryExchangeDaily.rows.length; i++) {
+      const item = marketHistoryExchangeDaily.rows[i]
+      //const date = item.time.split('T')[0]
 
-      if (date === lastBlockDate) {
-        data.push({ name: item.exchange, volume: formatNumber(item.sum_quantity), price: formatNumber(item.last_price) })
-      }
+      //if (date === lastBlockDate) {
+      data.push({ name: item.exchange, volume: formatNumber(item.sum_quantity), price: formatNumber(item.last_price) })
+      //}
     }
 
     return { value, data }
@@ -276,20 +272,20 @@ function BoxBlocks(props) {
   const { t } = useLang()
 
   const totalBlocks = useMemo(() => {
-    if (!recentBlocks.data[0]) return `--`
-    return (recentBlocks.data[0].topoheight + 1).toLocaleString()
+    if (!recentBlocks.count) return `--`
+    return recentBlocks.count.toLocaleString()
   }, [recentBlocks])
 
   const headers = useMemo(() => {
     return [
-      { key: `topo`, title: `Topo` },
+      { key: `topo`, title: `Topo`, render: (v) => v ? <Link to="/todo">{v}</Link> : `--` },
       { key: `txs`, title: `Txs` },
       { key: `fees`, title: `Fees` },
     ]
   }, [])
 
   const data = useMemo(() => {
-    return recentBlocks.data.map((item) => {
+    return recentBlocks.rows.map((item) => {
       const { topoheight, tx_count, total_fees } = item
       return { topo: topoheight.toLocaleString(), txs: tx_count, fees: formatXelis(total_fees) }
     })
@@ -297,17 +293,17 @@ function BoxBlocks(props) {
 
   const loading = recentBlocks.loading
 
-  return <Box name={t(`Blocks`)} value={totalBlocks} loading={loading} link={`/database?data_source=blocks_by_range&key=avg_difficulty&range=1&view=table`}>
+  return <Box name={t(`Blocks`)} value={totalBlocks} loading={loading} link={`/views/blocks_by_range?period=1&view=table`}>
     <BoxTable headers={headers} data={data} />
   </Box>
 }
 
 function BoxTimeChart(props) {
-  const { name, yName, yDataKey, yFormat, dataResponse, info, areaType, link, bottomInfo, yDomain } = props
+  const { name, yName, yDataKey, yFormat, data, info, areaType, link, bottomInfo, yDomain } = props
 
   const boxData = useMemo(() => {
-    const first = dataResponse.data[0]
-    const second = dataResponse.data[1]
+    const first = (data.rows || [])[0]
+    const second = (data.rows || [])[1]
 
     let value = `--`, extra = ``
     if (first) {
@@ -316,20 +312,21 @@ function BoxTimeChart(props) {
       if (second) extra = percentageDiff(first[yDataKey], second[yDataKey])
     }
 
-    const data = Object.assign([], dataResponse.data)
-    data.reverse()
-    return { value, extra, data }
-  }, [dataResponse, yDataKey])
+    const rows = Object.assign([], data.rows)
+    rows.reverse()
+
+    return { value, extra, rows }
+  }, [data, yDataKey])
 
   const xFormat = useCallback((v) => {
     return new Date(v).toLocaleString()
   }, [])
 
-  const { value, extra, data } = boxData
-  const noData = data.length === 0
+  const { value, extra, rows } = boxData
+  const noData = rows.length === 0
 
-  return <Box name={name} value={value} extra={extra} info={info} loading={dataResponse.loading} link={link} bottomInfo={bottomInfo} noData={noData}>
-    <BoxChart data={data} areaType={areaType} xDataKey="time" yDataKey={yDataKey} xFormat={xFormat} yName={yName} yFormat={yFormat} yDomain={yDomain} />
+  return <Box name={name} value={value} extra={extra} info={info} loading={data.loading} link={link} bottomInfo={bottomInfo} noData={noData}>
+    <BoxChart data={rows} areaType={areaType} xDataKey="time" yDataKey={yDataKey} xFormat={xFormat} yName={yName} yFormat={yFormat} yDomain={yDomain} />
   </Box>
 }
 
@@ -340,8 +337,8 @@ function BoxDevFee(props) {
   const devFeeThresholds = useMemo(() => {
     return [
       { fee_percentage: 15, height: 0 },
-      { fee_percentage: 10, height: 1250000 },
-      { fee_percentage: 5, height: 3000000 }]
+      { fee_percentage: 10, height: 1250001 },
+      { fee_percentage: 5, height: 3000001 }]
   }, [])
 
   const headers = useMemo(() => {
@@ -360,8 +357,8 @@ function BoxDevFee(props) {
       const item = devFeeThresholds[i]
       const nextItem = devFeeThresholds[i + 1]
 
-      if (stats.data[0] && !found) {
-        const currentHeight = stats.data[0].height
+      if (stats.rows[0] && !found) {
+        const currentHeight = stats.rows[0].height
         value = `${item.fee_percentage}%`
 
         if (nextItem && currentHeight < nextItem.height) {
@@ -371,7 +368,17 @@ function BoxDevFee(props) {
         }
       }
 
-      data.push({ fee: `${item.fee_percentage}%`, height: `${item.height.toLocaleString()}` })
+      let height = `${item.height.toLocaleString()}`
+      if (nextItem) {
+        height += ` - ${(nextItem.height - 1).toLocaleString()}`
+      } else {
+        height += ` - ?`
+      }
+
+      data.push({
+        fee: `${item.fee_percentage}%`,
+        height: height
+      })
     }
 
     return { value, extra, data }
@@ -390,7 +397,7 @@ function BoxTopMiners(props) {
 
   const headers = useMemo(() => {
     return [
-      { key: `addr`, title: t(`Addr`) },
+      { key: `addr`, title: t(`Addr`), render: (v) => v ? <Link to="/views/todo">{v}</Link> : `--` },
       { key: `blocks`, title: t(`Blocks`) },
     ]
   }, [])
@@ -398,17 +405,17 @@ function BoxTopMiners(props) {
   const boxData = useMemo(() => {
     let value = `--`, extra
 
-    const statsData = stats.data[0] || {}
-    const lastBlockDate = dayjs(statsData.last_block_timestamp || 0).utc().format('YYYY-MM-DD')
+    const statsData = stats.rows[0] || {}
+    //const lastBlockDate = dayjs(statsData.last_block_timestamp || 0).utc().format('YYYY-MM-DD')
 
     const data = []
-    for (let i = 0; i < minersDaily.data.length; i++) {
-      const item = minersDaily.data[i]
+    for (let i = 0; i < minersDaily.rows.length; i++) {
+      const item = minersDaily.rows[i]
       const date = item.time.split('T')[0]
 
-      if (date === lastBlockDate) {
-        data.push({ addr: reduceText(item.miner, 0, 7), blocks: formatNumber(item.total_blocks) })
-      }
+      //if (date === lastBlockDate) {
+      data.push({ addr: reduceText(item.miner, 0, 7), blocks: formatNumber(item.total_blocks) })
+      //}
     }
 
     const first = data[0]
@@ -423,7 +430,8 @@ function BoxTopMiners(props) {
   const { value, extra, data } = boxData
   const loading = minersDaily.loading || stats.loading
 
-  return <Box name={t(`Top Miners (1d)`)} value={value} extra={extra} loading={loading}>
+  return <Box name={t(`Top Miners (1d)`)} value={value} extra={extra} loading={loading}
+    link={`/views/get_miners_blocks_time?period=86400&view=table`}>
     <BoxTable headers={headers} data={data} />
   </Box>
 }
@@ -435,7 +443,7 @@ function BoxTopAccounts(props) {
 
   const headers = useMemo(() => {
     return [
-      { key: `addr`, title: t(`Addr`) },
+      { key: `addr`, title: t(`Addr`), render: (v) => v ? <Link to="/todo">{v}</Link> : `--` },
       { key: `txs`, title: t(`Txs`) },
       { key: `fees`, title: t(`Fees`) }
     ]
@@ -444,17 +452,16 @@ function BoxTopAccounts(props) {
   const boxData = useMemo(() => {
     let value = `--`, extra = ``
 
-    const statsData = stats.data[0] || {}
-    const lastBlockDate = dayjs(statsData.last_block_timestamp || 0).utc().format('YYYY-MM-DD')
-
+    const statsData = stats.rows[0] || {}
+    //const lastBlockDate = dayjs(statsData.last_block_timestamp || 0).utc().format('YYYY-MM-DD')
     const data = []
-    for (let i = 0; i < accountsWeekly.data.length; i++) {
-      const item = accountsWeekly.data[i]
-      const date = item.time.split('T')[0]
+    for (let i = 0; i < accountsWeekly.rows.length; i++) {
+      const item = accountsWeekly.rows[i]
+      //const date = item.time.split('T')[0]
 
-      if (date === lastBlockDate) {
-        data.push({ addr: reduceText(item.miner, 0, 7), blocks: formatNumber(item.total_blocks) })
-      }
+      //if (date === lastBlockDate) {
+      data.push({ addr: reduceText(item.addr, 0, 7), txs: item.total_txs.toLocaleString(), fees: formatXelis(item.total_fees) })
+      //}
     }
 
     const first = data[0]
@@ -475,7 +482,7 @@ function BoxTopAccounts(props) {
 }
 
 function BoxBlockTypes(props) {
-  const { } = props
+  const { blocksDaily } = props
 
   const { t } = useLang()
 
@@ -489,8 +496,17 @@ function BoxBlockTypes(props) {
   const boxData = useMemo(() => {
     let value = `--`, extra = ``
 
-    return { value, extra, data: [] }
-  }, [])
+    let data = []
+    const item = blocksDaily.rows[0]
+    if (item) {
+      data.push({ type: "Sync & Normal", count: item["sync_block_count"] })
+      data.push({ type: "Side", count: item["side_block_count"] })
+      data.push({ type: "Orphaned", count: item["orphaned_block_count"] })
+      value = t(`{} blocks`, [item["block_count"]])
+    }
+
+    return { value, extra, data }
+  }, [blocksDaily, t])
 
   const { value, extra, data } = boxData
 
@@ -523,121 +539,140 @@ function AutoUpdate(props) {
   </div>
 }
 
+function TopStats(props) {
+  const { stats } = props
+
+  const { t } = useLang()
+
+  const data = stats.rows[0] || {}
+
+  if (stats.loading) {
+    return <div className={style.topStats}>
+      <div className="loading">loading<DotLoading /></div>
+    </div>
+  }
+
+  return <div className={style.topStats}>
+    <div>
+      <div>{t(`Topoheight`)}</div>
+      <div>{data.topoheight ? data.topoheight.toLocaleString() : `--`}</div>
+    </div>
+    <div>
+      <div>{t(`Circulating Supply`)}</div>
+      <div>{formatXelis(data.circulating_supply) || `--`}</div>
+    </div>
+    <div>
+      <div>{t(`Accounts`)}</div>
+      <div>{data.account_count ? data.account_count.toLocaleString() : `--`}</div>
+    </div>
+    <div>
+      <div>{t(`Txs`)}</div>
+      <div>{data.tx_count ? data.tx_count.toLocaleString() : `--`}</div>
+    </div>
+    <div>
+      <div>{t(`Contracts`)}</div>
+      <div>{data.contract_count ? data.contract_count.toLocaleString() : `--`}</div>
+    </div>
+    <div>
+      <div>{t(`Blockchain Size`)}</div>
+      <div>{formatSize(data.sum_size) || `--`}</div>
+    </div>
+    <div>
+      <div>{t(`Total Fees`)}</div>
+      <div>{formatXelis(data.sum_fees) || `--`}</div>
+    </div>
+  </div>
+}
+
 function Home() {
   const { t } = useLang()
 
-  const marketHistoryHourly = useFetchSupabase({
-    getQuery: () => {
-      return supabase.rpc(`get_market_history`, { time_range: 'hour' }, { count: `exact` })
-        .eq(`asset`, `USDT`)
-        .order(`time`, { ascending: false })
-    },
-    limit: 24,
+  const hourInSeconds = useMemo(() => 60 * 60, [])
+  const dayInSeconds = useMemo(() => 60 * 60 * 24, [])
+  const weekInSeconds = useMemo(() => 86400 * 7, [])
+  const marketAsset = `USDT`
+
+  const marketHistoryHourly = useFetchView({
+    view: `get_market_history_time(*)`,
+    params: { param: [hourInSeconds], where: [`asset:eq:${marketAsset}`], order: [`time:desc`], limit: 24, count: true }
   })
 
-  const marketHistoryDaily = useFetchSupabase({
-    getQuery: () => {
-      return supabase.rpc(`get_market_history`, { time_range: 'day' }, { count: `exact` })
-        .eq(`asset`, `USDT`)
-        .order(`time`, { ascending: false })
-    },
-    limit: 7,
+  const marketHistoryDaily = useFetchView({
+    view: `get_market_history_time(*)`,
+    params: { param: [dayInSeconds], where: [`asset:eq:${marketAsset}`], order: [`time:desc`], limit: 7, count: true }
   })
 
-  const marketHistoryExchangeDaily = useFetchSupabase({
-    getQuery: () => {
-      return supabase.rpc(`get_market_history_exchange`, { time_range: 'day' }, { count: `exact` })
-        .eq(`asset`, `USDT`)
-        .order(`time`, { ascending: false })
-        .order(`sum_quantity`, { ascending: false })
-    },
-    limit: 3,
+  const marketHistoryExchangeDaily = useFetchView({
+    view: `get_market_history_exchange_time(*)`,
+    params: { param: [dayInSeconds], where: [`asset:eq:${marketAsset}`], order: [`time:desc`, `sum_quantity:desc`], limit: 3, count: true }
   })
 
-  const recentBlocks = useFetchSupabase({
-    getQuery: () => {
-      return supabase.from(`blocks`).select(`*`)
-        .order(`topoheight`, { ascending: false })
-    },
-    limit: 20,
+  const recentBlocks = useFetchView({
+    view: `blocks`,
+    params: { order: [`topoheight:desc`], limit: 5, count: true }
   })
 
-  const blocksDaily = useFetchSupabase({
-    getQuery: () => {
-      return supabase.rpc(`get_blocks_time`, { time_range: 'day' }, { count: `exact` })
-        .order(`time`, { ascending: false })
-    },
-    limit: 20,
+  const blocksDaily = useFetchView({
+    view: `get_blocks_time(*)`,
+    params: { param: [dayInSeconds], order: ["time:desc"], limit: 20, count: true }
   })
 
-  const stats = useFetchSupabase({
-    getQuery: () => {
-      return supabase.rpc(`get_stats`, null, { count: `exact` })
-    },
-    limit: 1,
+  const stats = useFetchView({
+    view: `get_stats()`,
   })
 
-  const minersDaily = useFetchSupabase({
-    getQuery: () => {
-      return supabase.rpc(`get_miners_blocks_time`, { time_range: 'day' }, { count: `exact` })
-        .order(`time`, { ascending: false })
-        .order(`total_blocks`, { ascending: false })
-    },
-    limit: 20,
+  const minersDaily = useFetchView({
+    view: `get_miners_blocks_time(*)`,
+    params: { param: [dayInSeconds], count: true, limit: 5, order: [`time:desc`, `total_blocks:desc`], }
   })
 
-  const minersCountDaily = useFetchSupabase({
-    getQuery: () => {
-      return supabase.rpc(`get_miners_count_time`, { time_range: 'day' }, { count: `exact` })
-        .order(`time`, { ascending: false })
-    },
-    limit: 20
+  const minersCountDaily = useFetchView({
+    view: `get_miners_count_time(*)`,
+    params: { param: [dayInSeconds], count: true, limit: 20, order: [`time:desc`], }
   })
 
-  const accountsCountDaily = useFetchSupabase({
-    getQuery: () => {
-      return supabase.rpc(`get_accounts_count_time`, { time_range: 'day' }, { count: `exact` })
-        .order(`time`, { ascending: false })
-    },
-    limit: 20
+  const accountsCountDaily = useFetchView({
+    view: `get_accounts_count_time(*)`,
+    params: { param: [dayInSeconds], count: true, limit: 20, order: [`time:desc`], }
   })
 
-  const accountsWeekly = useFetchSupabase({
-    getQuery: () => {
-      return supabase.rpc(`get_accounts_txs_time`, { time_range: 'week' }, { count: `exact` })
-        .order(`time`, { ascending: false })
-    },
-    limit: 20
+  const accountsWeekly = useFetchView({
+    view: `get_accounts_txs_time(*)`,
+    params: { param: [weekInSeconds], count: true, limit: 20, order: [`time:desc`, `total_txs:desc`], }
   })
 
-  const activeAccountsWeekly = useFetchSupabase({
-    getQuery: () => {
-      return supabase.rpc(`get_accounts_active_time`, { time_range: 'week' }, { count: `exact` })
-        .order(`time`, { ascending: false })
-    },
-    limit: 20
+  const activeAccountsWeekly = useFetchView({
+    view: `get_accounts_active_time(*)`,
+    params: { param: [weekInSeconds], count: true, limit: 20, order: [`time:desc`], }
   })
 
-  const txsDaily = useFetchSupabase({
-    getQuery: () => {
-      return supabase.rpc(`get_txs_time`, { time_range: 'day' }, { count: `exact` })
-        .order(`time`, { ascending: false })
-    },
-    limit: 20
+  const txsDaily = useFetchView({
+    view: `get_txs_time(*)`,
+    params: { param: [dayInSeconds], count: true, limit: 20, order: [`time:desc`], }
   })
 
   const reload = useCallback(() => {
-    marketHistoryHourly.reload()
-    marketHistoryExchangeDaily.reload()
-    recentBlocks.reload()
-    blocksDaily.reload()
-  }, [marketHistoryHourly, marketHistoryExchangeDaily, recentBlocks, blocksDaily])
+    /*
+    marketHistoryHourly.load()
+    marketHistoryDaily.load()
+    marketHistoryExchangeDaily.load()
+    recentBlocks.load()
+    blocksDaily.load()
+    stats.load()
+    minersDaily.load()
+    minersCountDaily.load()
+    accountsCountDaily.load()
+    accountsWeekly.load()
+    activeAccountsWeekly.load()
+    txsDaily.load()
+    */
+  }, [])
 
   // Transactions per minute
   const tpm = useMemo(() => {
-    const data = blocksDaily.data[0] || {}
-    if (!data.sum_tx_count) return 0
-    return formatNumber(data.sum_tx_count / 3600)
+    const item = blocksDaily.rows[0] || {}
+    if (!item.sum_tx_count) return 0
+    return formatNumber(item.sum_tx_count / 3600)
   }, [blocksDaily])
 
   const description = useMemo(() => {
@@ -654,13 +689,16 @@ function Home() {
       <h1>XELIS Statistics</h1>
       <div>{description}</div>
       <AutoUpdate onUpdate={reload} />
-    </div>
+    </div >
+    <TopStats stats={stats} />
     <div className={style.container}>
       <div>
         <div><Icon name="coins" />{t(`Market`)}</div>
         <div>
-          <BoxTimeChart dataResponse={marketHistoryHourly} areaType="monotone" name={t(`Price (1h)`)} yDataKey="last_price" yFormat={(v) => formatNumber(v)} link={`/database?data_source=market_history&key=price_candle&range=hour&view=candle_chart`} />
-          <BoxTimeChart dataResponse={marketHistoryHourly} areaType="step" name={t(`Volume (1h)`)} yDataKey="sum_quantity" yFormat={(v) => formatNumber(v)} link={`/database?data_source=market_history&key=sum_quantity&range=hour&view=area_chart`} />
+          <BoxTimeChart data={marketHistoryHourly} areaType="monotone" name={t(`Price (1h)`)} yDataKey="last_price" yFormat={(v) => formatNumber(v)}
+            link={`/views/market_history?chart_key=price_candle&period=${hourInSeconds}&view=candle_chart&chart_view=candlestick`} />
+          <BoxTimeChart data={marketHistoryHourly} areaType="step" name={t(`Volume (1h)`)} yDataKey="sum_quantity" yFormat={(v) => formatNumber(v)}
+            link={`/views/market_history?chart_key=sum_quantity&period=${hourInSeconds}&view=chart&chart_view=area`} />
           <BoxMarketCap marketHistoryDaily={marketHistoryDaily} blocksDaily={blocksDaily} />
           <BoxExchanges marketHistoryExchangeDaily={marketHistoryExchangeDaily} stats={stats} />
         </div>
@@ -669,40 +707,54 @@ function Home() {
         <div><Icon name="cube" />{t(`Blockchain`)}</div>
         <div>
           <BoxBlocks recentBlocks={recentBlocks} />
-          <BoxTimeChart dataResponse={blocksDaily} areaType="step" name={t(`Size`)} yDataKey="cumulative_block_size" yFormat={(v) => formatSize(v)} link={`/database?data_source=blocks_by_time&key=cumulative_block_size&range=day&view=area_chart`} />
-          <BoxTimeChart dataResponse={blocksDaily} areaType="natural" name={t(`Circulating Supply`)} yDataKey="cumulative_block_reward" yFormat={(v) => formatXelis(v)} bottomInfo={t(`Max Supply: {}`, [(18000000).toLocaleString()])} link={`/database?data_source=blocks_by_time&key=cumulative_block_reward&range=day&view=area_chart`} />
-          <BoxTimeChart dataResponse={blocksDaily} areaType="step" name={t(`Block Time`)} yDataKey="block_time" yFormat={(v) => prettyMs(v)} link={`/database?data_source=blocks_by_time&key=block_time&range=day&view=area_chart`} />
+          <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Size`)} yDataKey="cumulative_block_size" yFormat={(v) => formatSize(v)}
+            link={`/views/blocks_by_time?chart_key=cumulative_block_size&period=${dayInSeconds}&view=chart&chart_view=area`} />
+          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Circulating Supply`)} yDataKey="cumulative_block_reward" yFormat={(v) => formatXelis(v)}
+            bottomInfo={t(`Max Supply: {}`, [(18000000).toLocaleString()])}
+            link={`/views/blocks_by_time?chart_key=cumulative_block_reward&period=${dayInSeconds}&view=chart&chart_view=area`} />
+          <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Block Time`)} yDataKey="block_time" yFormat={(v) => prettyMs(v)}
+            link={`/views/blocks_by_time?chart_key=block_time&period=${dayInSeconds}&view=chart&chart_view=area`} />
+          <BoxBlockTypes blocksDaily={blocksDaily} />
           <BoxDevFee stats={stats} />
-          <BoxBlockTypes />
         </div>
       </div>
       <div>
         <div><Icon name="receipt" />{t(`Transactions`)}</div>
         <div>
-          <BoxTimeChart dataResponse={blocksDaily} areaType="step" name={t(`Total`)} yDataKey="cumulative_tx_count" yFormat={(v) => v.toLocaleString()} link={`/database?data_source=blocks_by_time&key=cumulative_tx_count&range=day&view=area_chart`} />
-          <BoxTimeChart dataResponse={blocksDaily} areaType="monotone" name={t(`Txs (1d)`)} yDataKey="sum_tx_count" yFormat={(v) => v.toLocaleString()} bottomInfo={<>{tpm} TPM</>} link={`/database?data_source=blocks_by_time&key=sum_tx_count&range=day&view=area_chart`} />
-          <BoxTimeChart dataResponse={blocksDaily} areaType="step" name={t(`Total Fees`)} yDataKey="cumulative_total_fees" yFormat={(v) => formatXelis(v)} link={`/database?data_source=blocks_by_time&key=cumulative_total_fees&range=day&view=area_chart`} />
-          <BoxTimeChart dataResponse={blocksDaily} areaType="monotone" name={t(`Total Fees (1d)`)} yDataKey="sum_total_fees" yFormat={(v) => formatXelis(v)} link={`/database?data_source=blocks_by_time&key=sum_total_fees&range=day&view=area_chart`} />
-          <BoxTimeChart dataResponse={txsDaily} areaType="monotone" name={t(`Transfers (1d)`)} yDataKey="transfer_count" yFormat={(v) => v.toLocaleString()} />
+          <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Total`)} yDataKey="cumulative_tx_count" yFormat={(v) => v.toLocaleString()}
+            link={`/views/blocks_by_time?chart_key=cumulative_tx_count&period=${dayInSeconds}&view=chart&chart_view=area`} />
+          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Txs (1d)`)} yDataKey="sum_tx_count" yFormat={(v) => v.toLocaleString()}
+            bottomInfo={<>{tpm} TPM</>} link={`/views/blocks_by_time?chart_key=sum_tx_count&period=${dayInSeconds}&view=chart&chart_view=area`} />
+          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Total Fees`)} yDataKey="cumulative_block_fees" yFormat={(v) => formatXelis(v)}
+            link={`/views/blocks_by_time?chart_key=cumulative_total_fees&period=${dayInSeconds}&view=chart&chart_view=area`} />
+          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Fees (1d)`)} yDataKey="sum_block_fees" yFormat={(v) => formatXelis(v)}
+            link={`/views/blocks_by_time?chart_key=sum_total_fees&period=${dayInSeconds}&view=chart&chart_view=area`} />
+          <BoxTimeChart data={txsDaily} areaType="monotone" name={t(`Transfers (1d)`)} yDataKey="transfer_count" yFormat={(v) => v.toLocaleString()} />
         </div>
       </div>
       <div>
         <div><Icon name="microchip" />{t(`Mining`)}</div>
         <div>
-          <BoxTimeChart dataResponse={minersCountDaily} areaType="step" name={t(`Miners (1d)`)} yName={t(`Miners`)} yDataKey="miner_count" yFormat={(v) => `${v.toLocaleString()}`}
+          <BoxTimeChart data={minersCountDaily} areaType="step" name={t(`Miners (1d)`)} yName={t(`Miners`)} yDataKey="miner_count" yFormat={(v) => `${v.toLocaleString()}`}
             info={t(`The network can have way more active miners. These are only the miners who were succesful in mining at least one block.`)} yDomain={[0, 'dataMax']} />
-          <BoxTimeChart dataResponse={blocksDaily} areaType="monotone" name={t(`Hash Rate (avg)`)} yName={t(`Hash Rate`)} yDataKey="avg_difficulty" yFormat={(v) => formatHashRate(v / 15)} link={`/database?data_source=blocks_by_time&key=avg_difficulty&range=day&view=area_chart`} />
-          <BoxTimeChart dataResponse={blocksDaily} areaType="monotone" name={t(`Reward (avg)`)} yName={t(`Reward (avg)`)} yDataKey="avg_block_reward" yFormat={(v) => formatXelis(v)} link={`/database?data_source=blocks_by_time&key=avg_block_reward&range=day&view=area_chart`} />
+          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Hash Rate (1d)`)} yName={t(`Hash Rate (avg)`)} yDataKey="avg_difficulty"
+            yFormat={(v) => formatHashRate(v / 15)} link={`/views/blocks_by_time?chart_key=avg_difficulty&period=${dayInSeconds}&view=chart&chart_view=area`} />
+          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Reward (1d)`)} yName={t(`Reward (avg)`)} yDataKey="avg_block_reward"
+            yFormat={(v) => formatXelis(v)} link={`/views/blocks_by_time?chart_key=avg_block_reward&period=${dayInSeconds}&view=chart&chart_view=area`} />
           <BoxTopMiners minersDaily={minersDaily} stats={stats} />
         </div>
       </div>
       <div>
         <div><Icon name="users" />{t(`Accounts`)}</div>
         <div>
-          <BoxTimeChart dataResponse={accountsCountDaily} areaType="monotstep" name={t(`Accounts`)} yName={t(`Accounts`)} yDataKey="cumulative_account_count" yFormat={(v) => `${v.toLocaleString()}`} />
+          <BoxTimeChart data={accountsCountDaily} areaType="monotstep" name={t(`Accounts`)} yName={t(`Accounts`)} yDataKey="cumulative_account_count"
+            yFormat={(v) => `${v.toLocaleString()}`}
+            link={`/views/get_accounts_count_time?chart_key=cumulative_account_count&chart_view=area&period=${dayInSeconds}&view=chart`} />
           <BoxTopAccounts accountsWeekly={accountsWeekly} stats={stats} />
-          <BoxTimeChart dataResponse={accountsCountDaily} areaType="monotstep" name={t(`Registered (1d)`)} yName={t(`Accounts`)} yDataKey="account_count" yFormat={(v) => `${v.toLocaleString()}`} yDomain={[0, 'dataMax']} />
-          <BoxTimeChart dataResponse={activeAccountsWeekly} areaType="monotstep" name={t(`Active (1w)`)} yName={t(`Accounts`)} yDataKey="active_accounts" yFormat={(v) => `${v.toLocaleString()}`} info={t(`Send at least one transaction.`)} yDomain={[0, 'dataMax']} />
+          <BoxTimeChart data={accountsCountDaily} areaType="monotstep" name={t(`Registered (1d)`)} yName={t(`Accounts`)} yDataKey="account_count" yFormat={(v) => `${v.toLocaleString()}`}
+            yDomain={[0, 'dataMax']} link={`/views/get_accounts_count_time?chart_key=account_count&chart_view=area&period=${dayInSeconds}&view=chart`} />
+          <BoxTimeChart data={activeAccountsWeekly} areaType="monotstep" name={t(`Active (1w)`)} yName={t(`Accounts`)} yDataKey="active_accounts"
+            yFormat={(v) => `${v.toLocaleString()}`} info={t(`Number of accounts that sent at least one transaction.`)} yDomain={[0, 'dataMax']} />
         </div>
       </div>
       <div>
@@ -711,19 +763,19 @@ function Home() {
           <Box name="Total" value="--" noData>
             <BoxChart />
           </Box>
-          <Box name="Deployed (24h)" value="--" noData>
+          <Box name="Deployed (1d)" value="--" noData>
             <BoxChart />
           </Box>
           <Box name="Calls" value="--" noData>
             <BoxChart />
           </Box>
-          <Box name="Calls (24h)" value="--" noData>
+          <Box name="Calls (1d)" value="--" noData>
             <BoxChart />
           </Box>
         </div>
       </div>
     </div>
-  </div>
+  </div >
 }
 
 export default Home

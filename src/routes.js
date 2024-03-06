@@ -3,7 +3,8 @@ import App from './app'
 import Dashboard from './pages/dashboard'
 import NotFound from 'xelis-explorer/src/pages/notFound'
 import Layout from './layout/layout'
-import Database from './pages/database'
+import View from './pages/views/view'
+import List from './pages/views/list'
 
 const routes = [
   {
@@ -17,8 +18,12 @@ const routes = [
             element: <Dashboard />,
           },
           {
-            path: '/database',
-            element: <Database />,
+            path: '/views',
+            element: <List />,
+          },
+          {
+            path: '/views/:dataSource',
+            element: <View />,
           },
           {
             path: '*',
