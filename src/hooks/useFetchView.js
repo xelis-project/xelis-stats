@@ -2,11 +2,9 @@ import to from 'await-to-js'
 import queryString from 'query-string'
 import { useCallback, useEffect, useState } from 'react'
 
-const host = "http://localhost:8000"
-
 export async function fetchView(viewName, params) {
   const endpoint = queryString.stringifyUrl({
-    url: `${host}/views/${viewName}`,
+    url: `${INDEX_REST_ENDPOINT}/views/${viewName}`,
     query: params
   })
 
