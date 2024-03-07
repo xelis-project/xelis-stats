@@ -322,7 +322,7 @@ function useSources() {
       ],
       columns: [
         { key: `time`, title: t(`Time`), format: (v) => new Date(v).toLocaleString(), views: [`table`] },
-        { key: `transfer_count`, title: t(`Transfer Count`) },
+        { key: `transfer_count`, title: t(`Transfer Count`), format: (v) => `${v.toLocaleString()}` },
       ]
     },
     {
@@ -336,7 +336,7 @@ function useSources() {
       ],
       columns: [
         { key: `time`, title: t(`Time`), format: (v) => new Date(v).toLocaleString(), views: [`table`] },
-        { key: `miner_count`, title: t(`Miner Count`) },
+        { key: `miner_count`, title: t(`Miner Count`), format: (v) => `${v.toLocaleString()}` },
       ]
     },
     {
@@ -366,8 +366,8 @@ function useSources() {
       ],
       columns: [
         { key: `time`, title: t(`Time`), format: (v) => new Date(v).toLocaleString(), views: [`table`] },
-        { key: `account_count`, title: t(`Accounts`) },
-        { key: `cumulative_account_count`, title: t(`Total Accounts`) },
+        { key: `account_count`, title: t(`Accounts`), format: (v) => `${v.toLocaleString()}` },
+        { key: `cumulative_account_count`, title: t(`Accounts (Cumulative)`), format: (v) => `${v.toLocaleString()}` },
       ]
     },
     {
@@ -381,8 +381,8 @@ function useSources() {
       ],
       columns: [
         { key: `time`, title: t(`Time`), format: (v) => new Date(v).toLocaleString(), views: [`table`] },
-        { key: `active_accounts`, title: t(`Active Accounts`) },
-        { key: `inactive_accounts`, title: t(`Inactive Accounts`) },
+        { key: `active_accounts`, title: t(`Active Accounts`), format: (v) => `${v.toLocaleString()}` },
+        { key: `inactive_accounts`, title: t(`Inactive Accounts`), format: (v) => `${v.toLocaleString()}` },
       ]
     },
     {
@@ -396,9 +396,9 @@ function useSources() {
       ],
       columns: [
         { key: `time`, title: t(`Time`), format: (v) => new Date(v).toLocaleString(), views: [`table`] },
-        { key: `addr`, title: t(`Address`) },
-        { key: `total_txs`, title: t(`Total Transactions`) },
-        { key: `total_fees`, title: t(`Total Fees`) },
+        { key: `addr`, title: t(`Address`), views: [`table`] },
+        { key: `total_txs`, title: t(`Total Transactions`), format: (v) => `${v.toLocaleString()}` },
+        { key: `total_fees`, title: t(`Total Fees`), format: (v) => formatXelis(v) },
       ]
     },
   ], [t])

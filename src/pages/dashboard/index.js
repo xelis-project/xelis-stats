@@ -476,7 +476,8 @@ function BoxTopAccounts(props) {
   const { value, extra, data } = boxData
   const loading = accountsWeekly.loading
 
-  return <Box name={t(`Top Accounts (1w)`)} value={value} extra={extra} loading={loading}>
+  return <Box name={t(`Top Accounts (1w)`)} value={value} extra={extra} loading={loading}
+    link={`/views/get_accounts_txs_time?period=604800&view=table`}>
     <BoxTable headers={headers} data={data} />
   </Box>
 }
@@ -726,9 +727,9 @@ function Home() {
           <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Txs (1d)`)} yDataKey="sum_tx_count" yFormat={(v) => v.toLocaleString()}
             bottomInfo={<>{tpm} TPM</>} link={`/views/blocks_by_time?chart_key=sum_tx_count&period=${dayInSeconds}&view=chart&chart_view=area`} />
           <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Total Fees`)} yDataKey="cumulative_block_fees" yFormat={(v) => formatXelis(v)}
-            link={`/views/blocks_by_time?chart_key=cumulative_total_fees&period=${dayInSeconds}&view=chart&chart_view=area`} />
+            link={`/views/blocks_by_time?chart_key=cumulative_block_fees&period=${dayInSeconds}&view=chart&chart_view=area`} />
           <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Fees (1d)`)} yDataKey="sum_block_fees" yFormat={(v) => formatXelis(v)}
-            link={`/views/blocks_by_time?chart_key=sum_total_fees&period=${dayInSeconds}&view=chart&chart_view=area`} />
+            link={`/views/blocks_by_time?chart_key=sum_block_fees&period=${dayInSeconds}&view=chart&chart_view=area`} />
           <BoxTimeChart data={txsDaily} areaType="monotone" name={t(`Transfers (1d)`)} yDataKey="transfer_count" yFormat={(v) => v.toLocaleString()} />
         </div>
       </div>
@@ -736,7 +737,8 @@ function Home() {
         <div><Icon name="microchip" />{t(`Mining`)}</div>
         <div>
           <BoxTimeChart data={minersCountDaily} areaType="step" name={t(`Miners (1d)`)} yName={t(`Miners`)} yDataKey="miner_count" yFormat={(v) => `${v.toLocaleString()}`}
-            info={t(`The network can have way more active miners. These are only the miners who were succesful in mining at least one block.`)} yDomain={[0, 'dataMax']} />
+            info={t(`The network can have way more active miners. These are only the miners who were succesful in mining at least one block.`)} yDomain={[0, 'dataMax']} 
+            link={`/views/get_miners_count_time?chart_key=miner_count&chart_view=area&period=${dayInSeconds}&view=chart`} />
           <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Hash Rate (1d)`)} yName={t(`Hash Rate (avg)`)} yDataKey="avg_difficulty"
             yFormat={(v) => formatHashRate(v / 15)} link={`/views/blocks_by_time?chart_key=avg_difficulty&period=${dayInSeconds}&view=chart&chart_view=area`} />
           <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Reward (1d)`)} yName={t(`Reward (avg)`)} yDataKey="avg_block_reward"

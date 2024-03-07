@@ -36,46 +36,48 @@ glob`
 
 const style = {
   container: css`
-    > :nth-child(1) {
-      padding: .75em;
-      border-radius: .5em;
-      display: flex;
-      background-color: var(--bg-color);
-      align-items: center;
-      margin: 1em 0;
-      justify-content: space-between;
-      gap: .5em;
-
-      > :nth-child(1) {
+    .tab {
+      > :nth-child(1) {  
+        padding: .75em;
+        border-radius: .5em;
         display: flex;
-        gap: .3em;
-        flex-direction: column;
+        background-color: var(--bg-color);
+        align-items: center;
+        margin: 1em 0;
+        justify-content: space-between;
+        gap: .5em;
 
         > :nth-child(1) {
-          font-size: .8em;
-          opacity: .6;
+          display: flex;
+          gap: .3em;
+          flex-direction: column;
+
+          > :nth-child(1) {
+            font-size: .8em;
+            opacity: .6;
+          }
+
+          > :nth-child(2) {
+            font-size: 1.4em;
+            font-weight: bold;
+          }
         }
 
-        > :nth-child(2) {
-          font-size: 1.4em;
-          font-weight: bold;
-        }
-      }
+        > button {
+          font-size: 1.2em;
+          background: none;
+          border: none;
+          color: var(--text-color);
+          cursor: pointer;
 
-      > button {
-        font-size: 1.2em;
-        background: none;
-        border: none;
-        color: var(--text-color);
-        cursor: pointer;
-
-        ${theme.query.minLarge} {
-          display: none;
+          ${theme.query.minLarge} {
+            display: none;
+          }
         }
       }
     }
 
-    > :nth-child(2) {
+    .chart {
       height: 15rem;
       margin-bottom: 1em;
       background: #00000075;
@@ -83,6 +85,7 @@ const style = {
       display: flex;
       justify-content: center;
       border-radius: 0.5em;
+      position: relative;
 
       ${theme.query.minMobile} {
         height: 30em;
@@ -104,9 +107,20 @@ const style = {
         position: relative;
         z-index: 0;
       }
+
+      .loading {
+        position: absolute;
+        z-index: 2;
+        display: flex;
+        width: 100%;
+        height: 100%;
+        justify-content: center;
+        align-items: center;
+        font-size: 2em;
+      }
     }
 
-    > :nth-child(3) {
+    .table {
       height: 30em;
 
       > div > :nth-child(2) {
@@ -221,11 +235,11 @@ function ViewStats(props) {
       timeScale: {
         timeVisible: true,
         minBarSpacing: 6,
-        tickMarkFormatter: source.timeFormatter || (p => null), // null func is important or it won't change if we use a source that doesn't have timeFormatter defined
+        //tickMarkFormatter: source.timeFormatter || (p => null), // null func is important or it won't change if we use a source that doesn't have timeFormatter defined
       },
       localization: {
         priceFormatter: chartColumn.format,
-        timeFormatter: source.timeFormatter || (p => null),
+        //timeFormatter: source.timeFormatter || (p => null),
       }
     }
 
@@ -269,15 +283,17 @@ function ViewStats(props) {
       if (typeof time === `undefined` || time === null) return
 
       if (chartColumn.bottomChartKey) bottomData.push({ time, value: item[chartColumn.bottomChartKey] })
-      if (query.chart_view === `candlestick` && chartColumn.candle) {
-        const { lowKey, highKey, openKey, closeKey } = chartColumn.candle
+      if (query.chart_view === `candlestick`) {
+        if (chartColumn.candle) {
+          const { lowKey, highKey, openKey, closeKey } = chartColumn.candle
 
-        if (!minValue) minValue = item[lowKey]
-        if (!maxValue) maxValue = item[highKey]
-        if (item[lowKey] < minValue) minValue = item[lowKey]
-        if (item[highKey] > maxValue) maxValue = item[highKey]
+          if (!minValue) minValue = item[lowKey]
+          if (!maxValue) maxValue = item[highKey]
+          if (item[lowKey] < minValue) minValue = item[lowKey]
+          if (item[highKey] > maxValue) maxValue = item[highKey]
 
-        data.push({ time, low: item[lowKey], high: item[highKey], open: item[openKey], close: item[closeKey] })
+          data.push({ time, low: item[lowKey], high: item[highKey], open: item[openKey], close: item[closeKey] })
+        }
       } else {
         const value = item[chartColumn.key]
         if (!minValue) minValue = value
@@ -315,6 +331,7 @@ function ViewStats(props) {
       maxLineRef.current = seriesRef.current.createPriceLine(maxLine)
     }
 
+    console.log(data)
     seriesRef.current.setData(data.reverse())
 
     if (seriesBottomRef.current) {
@@ -385,19 +402,21 @@ function ViewStats(props) {
     <Helmet bodyAttributes={{ [`data-layout`]: `stats` }}>
       <title>{source.title}</title>
     </Helmet>
-    {controls.tab}
-    <div ref={chartDivRef} style={{ display: query.view === `chart` ? `block` : `none` }}>
+    <div className="tab">
+      {controls.tab}
+    </div>
+    <div className="chart" ref={chartDivRef} style={{ display: query.view === `chart` ? `block` : `none` }}>
       <div>
         <a href="https://tradingview.github.io/lightweight-charts/">Powered by Lightweight Charts™</a>
       </div>
-      {loading && <div>
+      {loading && <div className="loading">
         <Icon name="circle-notch" className="fa-spin" />
       </div>}
-      {(!loading && list.length === 0) && <div>
+      {(!loading && list.length === 0) && <div className="loading">
         NO DATA
       </div>}
     </div>
-    <div style={{ display: query.view === `table` ? `block` : `none` }}>
+    <div className="table" style={{ display: query.view === `table` ? `block` : `none` }}>
       <TableFlex data={list} rowKey={source.rowKey} err={err} loading={loading} emptyText={t('No data')}
         headers={tableHeaders} keepTableDisplay
       />

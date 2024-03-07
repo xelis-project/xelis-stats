@@ -109,7 +109,7 @@ export function FilterTimePeriod(props) {
   }, [query, refetch])
 
   return <div>
-    <div>Period (Time)</div>
+    <div>{t(`Period (Time)`)}</div>
     <Dropdown items={items} value={query.period || ``} onChange={(item) => {
       setInputPeriod(item.key)
       setPeriod(item.key)
@@ -141,6 +141,7 @@ function FilterTextInput(props) {
 
 export function FilterUnitPeriod(props) {
   const { query, setQuery, refetch = true } = props
+  const { t } = useLang()
 
   const rangeUnitList = useMemo(() => {
     return [
@@ -154,7 +155,7 @@ export function FilterUnitPeriod(props) {
   }, [])
 
   return <div>
-    <div>Period (Unit)</div>
+    <div>{t(`Period (Unit)`)}</div>
     <Dropdown items={rangeUnitList} value={query.period || ``} onChange={(item) => {
       if (refetch) {
         setQuery({ ...query, period: item.key, refetch: Date.now() })

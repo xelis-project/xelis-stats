@@ -23,11 +23,11 @@ function SubApp() {
 
   return <>
     <Helmet titleTemplate='%s · XELIS Stats'>
-      {currentTheme === `xelis` && <link rel="preload" as="image" href="public/img/bg_xelis.jpg" />}
+      {/*{currentTheme === `xelis` && <link rel="preload" as="image" href="public/img/bg_xelis.jpg" />}
       {currentTheme === `light` && <link rel="preload" as="image" href="public/img/bg_xelis_light.jpg" />}
       {currentTheme === `dark` && <link rel="preload" as="image" href="public/img/bg_xelis_dark.jpg" />}
       {currentTheme !== `light` && <link rel="preload" as="image" href="public/img/white_background_black_logo.svg" type="image/svg+xml" />}
-      {currentTheme === `light` && <link rel="preload" as="image" href="public/img/black_background_white_logo.svg" type="image/svg+xml" />}
+{currentTheme === `light` && <link rel="preload" as="image" href="public/img/black_background_white_logo.svg" type="image/svg+xml" />}*/}
       <style>{css}</style> {/* Don't use id="_goober" or css will flicker. Probably an issue with goober reseting css.*/}
     </Helmet>
     <Outlet />
