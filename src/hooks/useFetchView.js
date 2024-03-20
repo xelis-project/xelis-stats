@@ -13,6 +13,11 @@ export async function fetchView(viewName, params) {
     return Promise.reject(err)
   }
 
+  if (!res.ok) {
+    const data = await res.text()
+    return Promise.reject(data)
+  }
+
   const data = await res.json()
   return Promise.resolve(data)
 }

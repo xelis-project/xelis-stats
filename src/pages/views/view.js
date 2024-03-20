@@ -36,47 +36,6 @@ glob`
 
 const style = {
   container: css`
-    .tab {
-      > :nth-child(1) {  
-        padding: .75em;
-        border-radius: .5em;
-        display: flex;
-        background-color: var(--bg-color);
-        align-items: center;
-        margin: 1em 0;
-        justify-content: space-between;
-        gap: .5em;
-
-        > :nth-child(1) {
-          display: flex;
-          gap: .3em;
-          flex-direction: column;
-
-          > :nth-child(1) {
-            font-size: .8em;
-            opacity: .6;
-          }
-
-          > :nth-child(2) {
-            font-size: 1.4em;
-            font-weight: bold;
-          }
-        }
-
-        > button {
-          font-size: 1.2em;
-          background: none;
-          border: none;
-          color: var(--text-color);
-          cursor: pointer;
-
-          ${theme.query.minLarge} {
-            display: none;
-          }
-        }
-      }
-    }
-
     .chart {
       height: 15rem;
       margin-bottom: 1em;
@@ -95,14 +54,14 @@ const style = {
         height: 35em;
       }
 
-      > :nth-child(1) a {
+      .trademark a {
         position: absolute;
         z-index: 1;
         padding: 1em;
         font-size: .7em;
       }
 
-      > :nth-child(2) {
+      .tv-lightweight-charts {
         border-radius: .5em;
         position: relative;
         z-index: 0;
@@ -117,6 +76,7 @@ const style = {
         justify-content: center;
         align-items: center;
         font-size: 2em;
+        top: 0;
       }
     }
 
@@ -126,6 +86,7 @@ const style = {
       > div > :nth-child(2) {
         max-height: 30em;
 
+        /*
         table tr th:first-child {
           z-index: 2;
           left: 0;
@@ -136,6 +97,7 @@ const style = {
           left: 0;
           z-index: 1;
         }
+        */
       }
     }
   `
@@ -150,18 +112,13 @@ function ViewStats(props) {
   const [err, setErr] = useState()
   const { t } = useLang()
 
-  const [query, setQuery] = useQueryString()
+  const [query, setQuery] = useQueryString({ view: `table` })
   const { theme: currentTheme } = useTheme()
 
   const sources = useSources()
   const source = useMemo(() => {
     return sources.find((s) => s.key === dataSource) || {}
   }, [dataSource])
-
-  // we use memo here to avoid fetch the query again on datasource change
-  /*const getQuery = useMemo(() => {
-    return source.getQuery
-  }, [source.getQuery])*/
 
   const load = useCallback(async () => {
     if (typeof source.getData !== `function`) return
@@ -268,6 +225,10 @@ function ViewStats(props) {
   // load data in trading view chart
   useEffect(() => {
     if (!chartRef.current) return
+    if (seriesBottomRef.current) {
+      chartRef.current.removeSeries(seriesBottomRef.current)
+      seriesBottomRef.current = null
+    }
     if (!seriesRef.current) return
     if (!chartColumn) return
 
@@ -277,7 +238,7 @@ function ViewStats(props) {
     for (let i = 0; i < list.length; i++) {
       const item = list[i]
       let time = null
-      if (typeof source.rowKey === `function`) time = source.rowKey(item)
+      if (typeof source.rowKey === `function`) time = source.rowKey(item, i)
       else time = item[source.rowKey]
 
       if (typeof time === `undefined` || time === null) return
@@ -295,7 +256,10 @@ function ViewStats(props) {
           data.push({ time, low: item[lowKey], high: item[highKey], open: item[openKey], close: item[closeKey] })
         }
       } else {
-        const value = item[chartColumn.key]
+        let value = null
+        if (typeof chartColumn.rowKey === `function`) value = chartColumn.rowKey(item, i)
+        else value = item[chartColumn.key]
+
         if (!minValue) minValue = value
         if (!maxValue) maxValue = value
         if (value < minValue) minValue = value
@@ -331,12 +295,11 @@ function ViewStats(props) {
       maxLineRef.current = seriesRef.current.createPriceLine(maxLine)
     }
 
-    console.log(data)
-    seriesRef.current.setData(data.reverse())
+    // make sure the data is always ascending ordering
+    // https://stackoverflow.com/questions/65408588/lightweight-charts-uncaught-error-value-is-null
+    data.sort((a, b) => a.time - b.time)
 
-    if (seriesBottomRef.current) {
-      chartRef.current.removeSeries(seriesBottomRef.current)
-    }
+    seriesRef.current.setData(data)
 
     if (chartColumn.bottomChartKey) {
       const options = {
@@ -355,7 +318,8 @@ function ViewStats(props) {
         }
       })
 
-      seriesBottomRef.current.setData(bottomData.reverse())
+      bottomData.sort((a, b) => a.time - b.time)
+      seriesBottomRef.current.setData(bottomData)
     }
 
     chartRef.current.timeScale().fitContent()
@@ -402,11 +366,9 @@ function ViewStats(props) {
     <Helmet bodyAttributes={{ [`data-layout`]: `stats` }}>
       <title>{source.title}</title>
     </Helmet>
-    <div className="tab">
-      {controls.tab}
-    </div>
+    {controls.tab}
     <div className="chart" ref={chartDivRef} style={{ display: query.view === `chart` ? `block` : `none` }}>
-      <div>
+      <div className="trademark">
         <a href="https://tradingview.github.io/lightweight-charts/">Powered by Lightweight Charts™</a>
       </div>
       {loading && <div className="loading">
@@ -417,7 +379,7 @@ function ViewStats(props) {
       </div>}
     </div>
     <div className="table" style={{ display: query.view === `table` ? `block` : `none` }}>
-      <TableFlex data={list} rowKey={source.rowKey} err={err} loading={loading} emptyText={t('No data')}
+      <TableFlex data={list} rowKey={(_, i) => i} err={err} loading={loading} emptyText={t('No data')}
         headers={tableHeaders} keepTableDisplay
       />
     </div>

@@ -510,8 +510,10 @@ function BoxBlockTypes(props) {
   }, [blocksDaily, t])
 
   const { value, extra, data } = boxData
+  const loading = blocksDaily.loading
 
-  return <Box name={t(`Block Types (1d)`)} value={value} extra={extra} loading={false}>
+  return <Box name={t(`Block Types (1d)`)} value={value} extra={extra} loading={loading}
+    link={`/views/blocks_by_time?columns=time,side_block_count,orphaned_block_count,sync_block_count,block_count&period=86400&view=table`}>
     <BoxTable headers={headers} data={data} />
   </Box>
 }
@@ -697,9 +699,9 @@ function Home() {
         <div><Icon name="coins" />{t(`Market`)}</div>
         <div>
           <BoxTimeChart data={marketHistoryHourly} areaType="monotone" name={t(`Price (1h)`)} yDataKey="last_price" yFormat={(v) => formatNumber(v)}
-            link={`/views/market_history?chart_key=price_candle&period=${hourInSeconds}&view=candle_chart&chart_view=candlestick`} />
+            link={`/views/market_history?chart_key=price_volume_candle&period=${hourInSeconds}&view=chart&chart_view=candlestick&order=time:desc`} />
           <BoxTimeChart data={marketHistoryHourly} areaType="step" name={t(`Volume (1h)`)} yDataKey="sum_quantity" yFormat={(v) => formatNumber(v)}
-            link={`/views/market_history?chart_key=sum_quantity&period=${hourInSeconds}&view=chart&chart_view=area`} />
+            link={`/views/market_history?chart_key=sum_quantity&period=${hourInSeconds}&view=chart&chart_view=area&order=time:desc`} />
           <BoxMarketCap marketHistoryDaily={marketHistoryDaily} blocksDaily={blocksDaily} />
           <BoxExchanges marketHistoryExchangeDaily={marketHistoryExchangeDaily} stats={stats} />
         </div>
@@ -709,12 +711,12 @@ function Home() {
         <div>
           <BoxBlocks recentBlocks={recentBlocks} />
           <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Size`)} yDataKey="cumulative_block_size" yFormat={(v) => formatSize(v)}
-            link={`/views/blocks_by_time?chart_key=cumulative_block_size&period=${dayInSeconds}&view=chart&chart_view=area`} />
+            link={`/views/blocks_by_time?chart_key=cumulative_block_size&period=${dayInSeconds}&view=chart&chart_view=area&order=time:desc`} />
           <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Circulating Supply`)} yDataKey="cumulative_block_reward" yFormat={(v) => formatXelis(v)}
             bottomInfo={t(`Max Supply: {}`, [(18000000).toLocaleString()])}
-            link={`/views/blocks_by_time?chart_key=cumulative_block_reward&period=${dayInSeconds}&view=chart&chart_view=area`} />
+            link={`/views/blocks_by_time?chart_key=cumulative_block_reward&period=${dayInSeconds}&view=chart&chart_view=area&order=time:desc`} />
           <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Block Time`)} yDataKey="block_time" yFormat={(v) => prettyMs(v)}
-            link={`/views/blocks_by_time?chart_key=block_time&period=${dayInSeconds}&view=chart&chart_view=area`} />
+            link={`/views/blocks_by_time?chart_key=block_time&period=${dayInSeconds}&view=chart&chart_view=area&order=time:desc`} />
           <BoxBlockTypes blocksDaily={blocksDaily} />
           <BoxDevFee stats={stats} />
         </div>
@@ -723,13 +725,13 @@ function Home() {
         <div><Icon name="receipt" />{t(`Transactions`)}</div>
         <div>
           <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Total`)} yDataKey="cumulative_tx_count" yFormat={(v) => v.toLocaleString()}
-            link={`/views/blocks_by_time?chart_key=cumulative_tx_count&period=${dayInSeconds}&view=chart&chart_view=area`} />
-          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Txs (1d)`)} yDataKey="sum_tx_count" yFormat={(v) => v.toLocaleString()}
-            bottomInfo={<>{tpm} TPM</>} link={`/views/blocks_by_time?chart_key=sum_tx_count&period=${dayInSeconds}&view=chart&chart_view=area`} />
+            link={`/views/blocks_by_time?chart_key=cumulative_tx_count&period=${dayInSeconds}&view=chart&chart_view=area&order=time:desc`} />
+          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Txs (1d)`)} yDataKey="sum_tx_count" yFormat={(v) => v.toLocaleString()} bottomInfo={<>{tpm} TPM</>}
+            link={`/views/blocks_by_time?chart_key=sum_tx_count&period=${dayInSeconds}&view=chart&chart_view=area&order=time:desc`} />
           <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Total Fees`)} yDataKey="cumulative_block_fees" yFormat={(v) => formatXelis(v)}
-            link={`/views/blocks_by_time?chart_key=cumulative_block_fees&period=${dayInSeconds}&view=chart&chart_view=area`} />
+            link={`/views/blocks_by_time?chart_key=cumulative_block_fees&period=${dayInSeconds}&view=chart&chart_view=area&order=time:desc`} />
           <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Fees (1d)`)} yDataKey="sum_block_fees" yFormat={(v) => formatXelis(v)}
-            link={`/views/blocks_by_time?chart_key=sum_block_fees&period=${dayInSeconds}&view=chart&chart_view=area`} />
+            link={`/views/blocks_by_time?chart_key=sum_block_fees&period=${dayInSeconds}&view=chart&chart_view=area&order=time:desc`} />
           <BoxTimeChart data={txsDaily} areaType="monotone" name={t(`Transfers (1d)`)} yDataKey="transfer_count" yFormat={(v) => v.toLocaleString()} />
         </div>
       </div>
@@ -737,24 +739,23 @@ function Home() {
         <div><Icon name="microchip" />{t(`Mining`)}</div>
         <div>
           <BoxTimeChart data={minersCountDaily} areaType="step" name={t(`Miners (1d)`)} yName={t(`Miners`)} yDataKey="miner_count" yFormat={(v) => `${v.toLocaleString()}`}
-            info={t(`The network can have way more active miners. These are only the miners who were succesful in mining at least one block.`)} yDomain={[0, 'dataMax']} 
-            link={`/views/get_miners_count_time?chart_key=miner_count&chart_view=area&period=${dayInSeconds}&view=chart`} />
-          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Hash Rate (1d)`)} yName={t(`Hash Rate (avg)`)} yDataKey="avg_difficulty"
-            yFormat={(v) => formatHashRate(v / 15)} link={`/views/blocks_by_time?chart_key=avg_difficulty&period=${dayInSeconds}&view=chart&chart_view=area`} />
-          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Reward (1d)`)} yName={t(`Reward (avg)`)} yDataKey="avg_block_reward"
-            yFormat={(v) => formatXelis(v)} link={`/views/blocks_by_time?chart_key=avg_block_reward&period=${dayInSeconds}&view=chart&chart_view=area`} />
+            info={t(`The network can have way more active miners. These are only the miners who were succesful in mining at least one block.`)} yDomain={[0, 'dataMax']}
+            link={`/views/get_miners_count_time?chart_key=miner_count&chart_view=area&period=${dayInSeconds}&view=chart&order=time:desc`} />
+          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Hash Rate (1d)`)} yName={t(`Hash Rate (avg)`)} yDataKey="avg_difficulty" yFormat={(v) => formatHashRate(v / 15)} 
+            link={`/views/blocks_by_time?chart_key=avg_difficulty&period=${dayInSeconds}&view=chart&chart_view=area&order=time:desc`} />
+          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Reward (1d)`)} yName={t(`Reward (avg)`)} yDataKey="avg_block_reward" yFormat={(v) => formatXelis(v)} 
+            link={`/views/blocks_by_time?chart_key=avg_block_reward&period=${dayInSeconds}&view=chart&chart_view=area&order=time:desc`} />
           <BoxTopMiners minersDaily={minersDaily} stats={stats} />
         </div>
       </div>
       <div>
         <div><Icon name="users" />{t(`Accounts`)}</div>
         <div>
-          <BoxTimeChart data={accountsCountDaily} areaType="monotstep" name={t(`Accounts`)} yName={t(`Accounts`)} yDataKey="cumulative_account_count"
-            yFormat={(v) => `${v.toLocaleString()}`}
-            link={`/views/get_accounts_count_time?chart_key=cumulative_account_count&chart_view=area&period=${dayInSeconds}&view=chart`} />
+          <BoxTimeChart data={accountsCountDaily} areaType="monotstep" name={t(`Accounts`)} yName={t(`Accounts`)} yDataKey="cumulative_account_count" yFormat={(v) => `${v.toLocaleString()}`}
+            link={`/views/get_accounts_count_time?chart_key=cumulative_account_count&chart_view=area&period=${dayInSeconds}&view=chart&order=time:desc`} />
           <BoxTopAccounts accountsWeekly={accountsWeekly} stats={stats} />
-          <BoxTimeChart data={accountsCountDaily} areaType="monotstep" name={t(`Registered (1d)`)} yName={t(`Accounts`)} yDataKey="account_count" yFormat={(v) => `${v.toLocaleString()}`}
-            yDomain={[0, 'dataMax']} link={`/views/get_accounts_count_time?chart_key=account_count&chart_view=area&period=${dayInSeconds}&view=chart`} />
+          <BoxTimeChart data={accountsCountDaily} areaType="monotstep" name={t(`Registered (1d)`)} yName={t(`Accounts`)} yDataKey="account_count" yFormat={(v) => `${v.toLocaleString()}`} yDomain={[0, 'dataMax']} 
+            link={`/views/get_accounts_count_time?chart_key=account_count&chart_view=area&period=${dayInSeconds}&view=chart&order=time:desc`} />
           <BoxTimeChart data={activeAccountsWeekly} areaType="monotstep" name={t(`Active (1w)`)} yName={t(`Accounts`)} yDataKey="active_accounts"
             yFormat={(v) => `${v.toLocaleString()}`} info={t(`Number of accounts that sent at least one transaction.`)} yDomain={[0, 'dataMax']} />
         </div>

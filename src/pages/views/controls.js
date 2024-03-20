@@ -89,6 +89,45 @@ const style = {
       }
     }
   `,
+  tab: css`
+    > :nth-child(1) {
+      padding: 1em;
+      border-radius: .5em;
+      display: flex;
+      background-color: var(--bg-color);
+      align-items: center;
+      justify-content: space-between;
+      gap: .5em;
+      margin: 1em 0 .5em 0;
+
+      > :nth-child(1) {
+        font-size: 1.4em;
+        font-weight: bold;
+      }
+
+      > button {
+        font-size: 1.2em;
+        background: none;
+        border: none;
+        color: var(--text-color);
+        cursor: pointer;
+
+        ${theme.query.minLarge} {
+          display: none;
+        }
+      }
+    }
+
+    > :nth-child(2) {
+      margin-bottom: .5em;
+      font-size: .8em;
+      word-break: break-all;
+      background: black;
+      padding: 1em;
+      border-radius: 0.5em;
+      line-height: 1.1em;
+    }
+  `,
   columnList: css`
     > :nth-child(2) {
       display: flex;
@@ -104,16 +143,19 @@ const style = {
 
       > div {
         display: flex;
-        gap: .5em;
-        align-items: center;
-        padding: .5em;
-        border-radius: .5em;
+        gap: 0.5em;
+        padding: 1em;
+        border-radius: 0.5em;
         border: thin solid var(--text-color);
         color: var(--text-color);
         background: var(--table-td-bg-color);
-        cursor: pointer;
-        white-space: nowrap;
-        user-select: none;
+        flex-direction: column;
+
+        > div {
+          display: flex;
+          gap: .5em;
+          align-items: center;
+        }
       }
     }
   `
@@ -150,16 +192,19 @@ function useControls(props) {
 
   const chartColumns = useMemo(() => {
     const columns = (source.columns || []).filter((column) => {
-      const { views } = column
-      if (query.chart_view === `candlestick` && !column.candle) return false
+      const { views, candle } = column
       if (Array.isArray(views) && views.indexOf(query.chart_view) === -1) return false
+
+      if (query.chart_view === `candlestick` && !candle) return false
+      if (query.chart_view !== `candlestick` && candle) return false
+
       return true
     })
 
     return columns.map((column) => ({ key: column.key, text: column.title }))
   }, [source, query.chart_view])
 
-  const clipShareLink = useCallback(() => {
+  const copyShareLink = useCallback(() => {
     navigator.clipboard.writeText(window.location.href)
   }, [])
 
@@ -187,7 +232,7 @@ function useControls(props) {
       <button onClick={() => setOpened(false)}><Icon name="close" /></button>
     </div>
     <div>
-      <Button icon="link" onClick={clipShareLink}>{t(`Clip Link`)}</Button>
+      <Button icon="link" onClick={copyShareLink}>{t(`Copy Link`)}</Button>
       {query.view !== `table` && <Button icon="clipboard" onClick={clipChart}>{t(`Clip Chart`)}</Button>}
       <Button icon="file-arrow-down" onClick={exportData}>{t(`Export`)}</Button>
     </div>
@@ -216,36 +261,23 @@ function useControls(props) {
           }} />
         </div>
         <div>
-          <div>{t(`Key`)}</div>
+          <div>{t(`Chart Key`)}</div>
           <Dropdown items={chartColumns} value={query.chart_key} onChange={(item) => {
             setQuery({ ...query, chart_key: item.key })
           }} />
           <MinMaxCheckbox query={query} setQuery={setQuery} />
         </div>
       </>}
-      {query.view === `table` && <TableColumns source={source} query={query} setQuery={setQuery} />}
+      <TableColumns source={source} query={query} setQuery={setQuery} />
     </div>
   </OffCanvas>
 
-  const topTitle = useMemo(() => {
-    let text = source.title
-    if (query.range) {
-      // todo
-    }
-    return text
-  }, [source, query])
-
-  const bottomTitle = useMemo(() => {
-    if (query.view === `table`) return t(`Table`)
-    return chartColumn ? `${chartColumn.title}` : `--`
-  }, [query, chartColumn])
-
-  const tab = <div>
+  const tab = <div className={style.tab}>
     <div>
-      <div>{topTitle}</div>
-      <div>{bottomTitle}</div>
+      <div>{source.title}</div>
+      <Button icon="window-maximize" iconProps={{ type: 'regular', className: 'fa-rotate-90' }} onClick={() => setOpened(!opened)} />
     </div>
-    <Button icon="window-maximize" iconProps={{ type: 'regular', className: 'fa-rotate-90' }} onClick={() => setOpened(!opened)} />
+    <div>Params: {JSON.stringify(query)}</div>
   </div>
 
   return { tab, render, opened, setOpened }
@@ -280,7 +312,7 @@ function TableColumns(props) {
     })
   }, [source.columns])
 
-  const toggleAll = useCallback((e) => {
+  const showAllColumns = useCallback((e) => {
     if (e.target.checked) {
       const newQuery = Object.assign({}, query)
       Reflect.deleteProperty(newQuery, `columns`)
@@ -290,7 +322,7 @@ function TableColumns(props) {
     }
   }, [query])
 
-  const checkedColumns = useMemo(() => {
+  const visibleColumns = useMemo(() => {
     if (!query.columns) return []
     return query.columns.split(`,`)
   }, [query])
@@ -299,17 +331,58 @@ function TableColumns(props) {
     return tableColumns.map(column => column.key)
   }, [tableColumns])
 
+  const orders = useMemo(() => {
+    let orders = []
+    if (Array.isArray(query.order)) {
+      orders = query.order
+    } else {
+      orders = [query.order]
+    }
+
+    const obj = {}
+    orders.forEach((order) => {
+      if (!order) return
+
+      const values = order.split(':')
+      const key = values[0]
+      const direction = values[1]
+      obj[key] = direction
+    })
+    return obj
+  }, [query.order])
+
+  const wheres = useMemo(() => {
+    let wheres = []
+    if (Array.isArray(query.where)) {
+      wheres = query.where
+    } else {
+      wheres = [query.where]
+    }
+
+    const obj = {}
+    wheres.forEach((where) => {
+      if (!where) return
+
+      const values = where.split(':')
+      const key = values[0]
+      const op = values[1]
+      const value = values[2]
+      obj[key] = { op, value }
+    })
+    return obj
+  }, [query.where])
+
   return <div className={style.columnList}>
-    <div>Columns ({tableColumns.length})</div>
+    <div>{t(`Columns ({})`, [tableColumns.length])}</div>
     <div>
-      <input type="checkbox" checked={query.columns === undefined} onChange={toggleAll} />
-      <div>{t(`Select All`)}</div>
+      <input type="checkbox" checked={query.columns === undefined} onChange={showAllColumns} />
+      <div>{t(`Show All`)}</div>
     </div>
     <div>
       {tableColumns.map((column) => {
-        return <RowColumnCheckbox
-          columns={columnKeys} checkedColumns={checkedColumns}
-          key={column.key} column={column}
+        return <RowColumnControl
+          columns={columnKeys} visibleColumns={visibleColumns}
+          key={column.key} column={column} orders={orders} wheres={wheres}
           setQuery={setQuery} query={query}
         />
       })}
@@ -317,35 +390,139 @@ function TableColumns(props) {
   </div>
 }
 
-function RowColumnCheckbox(props) {
-  const { columns, checkedColumns, column, query, setQuery } = props
-  const { key, title } = column
+function OperatorSelect(props) {
+  return <select {...props}>
+    <option value="eq">Eq</option>
+    <option value="neq">Neq</option>
+    <option value="gt">Gt</option>
+    <option value="gte">Gte</option>
+    <option value="lt">Lt</option>
+    <option value="lte">Lte</option>
+    <option value="like">Like</option>
+  </select>
+}
 
-  const checked = useMemo(() => {
+function SortSelect(props) {
+  return <select {...props}>
+    <option value="">None</option>
+    <option value="desc">Desc</option>
+    <option value="asc">Asc</option>
+  </select>
+}
+
+function RowColumnControl(props) {
+  const { columns, visibleColumns, column, orders, wheres, query, setQuery } = props
+
+  const { t } = useLang()
+
+  const [sort, setSort] = useState(orders[column.key] || ``)
+  const [filterOp, setFilterOp] = useState(() => {
+    const filter = wheres[column.key]
+    if (filter) return filter.op
+    return `eq`
+  })
+  const [filterValue, setFilterValue] = useState(() => {
+    const filter = wheres[column.key]
+    if (filter) return filter.value
+    return ``
+  })
+
+  const visible = useMemo(() => {
     if (query.columns === undefined) return true
-    return checkedColumns.indexOf(key) !== -1
-  }, [query, checkedColumns, key])
+    return visibleColumns.indexOf(column.key) !== -1
+  }, [query, visibleColumns, column.key])
 
-  const onChange = useCallback((e) => {
+  const onVisibleChange = useCallback((e) => {
     let newColumns = []
     if (query.columns === undefined) newColumns = [...columns]
-    else newColumns = [...checkedColumns]
+    else newColumns = [...visibleColumns]
 
     if (e.target.checked) {
-      newColumns = [...newColumns, key]
+      newColumns = [...newColumns, column.key]
     } else {
-      newColumns = newColumns.filter((column) => column !== key)
+      newColumns = newColumns.filter((key) => key !== column.key)
     }
 
     setQuery({ ...query, columns: newColumns.join(`,`) })
-  }, [columns, checkedColumns, key, query])
+  }, [columns, visibleColumns, column.key, query])
 
-  const onClick = useCallback((e) => {
-    if (e.target.children[0]) e.target.children[0].click()
-  }, [])
+  const update = useCallback(({ sort, filterOp, filterValue }) => {
+    const newWheres = Object.assign({}, wheres)
+    if (filterValue) {
+      newWheres[column.key] = { op: filterOp, value: filterValue }
+    } else {
+      Reflect.deleteProperty(newWheres, column.key)
+    }
 
-  return <div key={key} onClick={onClick} data-checked={checked}>
-    <input type="checkbox" checked={checked} onChange={onChange} />{title}
+    const newOrders = Object.assign({}, orders)
+    if (sort) {
+      newOrders[column.key] = sort
+    } else {
+      Reflect.deleteProperty(newOrders, column.key)
+    }
+
+    let newQuery = Object.assign({}, query)
+    newQuery.refetch = Date.now()
+    const qWheres = [], qOrders = []
+
+    Object.keys(newWheres).forEach((key) => {
+      const where = newWheres[key]
+      qWheres.push(`${key}:${where.op}:${where.value}`)
+    })
+
+    Object.keys(newOrders).forEach((key) => {
+      const order = newOrders[key]
+      qOrders.push(`${key}:${order}`)
+    })
+
+    if (qWheres.length > 0) {
+      newQuery.where = qWheres
+    } else {
+      Reflect.deleteProperty(newQuery, `where`)
+    }
+
+    if (qOrders.length > 0) {
+      newQuery.order = qOrders
+    } else {
+      Reflect.deleteProperty(newQuery, `order`)
+    }
+
+    setQuery(newQuery)
+  }, [column, wheres, orders, query])
+
+  const apply = useCallback(() => {
+    update({ sort, filterOp, filterValue })
+  }, [update, sort, filterOp, filterValue])
+
+  const reset = useCallback(() => {
+    setSort('')
+    setFilterOp('eq')
+    setFilterValue('')
+    update({ sort: ``, filterOp: `eq`, filterValue: `` })
+  }, [update])
+
+  return <div>
+    <div>
+      <div>{t(`Key:`)}</div>
+      <div>{column.title} [{column.key}]</div>
+    </div>
+    <div>
+      <div>{t(`Visible:`)}</div>
+      <input type="checkbox" checked={visible} onChange={onVisibleChange} />
+    </div>
+    <div>
+      <div>{t(`Sort:`)}</div>
+      <SortSelect value={sort} onChange={(e) => setSort(e.target.value)} />
+    </div>
+    <div>
+      <div>{t(`Filter:`)}</div>
+      <OperatorSelect value={filterOp} onChange={(e) => setFilterOp(e.target.value)} />
+      <input type="text" value={filterValue} onChange={(e) => setFilterValue(e.target.value)} />
+    </div>
+    <div>
+      <button onClick={reset}>{t(`Reset`)}</button>
+      <button onClick={apply}>{t(`Apply`)}</button>
+    </div>
   </div>
 }
 

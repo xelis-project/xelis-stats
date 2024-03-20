@@ -1,8 +1,5 @@
 import { useCallback, useState, useMemo, useEffect } from 'react'
-import DateTimePicker from 'react-datetime-picker'
 import Dropdown from 'xelis-explorer/src/components/dropdown'
-import prettyMs from 'pretty-ms'
-import { css } from 'goober'
 import { useLang } from 'g45-react/hooks/useLang'
 import { fetchView } from '../../hooks/useFetchView'
 import to from 'await-to-js'
@@ -22,7 +19,7 @@ export function FilterDropdown(props) {
   const value = query[queryKey] || ``
 
   return <div>
-    <div>Filter ({name})</div>
+    <div>{t(`Filter ({})`, [name])}</div>
     <Dropdown items={items} value={value} onChange={(item) => {
       if (refetch) {
         setQuery({ ...query, [queryKey]: item.key, refetch: Date.now() })
@@ -82,7 +79,7 @@ export function FilterMarketAssets(props) {
 export function FilterTimePeriod(props) {
   const { query, setQuery, refetch = true } = props
 
-  const [inputPeriod, setInputPeriod] = useState(query.period)
+  const [inputPeriod, setInputPeriod] = useState(query.period || ``)
   const { t } = useLang()
 
   const items = useMemo(() => {
@@ -97,8 +94,17 @@ export function FilterTimePeriod(props) {
       { key: `7884000`, text: t(`3 months`) },
       { key: `15768000`, text: t(`6 months`) },
       { key: `31536000`, text: t(`1 year`) },
+      { key: ``, text: t(`Custom`) }
     ]
   }, [])
+
+  const dropdownPeriod = useMemo(() => {
+    if (items.map((item) => item.key).includes(query.period)) {
+      return query.period
+    }
+
+    return ``
+  }, [items, query.period])
 
   const setPeriod = useCallback((period) => {
     if (refetch) {
@@ -108,42 +114,33 @@ export function FilterTimePeriod(props) {
     }
   }, [query, refetch])
 
+  const onDropdownChange = useCallback((item) => {
+    setInputPeriod(item.key)
+    setPeriod(item.key)
+  }, [setPeriod])
+
+  const applyCustom = useCallback(() => {
+    setPeriod(inputPeriod)
+  }, [setPeriod, inputPeriod])
+
   return <div>
     <div>{t(`Period (Time)`)}</div>
-    <Dropdown items={items} value={query.period || ``} onChange={(item) => {
-      setInputPeriod(item.key)
-      setPeriod(item.key)
-    }} />
+    <Dropdown items={items} value={dropdownPeriod} onChange={onDropdownChange} />
     <div>
-      <span>Seconds: </span>
-      <input type="text" value={inputPeriod}
-        onChange={(e) => setInputPeriod(e.target.value)} />
-      <button onClick={() => setPeriod(inputPeriod)}>
-        {t(`Apply`)}
-      </button>
-    </div>
-  </div>
-}
-
-
-function FilterTextInput(props) {
-  const { placeholder, onApply } = props
-  const [value, setValue] = useState(``)
-
-  return <div>
-    <div>Filter By ()</div>
-    <div>
-      <input type="text" placeholder={placeholder} value={value} onChange={(e) => setValue(e.target.value)} />
-      <button onClick={onApply}>Apply</button>
+      <span>{t(`Seconds:`)}</span>
+      <input type="text" value={inputPeriod} onChange={(e) => setInputPeriod(e.target.value)} />
+      <button onClick={applyCustom}>{t(`Apply`)} </button>
     </div>
   </div>
 }
 
 export function FilterUnitPeriod(props) {
   const { query, setQuery, refetch = true } = props
+
+  const [inputPeriod, setInputPeriod] = useState(query.period || ``)
   const { t } = useLang()
 
-  const rangeUnitList = useMemo(() => {
+  const items = useMemo(() => {
     return [
       { key: `1`, text: `1` },
       { key: `10`, text: `10` },
@@ -151,18 +148,42 @@ export function FilterUnitPeriod(props) {
       { key: `1000`, text: `1K` },
       { key: `10000`, text: `10K` },
       { key: `100000`, text: `100K` },
+      { key: ``, text: `Custom` }
     ]
   }, [])
 
+  const dropdownPeriod = useMemo(() => {
+    if (items.map((item) => item.key).includes(query.period)) {
+      return query.period
+    }
+
+    return ``
+  }, [items, query.period])
+
+  const setPeriod = useCallback((period) => {
+    if (refetch) {
+      setQuery({ ...query, period, refetch: Date.now() })
+    } else {
+      setQuery({ ...query, period })
+    }
+  }, [query, refetch])
+
+  const onDropdownChange = useCallback((item) => {
+    setInputPeriod(item.key)
+    setPeriod(item.key)
+  }, [setPeriod])
+
+  const applyCustom = useCallback(() => {
+    setPeriod(inputPeriod)
+  }, [setPeriod, inputPeriod])
+
   return <div>
     <div>{t(`Period (Unit)`)}</div>
-    <Dropdown items={rangeUnitList} value={query.period || ``} onChange={(item) => {
-      if (refetch) {
-        setQuery({ ...query, period: item.key, refetch: Date.now() })
-      } else {
-        setQuery({ ...query, period: item.key })
-      }
-    }} />
-    <input type="text" />
+    <Dropdown items={items} value={dropdownPeriod} onChange={onDropdownChange} />
+    <div>
+      <span>{t(`Amount:`)}</span>
+      <input type="text" value={inputPeriod} onChange={(e) => setInputPeriod(e.target.value)} />
+      <button onClick={applyCustom}>{t(`Apply`)} </button>
+    </div>
   </div>
 }
