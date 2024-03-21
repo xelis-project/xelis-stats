@@ -397,7 +397,16 @@ function BoxTopMiners(props) {
 
   const headers = useMemo(() => {
     return [
-      { key: `addr`, title: t(`Addr`), render: (v) => v ? <Link to="/views/todo">{v}</Link> : `--` },
+      {
+        key: `addr`, title: t(`Addr`),
+        render: (v) => {
+          if (v) {
+            return <Link to={`/views/get_miners_blocks_time?period=86400&view=table&order=time:desc&where=miner:eq:${v}`}>{reduceText(v, 0, 7)}</Link>
+          }
+
+          return `--`
+        }
+      },
       { key: `blocks`, title: t(`Blocks`) },
     ]
   }, [])
@@ -414,13 +423,13 @@ function BoxTopMiners(props) {
       const date = item.time.split('T')[0]
 
       //if (date === lastBlockDate) {
-      data.push({ addr: reduceText(item.miner, 0, 7), blocks: formatNumber(item.total_blocks) })
+      data.push({ addr: item.miner, blocks: formatNumber(item.total_blocks) })
       //}
     }
 
     const first = data[0]
     if (first) {
-      value = first.addr
+      value = reduceText(first.addr, 0, 7)
       extra = first.blocks
     }
 
@@ -431,7 +440,7 @@ function BoxTopMiners(props) {
   const loading = minersDaily.loading || stats.loading
 
   return <Box name={t(`Top Miners (1d)`)} value={value} extra={extra} loading={loading}
-    link={`/views/get_miners_blocks_time?period=86400&view=table`}>
+    link={`/views/get_miners_blocks_time?period=86400&view=table&order=time:desc`}>
     <BoxTable headers={headers} data={data} />
   </Box>
 }
@@ -443,7 +452,17 @@ function BoxTopAccounts(props) {
 
   const headers = useMemo(() => {
     return [
-      { key: `addr`, title: t(`Addr`), render: (v) => v ? <Link to="/todo">{v}</Link> : `--` },
+      {
+        key: `addr`, title: t(`Addr`),
+        render: (v) => {
+          if (v) {
+            return <Link to={`/views/get_accounts_txs_time?period=604800&view=table&where=addr:eq:${v}&order=time:desc`}>
+              {reduceText(v, 0, 7)}
+            </Link>
+          }
+          return `--`
+        }
+      },
       { key: `txs`, title: t(`Txs`) },
       { key: `fees`, title: t(`Fees`) }
     ]
@@ -460,13 +479,13 @@ function BoxTopAccounts(props) {
       //const date = item.time.split('T')[0]
 
       //if (date === lastBlockDate) {
-      data.push({ addr: reduceText(item.addr, 0, 7), txs: item.total_txs.toLocaleString(), fees: formatXelis(item.total_fees) })
+      data.push({ addr: item.addr, txs: item.total_txs.toLocaleString(), fees: formatXelis(item.total_fees) })
       //}
     }
 
     const first = data[0]
     if (first) {
-      value = first.addr
+      value = reduceText(first.addr, 0, 7)
       extra = first.total_txs
     }
 
@@ -477,7 +496,7 @@ function BoxTopAccounts(props) {
   const loading = accountsWeekly.loading
 
   return <Box name={t(`Top Accounts (1w)`)} value={value} extra={extra} loading={loading}
-    link={`/views/get_accounts_txs_time?period=604800&view=table`}>
+    link={`/views/get_accounts_txs_time?period=604800&view=table&order=time:desc`}>
     <BoxTable headers={headers} data={data} />
   </Box>
 }
@@ -513,7 +532,7 @@ function BoxBlockTypes(props) {
   const loading = blocksDaily.loading
 
   return <Box name={t(`Block Types (1d)`)} value={value} extra={extra} loading={loading}
-    link={`/views/blocks_by_time?columns=time,side_block_count,orphaned_block_count,sync_block_count,block_count&period=86400&view=table`}>
+    link={`/views/blocks_by_time?columns=time,side_block_count,orphaned_block_count,sync_block_count,block_count&period=86400&view=table&order=time:desc`}>
     <BoxTable headers={headers} data={data} />
   </Box>
 }
@@ -741,9 +760,9 @@ function Home() {
           <BoxTimeChart data={minersCountDaily} areaType="step" name={t(`Miners (1d)`)} yName={t(`Miners`)} yDataKey="miner_count" yFormat={(v) => `${v.toLocaleString()}`}
             info={t(`The network can have way more active miners. These are only the miners who were succesful in mining at least one block.`)} yDomain={[0, 'dataMax']}
             link={`/views/get_miners_count_time?chart_key=miner_count&chart_view=area&period=${dayInSeconds}&view=chart&order=time:desc`} />
-          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Hash Rate (1d)`)} yName={t(`Hash Rate (avg)`)} yDataKey="avg_difficulty" yFormat={(v) => formatHashRate(v / 15)} 
+          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Hash Rate (1d)`)} yName={t(`Hash Rate (avg)`)} yDataKey="avg_difficulty" yFormat={(v) => formatHashRate(v / 15)}
             link={`/views/blocks_by_time?chart_key=avg_difficulty&period=${dayInSeconds}&view=chart&chart_view=area&order=time:desc`} />
-          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Reward (1d)`)} yName={t(`Reward (avg)`)} yDataKey="avg_block_reward" yFormat={(v) => formatXelis(v)} 
+          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Reward (1d)`)} yName={t(`Reward (avg)`)} yDataKey="avg_block_reward" yFormat={(v) => formatXelis(v)}
             link={`/views/blocks_by_time?chart_key=avg_block_reward&period=${dayInSeconds}&view=chart&chart_view=area&order=time:desc`} />
           <BoxTopMiners minersDaily={minersDaily} stats={stats} />
         </div>
@@ -754,7 +773,7 @@ function Home() {
           <BoxTimeChart data={accountsCountDaily} areaType="monotstep" name={t(`Accounts`)} yName={t(`Accounts`)} yDataKey="cumulative_account_count" yFormat={(v) => `${v.toLocaleString()}`}
             link={`/views/get_accounts_count_time?chart_key=cumulative_account_count&chart_view=area&period=${dayInSeconds}&view=chart&order=time:desc`} />
           <BoxTopAccounts accountsWeekly={accountsWeekly} stats={stats} />
-          <BoxTimeChart data={accountsCountDaily} areaType="monotstep" name={t(`Registered (1d)`)} yName={t(`Accounts`)} yDataKey="account_count" yFormat={(v) => `${v.toLocaleString()}`} yDomain={[0, 'dataMax']} 
+          <BoxTimeChart data={accountsCountDaily} areaType="monotstep" name={t(`Registered (1d)`)} yName={t(`Accounts`)} yDataKey="account_count" yFormat={(v) => `${v.toLocaleString()}`} yDomain={[0, 'dataMax']}
             link={`/views/get_accounts_count_time?chart_key=account_count&chart_view=area&period=${dayInSeconds}&view=chart&order=time:desc`} />
           <BoxTimeChart data={activeAccountsWeekly} areaType="monotstep" name={t(`Active (1w)`)} yName={t(`Accounts`)} yDataKey="active_accounts"
             yFormat={(v) => `${v.toLocaleString()}`} info={t(`Number of accounts that sent at least one transaction.`)} yDomain={[0, 'dataMax']} />

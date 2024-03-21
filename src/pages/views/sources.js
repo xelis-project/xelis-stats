@@ -342,6 +342,10 @@ function useSources() {
         { key: `time`, title: t(`Time`), format: (v) => new Date(v).toLocaleString(), views: [`table`] },
         { key: `miner`, title: t(`Miner`), views: [`table`] },
         { key: `total_blocks`, title: t(`Total Blocks`), format: (v) => v.toLocaleString() },
+        { key: `sync`, title: t(`Sync`), format: (v) => v.toLocaleString() },
+        { key: `normal`, title: t(`Normal`), format: (v) => v.toLocaleString() },
+        { key: `side`, title: t(`Side`), format: (v) => v.toLocaleString() },
+        { key: `orphaned`, title: t(`Orphaned`), format: (v) => v.toLocaleString() },
         { key: `total_reward`, title: t(`Total Reward`), format: (v) => formatXelis(v) },
       ]
     },
