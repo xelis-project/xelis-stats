@@ -4,16 +4,18 @@ import theme from 'xelis-explorer/src/style/theme'
 import { useLang } from 'g45-react/hooks/useLang'
 import prettyMs from 'pretty-ms'
 import { formatHashRate, formatSize, formatXelis, reduceText } from 'xelis-explorer/src/utils'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Helmet } from 'react-helmet-async'
 import DotLoading from 'xelis-explorer/src/components/dotLoading'
 import { Link } from 'react-router-dom'
+import { Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts'
 import dayjs from 'dayjs'
 import utc from 'dayjs/plugin/utc'
 dayjs.extend(utc)
 
-import Box, { BoxChart, BoxTable } from './box'
+import Box, { BoxAreaChart, BoxTable, useChartStyle } from './box'
 import { useFetchView } from '../../hooks/useFetchView'
+import { style as boxStyle } from './box'
 
 const style = {
   title: css`
@@ -217,7 +219,7 @@ function BoxMarketCap(props) {
   const loading = marketHistoryDaily.loading || blocksDaily.loading
 
   return <Box name={t(`Market cap.`)} value={value} extra={extra} loading={loading} noData={noData}>
-    <BoxChart data={data} areaType="monotone" xDataKey="time" yDataKey="market_cap" xFormat={xFormat} yName={t(`Market Cap.`)} yFormat={yFormat} />
+    <BoxAreaChart data={data} areaType="monotone" xDataKey="time" yDataKey="market_cap" xFormat={xFormat} yName={t(`Market Cap.`)} yFormat={yFormat} />
   </Box>
 }
 
@@ -326,7 +328,7 @@ function BoxTimeChart(props) {
   const noData = rows.length === 0
 
   return <Box name={name} value={value} extra={extra} info={info} loading={data.loading} link={link} bottomInfo={bottomInfo} noData={noData}>
-    <BoxChart data={rows} areaType={areaType} xDataKey="time" yDataKey={yDataKey} xFormat={xFormat} yName={yName} yFormat={yFormat} yDomain={yDomain} />
+    <BoxAreaChart data={rows} areaType={areaType} xDataKey="time" yDataKey={yDataKey} xFormat={xFormat} yName={yName} yFormat={yFormat} yDomain={yDomain} />
   </Box>
 }
 
@@ -537,27 +539,67 @@ function BoxBlockTypes(props) {
   </Box>
 }
 
-function AutoUpdate(props) {
-  const { onUpdate, start = 60 * 1000 } = props
+function BoxMinersDistribution(props) {
+  const { minersDistributionDaily, today } = props
 
-  const [duration, setDuration] = useState(start)
+  const { t } = useLang()
+  const chartStyle = useChartStyle()
+  const { loading } = minersDistributionDaily
+
+  const data = useMemo(() => {
+    const { rows } = minersDistributionDaily
+    return rows.map((item) => {
+      const { miner, total_blocks } = item
+      return { name: miner, value: total_blocks }
+    })
+  }, [minersDistributionDaily])
+
+  return <Box name={t(`Miners Distribution`)} loading={loading} noData={data.length === 0}
+    link={`/views/get_miners_blocks_time?period=86400&view=table&where=time:eq:${today}`}>
+    <ResponsiveContainer>
+      <PieChart>
+        <Pie isAnimationActive={false} dataKey="value" data={data} innerRadius={50} {...chartStyle} outerRadius={75} paddingAngle={5} />
+        <Tooltip isAnimationActive={false}
+          content={({ active, payload }) => {
+            if (active && payload[0]) {
+              const { name, value } = payload[0]
+              return <div className={boxStyle.tooltip}>
+                <div>{reduceText(name)}</div>
+                <div>{t(`Blocks : {}`, [value.toLocaleString()])}</div>
+              </div>
+            }
+
+            return null
+          }}
+        />
+      </PieChart>
+    </ResponsiveContainer>
+  </Box>
+}
+
+function AutoUpdate(props) {
+  const { onUpdate, duration = 60 * 1000 } = props
+
+  const { t } = useLang()
+  const [time, setTime] = useState(duration)
+  const timeRef = useRef(duration)
 
   useEffect(() => {
     let intervalId = setInterval(() => {
-      setDuration((current) => {
-        if (current <= 0) {
-          if (typeof onUpdate === `function`) onUpdate()
-          return start
-        }
-
-        return current - 1000
-      })
+      if (timeRef.current <= 0) {
+        if (typeof onUpdate === `function`) onUpdate()
+        timeRef.current = duration
+        setTime(duration)
+      } else {
+        timeRef.current -= 1000
+        setTime(timeRef.current)
+      }
     }, 1000)
     return () => clearInterval(intervalId)
-  }, [onUpdate])
+  }, [onUpdate, duration])
 
   return <div className={style.autoUpdate}>
-    Auto Update in {prettyMs(duration)}
+    {t(`Auto Update in {}`, [prettyMs(time)])}
   </div>
 }
 
@@ -612,82 +654,91 @@ function Home() {
   const hourInSeconds = useMemo(() => 60 * 60, [])
   const dayInSeconds = useMemo(() => 60 * 60 * 24, [])
   const weekInSeconds = useMemo(() => 86400 * 7, [])
+  const [reload, setReload] = useState()
   const marketAsset = `USDT`
+  const today = useMemo(() => {
+    return dayjs().format(`YYYY-MM-DD`)
+  }, [])
 
   const marketHistoryHourly = useFetchView({
     view: `get_market_history_time(*)`,
-    params: { param: [hourInSeconds], where: [`asset:eq:${marketAsset}`], order: [`time:desc`], limit: 24, count: true }
+    params: { param: [hourInSeconds], where: [`asset:eq:${marketAsset}`], order: [`time:desc`], limit: 24, count: true },
+    reload
   })
 
   const marketHistoryDaily = useFetchView({
     view: `get_market_history_time(*)`,
-    params: { param: [dayInSeconds], where: [`asset:eq:${marketAsset}`], order: [`time:desc`], limit: 7, count: true }
+    params: { param: [dayInSeconds], where: [`asset:eq:${marketAsset}`], order: [`time:desc`], limit: 7, count: true },
+    reload
   })
 
   const marketHistoryExchangeDaily = useFetchView({
     view: `get_market_history_exchange_time(*)`,
-    params: { param: [dayInSeconds], where: [`asset:eq:${marketAsset}`], order: [`time:desc`, `sum_quantity:desc`], limit: 3, count: true }
+    params: { param: [dayInSeconds], where: [`asset:eq:${marketAsset}`], order: [`time:desc`, `sum_quantity:desc`], limit: 3, count: true },
+    reload
   })
 
   const recentBlocks = useFetchView({
     view: `blocks`,
-    params: { order: [`topoheight:desc`], limit: 5, count: true }
+    params: { order: [`topoheight:desc`], limit: 5, count: true },
+    reload
   })
 
   const blocksDaily = useFetchView({
     view: `get_blocks_time(*)`,
-    params: { param: [dayInSeconds], order: ["time:desc"], limit: 20, count: true }
+    params: { param: [dayInSeconds], order: ["time:desc"], limit: 20, count: true },
+    reload
   })
 
   const stats = useFetchView({
     view: `get_stats()`,
+    reload
   })
 
   const minersDaily = useFetchView({
     view: `get_miners_blocks_time(*)`,
-    params: { param: [dayInSeconds], count: true, limit: 5, order: [`time:desc`, `total_blocks:desc`], }
+    params: { param: [dayInSeconds], count: true, limit: 5, order: [`time:desc`, `total_blocks:desc`], },
+    reload
   })
 
   const minersCountDaily = useFetchView({
     view: `get_miners_count_time(*)`,
-    params: { param: [dayInSeconds], count: true, limit: 20, order: [`time:desc`], }
+    params: { param: [dayInSeconds], count: true, limit: 20, order: [`time:desc`], },
+    reload
   })
 
   const accountsCountDaily = useFetchView({
     view: `get_accounts_count_time(*)`,
-    params: { param: [dayInSeconds], count: true, limit: 20, order: [`time:desc`], }
+    params: { param: [dayInSeconds], count: true, limit: 20, order: [`time:desc`], },
+    reload
   })
 
   const accountsWeekly = useFetchView({
     view: `get_accounts_txs_time(*)`,
-    params: { param: [weekInSeconds], count: true, limit: 20, order: [`time:desc`, `total_txs:desc`], }
+    params: { param: [weekInSeconds], count: true, limit: 20, order: [`time:desc`, `total_txs:desc`], },
+    reload
   })
 
   const activeAccountsWeekly = useFetchView({
     view: `get_accounts_active_time(*)`,
-    params: { param: [weekInSeconds], count: true, limit: 20, order: [`time:desc`], }
+    params: { param: [weekInSeconds], count: true, limit: 20, order: [`time:desc`], },
+    reload
   })
 
   const txsDaily = useFetchView({
     view: `get_txs_time(*)`,
-    params: { param: [dayInSeconds], count: true, limit: 20, order: [`time:desc`], }
+    params: { param: [dayInSeconds], count: true, limit: 20, order: [`time:desc`], },
+    reload
   })
 
-  const reload = useCallback(() => {
-    /*
-    marketHistoryHourly.load()
-    marketHistoryDaily.load()
-    marketHistoryExchangeDaily.load()
-    recentBlocks.load()
-    blocksDaily.load()
-    stats.load()
-    minersDaily.load()
-    minersCountDaily.load()
-    accountsCountDaily.load()
-    accountsWeekly.load()
-    activeAccountsWeekly.load()
-    txsDaily.load()
-    */
+  const minersDistributionDaily = useFetchView({
+    view: `get_miners_blocks_time(*)`,
+    params: { param: [dayInSeconds], count: true, limit: 100, where: [`time:eq:${today}`] },
+    reload
+  })
+
+  const update = useCallback(() => {
+    setReload(new Date().getTime())
   }, [])
 
   // Transactions per minute
@@ -710,7 +761,7 @@ function Home() {
       <div /> {/* This is the logo */}
       <h1>XELIS Statistics</h1>
       <div>{description}</div>
-      <AutoUpdate onUpdate={reload} />
+      <AutoUpdate onUpdate={update} />
     </div >
     <TopStats stats={stats} />
     <div className={style.container}>
@@ -732,7 +783,7 @@ function Home() {
           <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Size`)} yDataKey="cumulative_block_size" yFormat={(v) => formatSize(v)}
             link={`/views/blocks_by_time?chart_key=cumulative_block_size&period=${dayInSeconds}&view=chart&chart_view=area&order=time:desc`} />
           <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Circulating Supply`)} yDataKey="cumulative_block_reward" yFormat={(v) => formatXelis(v)}
-            bottomInfo={t(`Max Supply: {}`, [(18000000).toLocaleString()])}
+            bottomInfo={t(`Max Supply: {}`, [(18400000).toLocaleString()])}
             link={`/views/blocks_by_time?chart_key=cumulative_block_reward&period=${dayInSeconds}&view=chart&chart_view=area&order=time:desc`} />
           <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Block Time`)} yDataKey="block_time" yFormat={(v) => prettyMs(v)}
             link={`/views/blocks_by_time?chart_key=block_time&period=${dayInSeconds}&view=chart&chart_view=area&order=time:desc`} />
@@ -760,6 +811,7 @@ function Home() {
           <BoxTimeChart data={minersCountDaily} areaType="step" name={t(`Miners (1d)`)} yName={t(`Miners`)} yDataKey="miner_count" yFormat={(v) => `${v.toLocaleString()}`}
             info={t(`The network can have way more active miners. These are only the miners who were succesful in mining at least one block.`)} yDomain={[0, 'dataMax']}
             link={`/views/get_miners_count_time?chart_key=miner_count&chart_view=area&period=${dayInSeconds}&view=chart&order=time:desc`} />
+          <BoxMinersDistribution today={today} minersDistributionDaily={minersDistributionDaily} />
           <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Hash Rate (1d)`)} yName={t(`Hash Rate (avg)`)} yDataKey="avg_difficulty" yFormat={(v) => formatHashRate(v / 15)}
             link={`/views/blocks_by_time?chart_key=avg_difficulty&period=${dayInSeconds}&view=chart&chart_view=area&order=time:desc`} />
           <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Reward (1d)`)} yName={t(`Reward (avg)`)} yDataKey="avg_block_reward" yFormat={(v) => formatXelis(v)}
@@ -783,16 +835,16 @@ function Home() {
         <div><Icon name="file-code" />{t(`Contracts`)}</div>
         <div>
           <Box name="Total" value="--" noData>
-            <BoxChart />
+            <BoxAreaChart />
           </Box>
           <Box name="Deployed (1d)" value="--" noData>
-            <BoxChart />
+            <BoxAreaChart />
           </Box>
           <Box name="Calls" value="--" noData>
-            <BoxChart />
+            <BoxAreaChart />
           </Box>
           <Box name="Calls (1d)" value="--" noData>
-            <BoxChart />
+            <BoxAreaChart />
           </Box>
         </div>
       </div>

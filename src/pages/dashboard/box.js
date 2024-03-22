@@ -8,7 +8,7 @@ import { useMemo } from 'react'
 import useTheme from 'xelis-explorer/src/hooks/useTheme'
 import { useLang } from 'g45-react/hooks/useLang'
 
-const style = {
+export const style = {
   box: css`
     background-color: ${theme.apply({ xelis: `rgb(0 0 0 / 50%)`, dark: `rgb(0 0 0 / 50%)`, light: `rgb(255 255 255 / 50%)` })};
     border-radius: .5em;
@@ -112,12 +112,10 @@ const style = {
   `
 }
 
-export function BoxChart(props) {
-  let { data = [], areaType = `monotone`, xDataKey = `x`, xFormat, yDataKey = `y`, yName, yFormat, yDomain = ['dataMin', 'dataMax'] } = props
-
+export function useChartStyle() {
   const { theme: currentTheme } = useTheme()
 
-  const areaStyle = useMemo(() => {
+  const style = useMemo(() => {
     switch (currentTheme) {
       case `light`:
         return {
@@ -143,6 +141,14 @@ export function BoxChart(props) {
     }
   }, [currentTheme])
 
+  return style
+}
+
+export function BoxAreaChart(props) {
+  let { data = [], areaType = `monotone`, xDataKey = `x`, xFormat, yDataKey = `y`, yName, yFormat, yDomain = ['dataMin', 'dataMax'] } = props
+
+  const chartStyle = useChartStyle()
+
   return <ResponsiveContainer height="100%" width="100%">
     <AreaChart
       data={data}
@@ -160,7 +166,7 @@ export function BoxChart(props) {
       />
       <XAxis hide dataKey={xDataKey} />
       <YAxis hide domain={yDomain} />
-      <Area type={areaType} dataKey={yDataKey} isAnimationActive={false} strokeWidth={1} {...areaStyle} />
+      <Area type={areaType} dataKey={yDataKey} isAnimationActive={false} strokeWidth={1} {...chartStyle} />
     </AreaChart>
   </ResponsiveContainer>
 }

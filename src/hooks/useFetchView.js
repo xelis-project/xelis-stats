@@ -23,14 +23,15 @@ export async function fetchView(viewName, params) {
 }
 
 export function useFetchView(props) {
-  const { view, params, autoLoad = true } = props
+  const { view, params, reload } = props
 
-  const [loading, setLoading] = useState(autoLoad)
-  const [err, setErr] = useState()
+  const [loading, setLoading] = useState(false)
+  const [err, setErr] = useState(null)
   const [rows, setRows] = useState([])
   const [count, setCount] = useState(0)
 
   const load = useCallback(async () => {
+    setErr(null)
     setLoading(true)
     const [err, data] = await to(fetchView(view, params))
     setLoading(false)
@@ -41,8 +42,8 @@ export function useFetchView(props) {
   }, [view, params])
 
   useEffect(() => {
-    if (autoLoad) load()
-  }, [])
+    load()
+  }, [reload])
 
-  return { loading, err, rows, count, load }
+  return { loading, err, rows, count }
 }
