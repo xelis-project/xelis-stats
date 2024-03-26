@@ -125,7 +125,7 @@ function useSources() {
         { key: `topoheight`, title: t(`Topoheight`), views: [`table`], format: (v) => v.toLocaleString() },
         { key: `fee`, title: t(`Fee`), format: (v) => formatXelis(v) },
         { key: `total_transfers`, title: t(`Transfers`), format: (v) => v.toLocaleString() },
-        { key: `owner`, title: t(`Sender`), views: [`table`] },
+        { key: `source`, title: t(`Sender`), views: [`table`] },
         { key: `nonce`, title: t(`Nonce`), views: [`table`] },
         { key: `signature`, title: t(`Signature`), views: [`table`] },
         { key: `executed_in_block`, title: t(`Block`), views: [`table`] },
