@@ -200,7 +200,7 @@ export function BoxTable(props) {
             const { key, render } = header
             let value = row[key]
             if (typeof render === `function`) value = render(value, row)
-            return <td key={key}>{(value !== undefined && value !== null) ? value : `--`}</td>
+            return <td key={key}>{value != null ? value : `--`}</td>
           })}
         </tr>
       })}

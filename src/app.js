@@ -9,6 +9,7 @@ import "reset-css/reset.css"
 import 'xelis-explorer/src/style/theme'
 import 'xelis-explorer/src/style/page'
 import 'xelis-explorer/src/style/scrollbar'
+import { NotificationProvider } from 'xelis-explorer/src/components/notifications'
 
 setup(createElement) // this is for goober styled() func
 
@@ -36,7 +37,9 @@ function SubApp() {
 
 function App() {
   return <ThemeProvider>
-    <SubApp />
+    <NotificationProvider>
+      <SubApp />
+    </NotificationProvider>
   </ThemeProvider>
 }
 

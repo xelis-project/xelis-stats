@@ -10,6 +10,8 @@ import { scaleOnHover } from 'xelis-explorer/src/style/animate'
 import theme from 'xelis-explorer/src/style/theme'
 import { useNavigate } from 'react-router-dom'
 
+import { useNotification } from 'xelis-explorer/src/components/notifications'
+
 const style = {
   container: css`
     padding: 1em;
@@ -111,6 +113,12 @@ const style = {
         border: none;
         color: var(--text-color);
         cursor: pointer;
+        display: flex;
+        gap: .5em;
+        align-items: center;
+        border: thin solid var(--text-color);
+        padding: .4em .6em;
+        border-radius: .5em;
 
         ${theme.query.minLarge} {
           display: none;
@@ -162,11 +170,12 @@ const style = {
 }
 
 function useControls(props) {
-  const { sources, source, dataSource, query, setQuery, list, chartColumn } = props
+  const { sources, source, dataSource, query, setQuery, list, chartRef } = props
   const { t } = useLang()
 
   const [opened, setOpened] = useState(false)
   const navigate = useNavigate()
+  const { pushNotification } = useNotification()
 
   const sourceList = useMemo(() => {
     return sources.map((source) => {
@@ -204,8 +213,14 @@ function useControls(props) {
     return columns.map((column) => ({ key: column.key, text: column.title }))
   }, [source, query.chart_view])
 
-  const copyShareLink = useCallback(() => {
-    navigator.clipboard.writeText(window.location.href)
+  const copyShareLink = useCallback(async () => {
+    try {
+      const link = window.location.href
+      await navigator.clipboard.writeText(link)
+      pushNotification({ icon: `clipboard`, title: t(`Info`), description: t(`Link was copied.`) })
+    } catch (err) {
+      console.log(err)
+    }
   }, [])
 
   const exportData = useCallback(() => {
@@ -213,17 +228,22 @@ function useControls(props) {
     saveAs(dataFile)
   }, [list])
 
-  const clipChart = useCallback(() => {
-    if (chartRef.current) {
-      const screenshot = chartRef.current.takeScreenshot()
-      screenshot.toBlob((blob) => {
-        navigator.clipboard.write([
-          new ClipboardItem({
-            [blob.type]: blob
-          })
-        ])
-      })
-    }
+  const clipChart = useCallback(async () => {
+    if (!chartRef.current) return
+    if (!navigator.clipboard.write) return
+
+    const canvas = chartRef.current.takeScreenshot()
+    canvas.toBlob(async (blob) => {
+      try {
+        const item = new ClipboardItem({
+          [blob.type]: blob
+        })
+        await navigator.clipboard.write([item])
+        pushNotification({ icon: `clipboard`, title: t(`Info`), description: t(`The chart screenshot was copied.`) })
+      } catch (err) {
+        console.log(err)
+      }
+    })
   }, [])
 
   const render = <OffCanvas maxWidth={500} position="right" opened={opened} className={style.container}>
@@ -233,7 +253,7 @@ function useControls(props) {
     </div>
     <div>
       <Button icon="link" onClick={copyShareLink}>{t(`Copy Link`)}</Button>
-      {query.view !== `table` && <Button icon="clipboard" onClick={clipChart}>{t(`Clip Chart`)}</Button>}
+      {query.view !== `table` && <Button icon="camera" onClick={clipChart}>{t(`Clip Chart`)}</Button>}
       <Button icon="file-arrow-down" onClick={exportData}>{t(`Export`)}</Button>
     </div>
     <div>
@@ -275,7 +295,9 @@ function useControls(props) {
   const tab = <div className={style.tab}>
     <div>
       <div>{source.title}</div>
-      <Button icon="window-maximize" iconProps={{ type: 'regular', className: 'fa-rotate-90' }} onClick={() => setOpened(!opened)} />
+      <Button iconLocation="right" icon="window-maximize" iconProps={{ type: 'regular', className: 'fa-rotate-90' }} onClick={() => setOpened(!opened)}>
+        {t(`Controls`)}
+      </Button>
     </div>
     <div>Params: {JSON.stringify(query)}</div>
   </div>
@@ -343,7 +365,7 @@ function TableColumns(props) {
     orders.forEach((order) => {
       if (!order) return
 
-      const values = order.split(':')
+      const values = order.split('::')
       const key = values[0]
       const direction = values[1]
       obj[key] = direction
@@ -363,7 +385,7 @@ function TableColumns(props) {
     wheres.forEach((where) => {
       if (!where) return
 
-      const values = where.split(':')
+      const values = where.split('::')
       const key = values[0]
       const op = values[1]
       const value = values[2]
@@ -375,7 +397,7 @@ function TableColumns(props) {
   return <div className={style.columnList}>
     <div>{t(`Columns ({})`, [tableColumns.length])}</div>
     <div>
-      <input type="checkbox" checked={query.columns === undefined} onChange={showAllColumns} />
+      <input type="checkbox" checked={query.columns == null} onChange={showAllColumns} />
       <div>{t(`Show All`)}</div>
     </div>
     <div>
@@ -428,13 +450,13 @@ function RowColumnControl(props) {
   })
 
   const visible = useMemo(() => {
-    if (query.columns === undefined) return true
+    if (query.columns == null) return true
     return visibleColumns.indexOf(column.key) !== -1
   }, [query, visibleColumns, column.key])
 
   const onVisibleChange = useCallback((e) => {
     let newColumns = []
-    if (query.columns === undefined) newColumns = [...columns]
+    if (query.columns == null) newColumns = [...columns]
     else newColumns = [...visibleColumns]
 
     if (e.target.checked) {

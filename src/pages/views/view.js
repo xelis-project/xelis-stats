@@ -154,7 +154,7 @@ function ViewStats(props) {
     return (source.columns || []).find((column) => column.key === query.chart_key)
   }, [source, query])
 
-  const controls = useControls({ sources, source, dataSource, query, setQuery, list, chartColumn })
+  const controls = useControls({ sources, source, dataSource, query, setQuery, list, chartRef })
 
   // load trading view chart
   useEffect(() => {
@@ -241,7 +241,7 @@ function ViewStats(props) {
       if (typeof source.rowKey === `function`) time = source.rowKey(item, i)
       else time = item[source.rowKey]
 
-      if (typeof time === `undefined` || time === null) return
+      if (time == null) return
 
       if (chartColumn.bottomChartKey) bottomData.push({ time, value: item[chartColumn.bottomChartKey] })
       if (query.chart_view === `candlestick`) {
@@ -342,7 +342,7 @@ function ViewStats(props) {
     const visibleColumns = (query.columns || ``).split(`,`)
     const columns = (source.columns || []).filter((column) => {
       if (column.candle) return false
-      if (query.columns === undefined) return true
+      if (query.columns == null) return true
       return visibleColumns.indexOf(column.key) !== -1
     })
 
@@ -352,7 +352,7 @@ function ViewStats(props) {
         title: column.title,
         render: (value, item) => {
           if (typeof column.format === `function`) {
-            const newValue = value !== null && typeof value !== `undefined` ? value : ``
+            const newValue = value != null ? value : ``
             return column.format(newValue, item)
           }
 

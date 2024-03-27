@@ -1,61 +1,20 @@
 import { Outlet, useLocation } from 'react-router'
-import { css } from 'goober'
 import { useLang } from 'g45-react/hooks/useLang'
 import { useMemo, useRef } from 'react'
 import Icon from 'g45-react/components/fontawesome_icon'
-import theme from 'xelis-explorer/src/style/theme'
-import { opacity } from 'xelis-explorer/src/style/animate'
 import Footer from 'xelis-explorer/src/layout/footer'
-import Menu from 'xelis-explorer/src/layout/menu'
 import Header from 'xelis-explorer/src/layout/header'
-import { style } from 'xelis-explorer/src/layout/layout'
+import Background from 'xelis-explorer/src/layout/background'
+import { css } from 'goober'
 
 import packageJSON from '../../package.json'
+import { style as layoutStyle } from 'xelis-explorer/src/style/layout'
 
-/*
-export const style = {
-  background: css`
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-image: ${theme.apply({ xelis: `url('public/img/bg_xelis.jpg')`, dark: `url('public/img/bg_xelis_dark.jpg')`, light: `url('public/img/bg_xelis_light.jpg')` })};
-    background-repeat: no-repeat;
-    background-size: cover;
-    background-position: top center;
-    z-index: -1;
-  `,
-  container: css`
-    position: relative;
-    height: 100%;
-
-    .layout-max-width {
-      margin: 0 auto;
-      max-width: 1000px;
-      width: 100%;
-      padding: 0 1em;
-
-      ${theme.query.minMobile} {
-        padding: 0 2em;
-      }
-
-      ${theme.query.minLarge} {
-        max-width: 1400px;
-      }
-    }
-  `,
-  layoutFlex: css`
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    height: 100%;
-
-    [data-opacity="true"] {
-      ${opacity()}
-    }
+const style = {
+  header: css`
+    padding: 2em 0 1em 0;
   `
-}*/
+}
 
 function Layout() {
   const location = useLocation()
@@ -90,18 +49,11 @@ function Layout() {
     ]
   }, [t])
 
-  return <div className={style.container}>
-    <div className={style.bg}>
-      <div className="noise" />
-      <div className="circle" />
-      <div className="mid-light" />
-      <div className="top-light" />
-      <div className="right-light" />
-      <div className="darker" />
-    </div>
-    <div className={style.layoutFlex}>
+  return <div className={layoutStyle.container}>
+    <Background />
+    <div className={layoutStyle.layoutFlex}>
       <div className="layout-max-width">
-        <Header title={t(`Statistics`)} menu={<Menu links={links} />} />
+        <Header title={t(`Statistics`)} links={links} className={style.header} />
         <div data-opacity={firstLoad} key={location.key}> {/* Keep location key to re-trigger page transition animation */}
           <Outlet />
         </div>
