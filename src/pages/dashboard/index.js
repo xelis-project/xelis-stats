@@ -682,7 +682,7 @@ function Home() {
 
   const recentBlocks = useFetchView({
     view: `blocks`,
-    params: { order: [`topoheight,desc`], limit: 5, count: true },
+    params: { order: [`topoheight::desc`], limit: 5, count: true },
     reload
   })
 

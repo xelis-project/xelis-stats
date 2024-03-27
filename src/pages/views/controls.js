@@ -489,12 +489,12 @@ function RowColumnControl(props) {
 
     Object.keys(newWheres).forEach((key) => {
       const where = newWheres[key]
-      qWheres.push(`${key}:${where.op}:${where.value}`)
+      qWheres.push(`${key}::${where.op}::${where.value}`)
     })
 
     Object.keys(newOrders).forEach((key) => {
       const order = newOrders[key]
-      qOrders.push(`${key}:${order}`)
+      qOrders.push(`${key}::${order}`)
     })
 
     if (qWheres.length > 0) {
