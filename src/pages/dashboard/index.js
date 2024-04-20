@@ -784,7 +784,7 @@ function Home() {
           <BoxBlocks recentBlocks={recentBlocks} />
           <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Size`)} yDataKey="cumulative_block_size" yFormat={(v) => formatSize(v)}
             link={`/views/blocks_by_time?chart_key=cumulative_block_size&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
-          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Circulating Supply`)} yDataKey="cumulative_block_reward" yFormat={(v) => formatXelis(v)}
+          <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Circulating Supply`)} yDataKey="cumulative_block_reward" yFormat={(v) => formatXelis(v)}
             bottomInfo={t(`Max Supply: {}`, [(18400000).toLocaleString()])}
             link={`/views/blocks_by_time?chart_key=cumulative_block_reward&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
           <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Block Time`)} yDataKey="block_time" yFormat={(v) => prettyMs(v)}
