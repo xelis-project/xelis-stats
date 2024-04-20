@@ -88,7 +88,7 @@ function useSources() {
         { key: `block_type`, title: t(`Block Type`), views: [`table`] },
         { key: `cumulative_difficulty`, title: t(`Cumulative Difficulty`), format: (v) => v.toLocaleString() },
         { key: `supply`, title: t(`Supply`), format: (v) => formatXelis(v) },
-        { key: `difficulty`, title: t(`Difficulty`), format: (v) => formatHashRate(v / 15) },
+        { key: `difficulty`, title: t(`Difficulty`), format: (v) => formatHashRate(v) },
         { key: `reward`, title: t(`Reward`), format: (v) => formatXelis(v) },
         { key: `height`, title: t(`Height`), views: [`table`], format: (v) => v.toLocaleString() },
         { key: `miner`, title: t(`Miner`), views: [`table`] },
@@ -169,9 +169,9 @@ function useSources() {
         { key: `min_tx_count`, title: t(`TX Count (min)`), format: (v) => v.toLocaleString() },
         { key: `max_tx_count`, title: t(`TX Count (max)`), format: (v) => v.toLocaleString() },
 
-        { key: `avg_difficulty`, title: t(`Hash Rate (avg)`), format: (v) => formatHashRate(v / 15) },
-        { key: `min_difficulty`, title: t(`Hash Rate (min)`), format: (v) => formatHashRate(v / 15) },
-        { key: `max_difficulty`, title: t(`Hash Rate (max)`), format: (v) => formatHashRate(v / 15) },
+        { key: `avg_difficulty`, title: t(`Hash Rate (avg)`), format: (v) => formatHashRate(v) },
+        { key: `min_difficulty`, title: t(`Hash Rate (min)`), format: (v) => formatHashRate(v) },
+        { key: `max_difficulty`, title: t(`Hash Rate (max)`), format: (v) => formatHashRate(v) },
 
         { key: `avg_block_size`, title: t(`Block Size (avg)`), format: (v) => formatSize(v) },
         { key: `sum_block_size`, title: t(`Block Size (sum)`), format: (v) => formatSize(v) },
@@ -182,7 +182,7 @@ function useSources() {
         { key: `supply`, title: t(`Supply`), format: (v) => formatXelis(v) },
         { key: `block_time`, title: t(`Block Time (avg)`), format: (v) => `${prettyMs(v)}` },
         {
-          key: `diff_candle`, title: t(`Hash Rate`), format: (v) => formatHashRate(v / 15),
+          key: `diff_candle`, title: t(`Hash Rate`), format: (v) => formatHashRate(v),
           candle: { highKey: `max_difficulty`, lowKey: `min_difficulty`, openKey: `first_difficulty`, closeKey: `last_difficulty` },
         },
       ]
@@ -200,7 +200,7 @@ function useSources() {
       columns: [
         { key: `min_topo`, title: t(`Period (Topo Height)`), format: (v, item) => `${item.min_topo} - ${item.max_topo}`, views: [`table`] },
 
-        { key: `avg_difficulty`, title: t(`Hash Rate (avg)`), format: (v) => formatHashRate(v / 15) },
+        { key: `avg_difficulty`, title: t(`Hash Rate (avg)`), format: (v) => formatHashRate(v) },
 
         { key: `sum_tx_count`, title: t(`TX Count (sum)`), format: (v) => v.toLocaleString(), maxKey: `max_tx_count`, minKey: `min_tx_count` },
         { key: `avg_tx_count`, title: t(`TX Count (avg)`), format: (v) => v.toLocaleString() },
