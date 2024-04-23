@@ -255,7 +255,7 @@ function BlockTypes() {
   })
 
   const { loading, err, count, rows } = data
-  console.log(data)
+
   return <div className="blocks">
     <div>{t(`Blocks (Daily)`)}</div>
     <Table
