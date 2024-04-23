@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Table from 'xelis-explorer/src/components/table'
 import { useLang } from 'g45-react/hooks/useLang'
@@ -7,9 +7,10 @@ import PageTitle from 'xelis-explorer/src/layout/page_title'
 import Hashicon from 'xelis-explorer/src/components/hashicon'
 import { css } from 'goober'
 import theme from 'xelis-explorer/src/style/theme'
+import dayjs from 'dayjs'
+import { AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Area } from 'recharts'
 
 import { useFetchView } from '../../hooks/useFetchView'
-import { AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Area, CartesianGrid } from 'recharts'
 import { useChartStyle, style as boxStyle } from '../dashboard/box'
 
 
@@ -210,7 +211,8 @@ function TopMinersToday() {
   const { t } = useLang()
 
   const today = useMemo(() => {
-    return new Date().toLocaleDateString()
+    // 2024-04-23
+    return dayjs().format("YYYY-MM-DD")
   })
 
   const data = useFetchView({
