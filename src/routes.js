@@ -5,6 +5,7 @@ import NotFound from 'xelis-explorer/src/pages/notFound'
 import Layout from './layout/layout'
 import View from './pages/views/view'
 import List from './pages/views/list'
+import Mining from './pages/mining'
 
 const routes = [
   {
@@ -24,6 +25,10 @@ const routes = [
           {
             path: '/views/:dataSource',
             element: <View />,
+          },
+          {
+            path: '/mining',
+            element: <Mining />
           },
           {
             path: '*',

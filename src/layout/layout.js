@@ -38,6 +38,7 @@ function Layout() {
       pages: [
         { link: `/`, title: t('Dashboard') },
         { link: `/views`, title: t(`Database`) },
+        { link: `/mining`, title: t(`Mining Stats`) },
       ]
     }
   }, [t])
@@ -46,6 +47,7 @@ function Layout() {
     return [
       { path: `/`, title: t(`Dashboard`), icon: <Icon name="dashboard" /> },
       { path: `/views`, title: t(`Database`), icon: <Icon name="database" /> },
+      { path: `/mining`, title: t(`Mining Stats`), icon: <Icon name="chart-simple" /> },
     ]
   }, [t])
 

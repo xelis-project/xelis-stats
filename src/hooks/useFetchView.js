@@ -25,7 +25,7 @@ export async function fetchView(viewName, params) {
 export function useFetchView(props) {
   const { view, params, reload } = props
 
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [err, setErr] = useState(null)
   const [rows, setRows] = useState([])
   const [count, setCount] = useState(0)
