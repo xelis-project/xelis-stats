@@ -192,9 +192,9 @@ function TopMinersAllTime(props) {
             <td>
               <div className="miner-addr">
                 <Hashicon size={25} value={item.miner} />
-                <Link to={`/accounts/${item.miner}`}>
+                <a href={`${EXPLORER_LINK}/accounts/${item.miner}`} target="_blank">
                   {reduceText(item.miner, 0, 7)}
-                </Link>
+                </a>
               </div>
 
             </td>
@@ -234,7 +234,7 @@ function TopMinersToday() {
             <td>
               <div className="miner-addr">
                 <Hashicon size={25} value={item.miner} />
-                <a href={`https:/explorer.xelis.io/accounts/${item.miner}`} target="_blank">
+                <a href={`${EXPLORER_LINK}/accounts/${item.miner}`} target="_blank">
                   {reduceText(item.miner, 0, 7)}
                 </a>
               </div>
