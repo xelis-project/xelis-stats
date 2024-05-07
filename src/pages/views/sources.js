@@ -260,9 +260,10 @@ function useSources() {
       timeFormatter: (v) => `${v}y`,
       columns: [
         { key: `year`, title: t(`Year`), views: [`table`] },
-        { key: `circulating_supply`, title: t(`Circulating Supply`), format: (v) => formatXelis(v) },
-        { key: `dev_supply`, title: t(`Dev Supply`), format: (v) => formatXelis(v) },
-        { key: `supply_left`, title: t(`Supply Left`), format: (v) => formatXelis(v) },
+        { key: `circulating_supply`, title: t(`Circulating Supply`) },
+        { key: `miner_supply`, title: t(`Miner Supply`) },
+        { key: `dev_supply`, title: t(`Dev Supply`) },
+        { key: `supply_left`, title: t(`Supply Left`) },
         { key: `mined_percentage`, title: t(`Mined Percentage`), format: (v) => `${v}%` },
       ]
     },
