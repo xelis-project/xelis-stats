@@ -338,9 +338,8 @@ function BoxDevFee(props) {
 
   const devFeeThresholds = useMemo(() => {
     return [
-      { fee_percentage: 15, height: 0 },
-      { fee_percentage: 10, height: 1250001 },
-      { fee_percentage: 5, height: 3000001 }]
+      { fee_percentage: 10, height: 0 },
+      { fee_percentage: 5, height: 3_250_000 }]
   }, [])
 
   const headers = useMemo(() => {

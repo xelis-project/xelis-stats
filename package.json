@@ -31,6 +31,6 @@
   "devDependencies": {
     "g45-react": "^0.1.10",
     "shx": "^0.3.4",
-    "wrangler": "^3.28.1"
+    "wrangler": "^3.53.1"
   }
 }
