@@ -638,7 +638,7 @@ function TopStats(props) {
     </div>
     <div>
       <div>{t(`Blockchain Size`)}</div>
-      <div>{formatSize(data.sum_size) || `--`}</div>
+      <div>{formatSize(data.blockchain_size) || `--`}</div>
     </div>
     <div>
       <div>{t(`Total Fees`)}</div>
@@ -676,8 +676,6 @@ function Home() {
     params: { param: [dayInSeconds], where: [`asset::eq::${marketAsset}`, `time::eq::${today}`], order: [`time::desc`, `volume::desc`], limit: 3, count: true },
     reload
   })
-
-  console.log(marketTickersExchangeDaily)
 
   const recentBlocks = useFetchView({
     view: `blocks`,
@@ -781,9 +779,9 @@ function Home() {
         <div><Icon name="cube" />{t(`Blockchain`)}</div>
         <div>
           <BoxBlocks recentBlocks={recentBlocks} />
-          <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Size`)} yDataKey="cumulative_block_size" yFormat={(v) => formatSize(v)}
-            link={`/views/blocks_by_time?chart_key=cumulative_block_size&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
-          <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Circulating Supply`)} yDataKey="cumulative_block_reward" yFormat={(v) => formatXelis(v, { withSuffix: false })}
+          <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Block Size (avg)`)} yDataKey="avg_block_size" yFormat={(v) => formatSize(v)}
+            link={`/views/blocks_by_time?chart_key=sum_block_size&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
+          <BoxTimeChart data={blocksDaily} areaType="monostone" name={t(`Circulating Supply`)} yDataKey="cumulative_block_reward" yFormat={(v) => formatXelis(v, { withSuffix: false })}
             bottomInfo={t(`Max Supply: {}`, [(18400000).toLocaleString()])}
             link={`/views/blocks_by_time?chart_key=cumulative_block_reward&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
           <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Block Time`)} yDataKey="block_time" yFormat={(v) => prettyMs(v)}
