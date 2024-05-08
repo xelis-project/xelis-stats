@@ -1,5 +1,4 @@
 import React, { useCallback, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import Table from 'xelis-explorer/src/components/table'
 import { useLang } from 'g45-react/hooks/useLang'
 import { reduceText, formatXelis, formatHashRate } from 'xelis-explorer/src/utils'
@@ -74,9 +73,15 @@ const style = {
 
         > select {
           right: 1em;
-          top: -.5em;
+          top: -.9em;
           position: absolute;
           font-size: 1.2em;
+
+          background: var(--table-td-bg-color);
+          border-radius: .5em;
+          padding: .25em;
+          border-color: transparent;
+          color: var(--text-color);
         }
       }
     }
@@ -103,7 +108,6 @@ function Mining() {
     </div>
   </div>
 }
-
 
 function HashrateChart() {
   const chartStyle = useChartStyle()
@@ -179,7 +183,7 @@ function TopMinersAllTime(props) {
   })
 
   const { loading, err, count, rows } = data
-
+  console.log(rows)
   return <div>
     <div>Top miners (All time)</div>
     <div>{count} total miners</div>
@@ -253,7 +257,7 @@ function BlockTypes() {
 
   const data = useFetchView({
     view: `get_blocks_time(*)`,
-    params: { count: false, param: [86400], order: [`time::desc`], limit: 3 },
+    params: { count: false, param: [86400], order: [`time::desc`], limit: 4 },
   })
 
   const { loading, err, count, rows } = data
