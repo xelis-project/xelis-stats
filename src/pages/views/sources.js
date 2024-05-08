@@ -18,12 +18,20 @@ function useSources() {
     return fetchView(`get_market_history_time(*)`, { count: true, param: [params.period], where: params.where, order: params.order })
   }, [])
 
-  const getBlocksTopo = useCallback((params) => {
-    return fetchView(`get_blocks_topo(*)`, { count: true, param: [params.period], where: params.where, order: params.order })
-  }, [])
-
   const getExchangeHistoryTime = useCallback((params) => {
     return fetchView(`get_market_history_exchange_time(*)`, { count: true, param: [params.period], where: params.where, order: params.order })
+  }, [])
+
+  const getMarketTickersTime = useCallback((params) => {
+    return fetchView(`get_market_tickers_time(*)`, { count: true, param: [params.period], where: params.where, order: params.order })
+  }, [])
+
+  const getExchangeTickersTime = useCallback((params) => {
+    return fetchView(`get_market_tickers_exchange_time(*)`, { count: true, param: [params.period], where: params.where, order: params.order })
+  }, [])
+
+  const getBlocksTopo = useCallback((params) => {
+    return fetchView(`get_blocks_topo(*)`, { count: true, param: [params.period], where: params.where, order: params.order })
   }, [])
 
   const getMinersBlocksTime = useCallback((params) => {
@@ -395,6 +403,47 @@ function useSources() {
         { key: `total_txs`, title: t(`Total Transactions`), format: (v) => v.toLocaleString() },
         { key: `total_fees`, title: t(`Total Fees`), format: (v) => formatXelis(v) },
       ]
+    },
+    {
+      key: `exchange_tickers`,
+      title: t(`Exchange Tickers (Time)`),
+      description: t(`Market tickers of a specific exchange through time-based interval.`),
+      rowKey: timeItemRowKey,
+      filters: [
+        <FilterTimePeriod />
+      ],
+      getData: getExchangeTickersTime,
+      columns: [
+        { key: `time`, title: t(`Time`), format: (v) => new Date(v).toLocaleString(), views: [`table`] },
+        { key: `asset`, title: t(`Asset`), views: [`table`] },
+        { key: `exchange`, title: t(`Exchange`), views: [`table`] },
+        { key: `high`, title: t(`High`), format: (v) => v.toLocaleString() },
+        { key: `low`, title: t(`Low`), format: (v) => v.toLocaleString() },
+        { key: `price`, title: t(`Price`), format: (v) => v.toLocaleString() },
+        { key: `volume`, title: t(`Volume`), format: (v) => v.toLocaleString() },
+        { key: `volume_diff`, title: t(`Volume Diff`), format: (v) => v.toLocaleString() },
+        { key: `trade_count`, title: t(`Trade Count`), format: (v) => v.toLocaleString() },
+      ],
+    },
+    {
+      key: `market_tickers`,
+      title: t(`Market Tickers (Time)`),
+      description: t(`Market tickers through time-based interval.`),
+      rowKey: timeItemRowKey,
+      filters: [
+        <FilterTimePeriod />
+      ],
+      getData: getMarketTickersTime,
+      columns: [
+        { key: `time`, title: t(`Time`), format: (v) => new Date(v).toLocaleString(), views: [`table`] },
+        { key: `asset`, title: t(`Asset`), views: [`table`] },
+        { key: `high`, title: t(`High`), format: (v) => v.toLocaleString() },
+        { key: `low`, title: t(`Low`), format: (v) => v.toLocaleString() },
+        { key: `price`, title: t(`Price`), format: (v) => v.toLocaleString() },
+        { key: `volume`, title: t(`Volume`), format: (v) => v.toLocaleString() },
+        { key: `volume_diff`, title: t(`Volume Diff`), format: (v) => v.toLocaleString() },
+        { key: `trade_count`, title: t(`Trade Count`), format: (v) => v.toLocaleString() },
+      ],
     },
   ], [t])
 }

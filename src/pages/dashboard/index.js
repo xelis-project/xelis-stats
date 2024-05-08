@@ -187,10 +187,10 @@ function BoxMarketCap(props) {
 
   const dataChart = useMemo(() => {
     const data = marketHistoryDaily.rows.map((item, index) => {
-      const { time, last_price } = item
+      const { time, price } = item
       const { supply = 0 } = blocksDaily.rows[index] || {}
-      const shiftSupply = supply / Math.pow(10, 5)
-      return { time, market_cap: last_price * shiftSupply }
+      const shiftSupply = supply / Math.pow(10, 8)
+      return { time, market_cap: price * shiftSupply }
     })
 
     const first = data[0]
@@ -224,7 +224,7 @@ function BoxMarketCap(props) {
 }
 
 function BoxExchanges(props) {
-  const { marketHistoryExchangeDaily, stats } = props
+  const { marketHistoryExchangeDaily } = props
 
   const { t } = useLang()
 
@@ -239,12 +239,10 @@ function BoxExchanges(props) {
   const boxData = useMemo(() => {
     let value = `--`
 
-    const statsData = stats.rows[0] || {}
+    //const statsData = stats.rows[0] || {}
     //const lastBlockDate = dayjs(statsData.last_block_timestamp || 0).utc().format('YYYY-MM-DD')
 
-    if (stats.rows[0]) {
-      value = stats.rows[0].exchange_count
-    }
+    value = marketHistoryExchangeDaily.count
 
     const data = []
     for (let i = 0; i < marketHistoryExchangeDaily.rows.length; i++) {
@@ -252,7 +250,7 @@ function BoxExchanges(props) {
       //const date = item.time.split('T')[0]
 
       //if (date === lastBlockDate) {
-      data.push({ name: item.exchange, volume: formatNumber(item.sum_quantity), price: formatNumber(item.last_price) })
+      data.push({ name: item.exchange, volume: formatNumber(item.volume), price: formatNumber(item.price) })
       //}
     }
 
@@ -261,7 +259,7 @@ function BoxExchanges(props) {
 
 
   const { value, data } = boxData
-  const loading = marketHistoryExchangeDaily.loading || stats.loading
+  const loading = marketHistoryExchangeDaily.loading
 
   return <Box name={t(`Exchanges (1d)`)} value={value} loading={loading}>
     <BoxTable headers={headers} data={data} />
@@ -289,7 +287,7 @@ function BoxBlocks(props) {
   const data = useMemo(() => {
     return recentBlocks.rows.map((item) => {
       const { topoheight, tx_count, total_fees } = item
-      return { topo: topoheight.toLocaleString(), txs: tx_count, fees: formatXelis(total_fees) }
+      return { topo: topoheight.toLocaleString(), txs: tx_count, fees: formatXelis(total_fees, { withSuffix: false }) }
     })
   }, [recentBlocks])
 
@@ -482,7 +480,7 @@ function BoxTopAccounts(props) {
       //const date = item.time.split('T')[0]
 
       //if (date === lastBlockDate) {
-      data.push({ addr: item.addr, txs: item.total_txs.toLocaleString(), fees: formatXelis(item.total_fees) })
+      data.push({ addr: item.addr, txs: item.total_txs.toLocaleString(), fees: formatXelis(item.total_fees, { withSuffix: false }) })
       //}
     }
 
@@ -624,7 +622,7 @@ function TopStats(props) {
     </div>
     <div>
       <div>{t(`Circulating Supply`)}</div>
-      <div>{formatXelis(data.circulating_supply) || `--`}</div>
+      <div>{formatXelis(data.circulating_supply, { withSuffix: false }) || `--`}</div>
     </div>
     <div>
       <div>{t(`Accounts`)}</div>
@@ -644,7 +642,7 @@ function TopStats(props) {
     </div>
     <div>
       <div>{t(`Total Fees`)}</div>
-      <div>{formatXelis(data.sum_fees) || `--`}</div>
+      <div>{formatXelis(data.sum_fees, { withSuffix: false }) || `--`}</div>
     </div>
   </div>
 }
@@ -661,23 +659,25 @@ function Home() {
     return dayjs().format(`YYYY-MM-DD`)
   }, [])
 
-  const marketHistoryHourly = useFetchView({
-    view: `get_market_history_time(*)`,
+  const marketTickersHourly = useFetchView({
+    view: `get_market_tickers_time(*)`,
     params: { param: [hourInSeconds], where: [`asset::eq::${marketAsset}`], order: [`time::desc`], limit: 24, count: true },
     reload
   })
 
-  const marketHistoryDaily = useFetchView({
-    view: `get_market_history_time(*)`,
+  const marketTickersDaily = useFetchView({
+    view: `get_market_tickers_time(*)`,
     params: { param: [dayInSeconds], where: [`asset::eq::${marketAsset}`], order: [`time::desc`], limit: 7, count: true },
     reload
   })
 
-  const marketHistoryExchangeDaily = useFetchView({
-    view: `get_market_history_exchange_time(*)`,
-    params: { param: [dayInSeconds], where: [`asset::eq::${marketAsset}`], order: [`time::desc`, `sum_quantity::desc`], limit: 3, count: true },
+  const marketTickersExchangeDaily = useFetchView({
+    view: `get_market_tickers_exchange_time(*)`,
+    params: { param: [dayInSeconds], where: [`asset::eq::${marketAsset}`, `time::eq::${today}`], order: [`time::desc`, `volume::desc`], limit: 3, count: true },
     reload
   })
+
+  console.log(marketTickersExchangeDaily)
 
   const recentBlocks = useFetchView({
     view: `blocks`,
@@ -767,14 +767,14 @@ function Home() {
     <TopStats stats={stats} />
     <div className={style.container}>
       <div>
-        <div><Icon name="coins" />{t(`Market`)}</div>
+        <div><Icon name="coins" />{t(`Market (USDT)`)}</div>
         <div>
-          <BoxTimeChart data={marketHistoryHourly} areaType="monotone" name={t(`Price (1h)`)} yDataKey="last_price" yFormat={(v) => formatNumber(v)}
-            link={`/views/market_history?chart_key=price_volume_candle&period=${hourInSeconds}&view=chart&chart_view=candlestick&order=time::desc`} />
-          <BoxTimeChart data={marketHistoryHourly} areaType="step" name={t(`Volume (1h)`)} yDataKey="sum_quantity" yFormat={(v) => formatNumber(v)}
-            link={`/views/market_history?chart_key=sum_quantity&period=${hourInSeconds}&view=chart&chart_view=area&order=time::desc`} />
-          <BoxMarketCap marketHistoryDaily={marketHistoryDaily} blocksDaily={blocksDaily} />
-          <BoxExchanges marketHistoryExchangeDaily={marketHistoryExchangeDaily} stats={stats} />
+          <BoxTimeChart data={marketTickersHourly} areaType="monotone" name={t(`Price (1h)`)} yDataKey="price" yFormat={(v) => formatNumber(v)}
+            link={`/views/market_tickers?chart_key=price&period=${hourInSeconds}&view=chart&chart_view=area&order=time::desc`} />
+          <BoxTimeChart data={marketTickersHourly} areaType="step" name={t(`Volume (1h)`)} yDataKey="volume_diff" yFormat={(v) => formatNumber(v)}
+            link={`/views/market_tickers?chart_key=volume_diff&period=${hourInSeconds}&view=chart&chart_view=area&order=time::desc`} />
+          <BoxMarketCap marketHistoryDaily={marketTickersDaily} blocksDaily={blocksDaily} />
+          <BoxExchanges marketHistoryExchangeDaily={marketTickersExchangeDaily} />
         </div>
       </div>
       <div>
@@ -783,7 +783,7 @@ function Home() {
           <BoxBlocks recentBlocks={recentBlocks} />
           <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Size`)} yDataKey="cumulative_block_size" yFormat={(v) => formatSize(v)}
             link={`/views/blocks_by_time?chart_key=cumulative_block_size&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
-          <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Circulating Supply`)} yDataKey="cumulative_block_reward" yFormat={(v) => formatXelis(v)}
+          <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Circulating Supply`)} yDataKey="cumulative_block_reward" yFormat={(v) => formatXelis(v, { withSuffix: false })}
             bottomInfo={t(`Max Supply: {}`, [(18400000).toLocaleString()])}
             link={`/views/blocks_by_time?chart_key=cumulative_block_reward&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
           <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Block Time`)} yDataKey="block_time" yFormat={(v) => prettyMs(v)}
@@ -799,9 +799,9 @@ function Home() {
             link={`/views/blocks_by_time?chart_key=cumulative_tx_count&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
           <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Txs (1d)`)} yDataKey="sum_tx_count" yFormat={(v) => v.toLocaleString()} bottomInfo={<>{tpm} TPM</>}
             link={`/views/blocks_by_time?chart_key=sum_tx_count&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
-          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Total Fees`)} yDataKey="cumulative_block_fees" yFormat={(v) => formatXelis(v)}
+          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Total Fees`)} yDataKey="cumulative_block_fees" yFormat={(v) => formatXelis(v, { withSuffix: false })}
             link={`/views/blocks_by_time?chart_key=cumulative_block_fees&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
-          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Fees (1d)`)} yDataKey="sum_block_fees" yFormat={(v) => formatXelis(v)}
+          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Fees (1d)`)} yDataKey="sum_block_fees" yFormat={(v) => formatXelis(v, { withSuffix: false })}
             link={`/views/blocks_by_time?chart_key=sum_block_fees&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
           <BoxTimeChart data={txsDaily} areaType="monotone" name={t(`Transfers (1d)`)} yDataKey="transfer_count" yFormat={(v) => v.toLocaleString()} />
         </div>
@@ -815,7 +815,7 @@ function Home() {
           <BoxMinersDistribution today={today} minersDistributionDaily={minersDistributionDaily} />
           <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Hash Rate (1d)`)} yName={t(`Hash Rate (avg)`)} yDataKey="avg_difficulty" yFormat={(v) => formatHashRate(v)}
             link={`/views/blocks_by_time?chart_key=avg_difficulty&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
-          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Reward (1d)`)} yName={t(`Reward (avg)`)} yDataKey="avg_block_reward" yFormat={(v) => formatXelis(v)}
+          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Reward (1d)`)} yName={t(`Reward (avg)`)} yDataKey="avg_block_reward" yFormat={(v) => formatXelis(v, { withSuffix: false })}
             link={`/views/blocks_by_time?chart_key=avg_block_reward&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
           <BoxTopMiners minersDaily={minersDaily} stats={stats} />
         </div>
