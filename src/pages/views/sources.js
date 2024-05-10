@@ -96,7 +96,7 @@ function useSources() {
         { key: `block_type`, title: t(`Block Type`), views: [`table`] },
         { key: `cumulative_difficulty`, title: t(`Cumulative Difficulty`), format: (v) => v.toLocaleString() },
         { key: `supply`, title: t(`Supply`), format: (v) => formatXelis(v) },
-        { key: `difficulty`, title: t(`Difficulty`), format: (v) => formatHashRate(v) },
+        { key: `difficulty`, title: t(`Difficulty`), format: (v) => v.toLocaleString() },
         { key: `reward`, title: t(`Reward`), format: (v) => formatXelis(v) },
         { key: `height`, title: t(`Height`), views: [`table`], format: (v) => v.toLocaleString() },
         { key: `miner`, title: t(`Miner`), views: [`table`] },
