@@ -79,27 +79,6 @@ const style = {
         top: 0;
       }
     }
-
-    .table {
-      height: 30em;
-
-      > div > :nth-child(2) {
-        max-height: 30em;
-
-        /*
-        table tr th:first-child {
-          z-index: 2;
-          left: 0;
-        }
-
-        table tr td:first-child {
-          position: sticky;
-          left: 0;
-          z-index: 1;
-        }
-        */
-      }
-    }
   `
 }
 
@@ -378,9 +357,9 @@ function ViewStats(props) {
         NO DATA
       </div>}
     </div>
-    <div className="table" style={{ display: query.view === `table` ? `block` : `none` }}>
+    <div style={{ display: query.view === `table` ? `block` : `none` }}>
       <TableFlex data={list} rowKey={(_, i) => i} err={err} loading={loading} emptyText={t('No data')}
-        headers={tableHeaders} keepTableDisplay
+        headers={tableHeaders} keepTableDisplay mobileFormat={false}
       />
     </div>
     {controls.render}
