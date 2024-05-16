@@ -261,7 +261,7 @@ function BoxExchanges(props) {
   const { value, data } = boxData
   const loading = marketHistoryExchangeDaily.loading
 
-  return <Box name={t(`Exchanges (1d)`)} value={value} loading={loading}>
+  return <Box name={t(`Exchanges (last 24h)`)} value={value} loading={loading}>
     <BoxTable headers={headers} data={data} />
   </Box>
 }
@@ -278,7 +278,16 @@ function BoxBlocks(props) {
 
   const headers = useMemo(() => {
     return [
-      { key: `topo`, title: `Topo`, render: (v) => v ? <Link to="/todo">{v}</Link> : `--` },
+      {
+        key: `topo`, title: `Topo`, render: (v) => {
+          if (v) {
+            return <a href={`${EXPLORER_LINK}/blocks/${v}`} target="_blank">
+              {v.toLocaleString()}
+            </a>
+          }
+          return `--`
+        }
+      },
       { key: `txs`, title: `Txs` },
       { key: `fees`, title: `Fees` },
     ]
@@ -287,7 +296,7 @@ function BoxBlocks(props) {
   const data = useMemo(() => {
     return recentBlocks.rows.map((item) => {
       const { topoheight, tx_count, total_fees } = item
-      return { topo: topoheight.toLocaleString(), txs: tx_count, fees: formatXelis(total_fees, { withSuffix: false }) }
+      return { topo: topoheight, txs: tx_count, fees: formatXelis(total_fees, { withSuffix: false }) }
     })
   }, [recentBlocks])
 
@@ -409,6 +418,7 @@ function BoxTopMiners(props) {
         }
       },
       { key: `blocks`, title: t(`Blocks`) },
+      { key: `reward`, title: t(`Reward`) },
     ]
   }, [])
 
@@ -424,7 +434,8 @@ function BoxTopMiners(props) {
       const date = item.time.split('T')[0]
 
       //if (date === lastBlockDate) {
-      data.push({ addr: item.miner, blocks: formatNumber(item.total_blocks) })
+      const reward = reduceText(formatXelis(item.total_reward, { withSuffix: false }), 7, 0)
+      data.push({ addr: item.miner, blocks: formatNumber(item.total_blocks), reward })
       //}
     }
 
@@ -547,14 +558,15 @@ function BoxMinersDistribution(props) {
 
   const data = useMemo(() => {
     const { rows } = minersDistributionDaily
-    return rows.map((item) => {
+    // limit display distribution or the piechart will overlap
+    return rows.splice(0, 30).map((item) => {
       const { miner, total_blocks } = item
       return { name: miner, value: total_blocks }
     })
   }, [minersDistributionDaily])
 
-  return <Box name={t(`Miners Distribution`)} loading={loading} noData={data.length === 0}
-    link={`/views/get_miners_blocks_time?period=86400&view=table&where=time::eq::${today}`}>
+  return <Box name={t(`Miners Distribution (Today)`)} loading={loading} noData={data.length === 0}
+    link={`/views/get_miners_blocks_time?period=86400&view=table&where=time::eq::${today}&order=total_blocks::desc`}>
     <ResponsiveContainer>
       <PieChart>
         <Pie isAnimationActive={false} dataKey="value" data={data} innerRadius={50} {...chartStyle} outerRadius={75} paddingAngle={5} />
@@ -732,7 +744,7 @@ function Home() {
 
   const minersDistributionDaily = useFetchView({
     view: `get_miners_blocks_time(*)`,
-    params: { param: [dayInSeconds], count: true, limit: 100, where: [`time::eq::${today}`] },
+    params: { param: [dayInSeconds], count: true, limit: 100, where: [`time::eq::${today}`], order: [`total_blocks::desc`] },
     reload
   })
 
@@ -797,11 +809,11 @@ function Home() {
             link={`/views/blocks_by_time?chart_key=cumulative_tx_count&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
           <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Txs (1d)`)} yDataKey="sum_tx_count" yFormat={(v) => v.toLocaleString()} bottomInfo={<>{tpm} TPM</>}
             link={`/views/blocks_by_time?chart_key=sum_tx_count&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
+          <BoxTimeChart data={txsDaily} areaType="monotone" name={t(`Transfers (1d)`)} yDataKey="transfer_count" yFormat={(v) => v.toLocaleString()} />
           <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Total Fees`)} yDataKey="cumulative_block_fees" yFormat={(v) => formatXelis(v, { withSuffix: false })}
             link={`/views/blocks_by_time?chart_key=cumulative_block_fees&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
           <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Fees (1d)`)} yDataKey="sum_block_fees" yFormat={(v) => formatXelis(v, { withSuffix: false })}
             link={`/views/blocks_by_time?chart_key=sum_block_fees&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
-          <BoxTimeChart data={txsDaily} areaType="monotone" name={t(`Transfers (1d)`)} yDataKey="transfer_count" yFormat={(v) => v.toLocaleString()} />
         </div>
       </div>
       <div>
@@ -813,7 +825,7 @@ function Home() {
           <BoxMinersDistribution today={today} minersDistributionDaily={minersDistributionDaily} />
           <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Hash Rate (1d)`)} yName={t(`Hash Rate (avg)`)} yDataKey="avg_difficulty" yFormat={(v) => formatHashRate(v)}
             link={`/views/blocks_by_time?chart_key=avg_difficulty&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
-          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Reward (1d)`)} yName={t(`Reward (avg)`)} yDataKey="avg_block_reward" yFormat={(v) => formatXelis(v, { withSuffix: false })}
+          <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Block Reward (1d)`)} yName={t(`Reward (avg)`)} yDataKey="avg_block_reward" yFormat={(v) => formatXelis(v, { withSuffix: false })}
             link={`/views/blocks_by_time?chart_key=avg_block_reward&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
           <BoxTopMiners minersDaily={minersDaily} stats={stats} />
         </div>

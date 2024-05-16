@@ -90,6 +90,7 @@ export const style = {
 
     table {
       width: 100%;
+      white-space: nowrap;
       
       th {
         padding: .5rem 1rem;
