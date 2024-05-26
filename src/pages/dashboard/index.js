@@ -560,7 +560,7 @@ function BoxMinersDistribution(props) {
   const data = useMemo(() => {
     const { rows } = minersDistributionDaily
     // limit display distribution or the piechart will overlap
-    return rows.splice(0, 30).map((item) => {
+    return Object.assign([], rows).splice(0, 30).map((item) => {
       const { miner, total_blocks } = item
       return { name: miner, value: total_blocks }
     })
