@@ -16,6 +16,7 @@ dayjs.extend(utc)
 import Box, { BoxAreaChart, BoxTable, useChartStyle } from './box'
 import { useFetchView } from '../../hooks/useFetchView'
 import { style as boxStyle } from './box'
+import supplyEmissionData from '../../data/supply_emission.json'
 
 const style = {
   title: css`
@@ -588,6 +589,27 @@ function BoxMinersDistribution(props) {
   </Box>
 }
 
+function BoxSupplyEmission() {
+  const { t } = useLang()
+
+  const headers = useMemo(() => {
+    return [
+      { key: `approx_days`, title: t(`Year`), render: (v) => 2024 + (v / 365) },
+      { key: `circulating_supply`, title: t(`Minted`), render: (v) => v.toLocaleString() },
+      { key: `mined_percentage`, title: t(`%`), render: (v) => v.toLocaleString() },
+    ]
+  }, [])
+
+  const data = useMemo(() => {
+    return Object.assign([], supplyEmissionData).splice(1, 4).sort((a, b) => b.approx_days - a.approx_days)
+  }, [supplyEmissionData])
+
+  return <Box name={t(`Supply Emission`)}
+    link={`/views/supply_emission?view=table`}>
+    <BoxTable headers={headers} data={data} maxRow={4} />
+  </Box>
+}
+
 function AutoUpdate(props) {
   const { onUpdate, duration = 60 * 1000 } = props
 
@@ -791,11 +813,12 @@ function Home() {
         <div><Icon name="cube" />{t(`Blockchain`)}</div>
         <div>
           <BoxBlocks recentBlocks={recentBlocks} />
-          <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Block Size (avg)`)} yDataKey="avg_block_size" yFormat={(v) => formatSize(v)}
-            link={`/views/blocks_by_time?chart_key=sum_block_size&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
+          <BoxSupplyEmission />
           <BoxTimeChart data={blocksDaily} areaType="monostone" name={t(`Circulating Supply`)} yDataKey="cumulative_block_reward" yFormat={(v) => formatXelis(v, { withSuffix: false })}
             bottomInfo={t(`Max Supply: {}`, [(18400000).toLocaleString()])}
             link={`/views/blocks_by_time?chart_key=cumulative_block_reward&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
+          <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Block Size (avg)`)} yDataKey="avg_block_size" yFormat={(v) => formatSize(v)}
+            link={`/views/blocks_by_time?chart_key=sum_block_size&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
           <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Block Time`)} yDataKey="block_time" yFormat={(v) => prettyMs(v)}
             link={`/views/blocks_by_time?chart_key=block_time&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
           <BoxBlockTypes blocksDaily={blocksDaily} />

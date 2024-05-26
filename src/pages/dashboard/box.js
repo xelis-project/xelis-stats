@@ -173,11 +173,11 @@ export function BoxAreaChart(props) {
 }
 
 export function BoxTable(props) {
-  let { headers = [], data = [], showHeader = true } = props
+  let { headers = [], data = [], showHeader = true, maxRow = 3 } = props
 
   const slicedData = useMemo(() => {
     const slicedData = []
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < maxRow; i++) {
       const item = data[i]
       if (item) slicedData.push(item)
       else slicedData.push({})
@@ -222,7 +222,7 @@ function Box(props) {
       </>}
     </div>
     <div>
-      {link && <Link to={link}><Icon name="expand" title={t(`Click to visualize more data.`)} /></Link>}
+      {link && <Link to={link}><Icon name="arrow-up-right-from-square" title={t(`Click to visualize more data.`)} /></Link>}
       {info && <Icon name="info-circle" title={info} />}
     </div>
     {bottomInfo && !loading && <div>{bottomInfo}</div>}
