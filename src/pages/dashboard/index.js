@@ -187,10 +187,16 @@ function BoxMarketCap(props) {
   const { t } = useLang()
 
   const dataChart = useMemo(() => {
+    let bottomInfo = ``
     const data = marketHistoryDaily.rows.map((item, index) => {
       const { time, price } = item
       const { supply = 0 } = blocksDaily.rows[index] || {}
       const shiftSupply = supply / Math.pow(10, 8)
+
+      if (index === 0) {
+        bottomInfo = `Avg price: ${formatNumber(price)}`
+      }
+
       return { time, market_cap: price * shiftSupply }
     })
 
@@ -204,7 +210,7 @@ function BoxMarketCap(props) {
     }
 
     data.reverse()
-    return { value, extra, data }
+    return { value, extra, data, bottomInfo }
   }, [marketHistoryDaily, blocksDaily])
 
   const xFormat = useCallback((v) => {
@@ -215,11 +221,11 @@ function BoxMarketCap(props) {
     return `${formatNumber(v)}`
   }, [])
 
-  const { value, extra, data } = dataChart
+  const { value, extra, data, bottomInfo } = dataChart
   const noData = data.length === 0
   const loading = marketHistoryDaily.loading || blocksDaily.loading
 
-  return <Box name={t(`Market cap.`)} value={value} extra={extra} loading={loading} noData={noData}>
+  return <Box name={t(`Market cap.`)} value={value} extra={extra} loading={loading} noData={noData} bottomInfo={bottomInfo}>
     <BoxAreaChart data={data} areaType="monotone" xDataKey="time" yDataKey="market_cap" xFormat={xFormat} yName={t(`Market Cap.`)} yFormat={yFormat} />
   </Box>
 }
