@@ -690,7 +690,7 @@ function TopStats(props) {
 function Home() {
   const { t } = useLang()
 
-  const hourInSeconds = useMemo(() => 60 * 60, [])
+  //const hourInSeconds = useMemo(() => 60 * 60, [])
   const dayInSeconds = useMemo(() => 60 * 60 * 24, [])
   const weekInSeconds = useMemo(() => 86400 * 7, [])
   const [reload, setReload] = useState()
@@ -699,15 +699,17 @@ function Home() {
     return dayjs().format(`YYYY-MM-DD`)
   }, [])
 
+  /*
   const marketTickersHourly = useFetchView({
     view: `get_market_tickers_time(*)`,
     params: { param: [hourInSeconds], where: [`asset::eq::${marketAsset}`], order: [`time::desc`], limit: 24, count: true },
     reload
   })
+  */
 
   const marketTickersDaily = useFetchView({
     view: `get_market_tickers_time(*)`,
-    params: { param: [dayInSeconds], where: [`asset::eq::${marketAsset}`], order: [`time::desc`], limit: 7, count: true },
+    params: { param: [dayInSeconds], where: [`asset::eq::${marketAsset}`], order: [`time::desc`], limit: 24, count: true },
     reload
   })
 
@@ -807,10 +809,10 @@ function Home() {
       <div>
         <div><Icon name="coins" />{t(`Market (USDT)`)}</div>
         <div>
-          <BoxTimeChart data={marketTickersHourly} areaType="monotone" name={t(`Price (1h)`)} yDataKey="price" yFormat={(v) => formatNumber(v)}
-            link={`/views/market_tickers?chart_key=price&period=${hourInSeconds}&view=chart&chart_view=area&order=time::desc`} />
-          <BoxTimeChart data={marketTickersHourly} areaType="step" name={t(`Volume (1h)`)} yDataKey="volume_diff" yFormat={(v) => formatNumber(v)}
-            link={`/views/market_tickers?chart_key=volume_diff&period=${hourInSeconds}&view=chart&chart_view=area&order=time::desc`} />
+          <BoxTimeChart data={marketTickersDaily} areaType="monotone" name={t(`Price (1d)`)} yDataKey="price" yFormat={(v) => formatNumber(v)}
+            link={`/views/market_tickers?chart_key=price&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
+          <BoxTimeChart data={marketTickersDaily} areaType="step" name={t(`Volume (1d)`)} yDataKey="volume" yFormat={(v) => formatNumber(v)}
+            link={`/views/market_tickers?chart_key=volume&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
           <BoxMarketCap marketHistoryDaily={marketTickersDaily} blocksDaily={blocksDaily} />
           <BoxExchanges marketHistoryExchangeDaily={marketTickersExchangeDaily} />
         </div>
