@@ -42,7 +42,7 @@ export const style = {
 
     > :nth-child(3) {
       flex: 1;
-      overflow: hidden;
+      overflow: auto;
 
       &[data-loading="true"] {
         display: flex;
@@ -150,7 +150,7 @@ export function BoxAreaChart(props) {
 
   const chartStyle = useChartStyle()
 
-  return <ResponsiveContainer height="100%" width="100%">
+  return <ResponsiveContainer height="100%" width="100%" style={{ overflow: `hidden` }}>
     <AreaChart
       data={data}
       margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
@@ -176,6 +176,8 @@ export function BoxTable(props) {
   let { headers = [], data = [], showHeader = true, maxRow = 3 } = props
 
   const slicedData = useMemo(() => {
+    if (!maxRow) return data
+
     const slicedData = []
     for (let i = 0; i < maxRow; i++) {
       const item = data[i]

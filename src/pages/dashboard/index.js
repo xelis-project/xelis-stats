@@ -269,7 +269,7 @@ function BoxExchanges(props) {
   const loading = marketHistoryExchangeDaily.firstLoading
 
   return <Box name={t(`Exchanges (last 24h)`)} value={value} loading={loading}>
-    <BoxTable headers={headers} data={data} />
+    <BoxTable headers={headers} data={data} maxRow={null} />
   </Box>
 }
 
@@ -712,7 +712,7 @@ function Home() {
 
   const marketTickersExchangeDaily = useFetchView({
     view: `get_market_tickers_exchange_time(*)`,
-    params: { param: [dayInSeconds], where: [`asset::eq::${marketAsset}`, `time::eq::${today}`], order: [`time::desc`, `volume::desc`], limit: 3, count: true },
+    params: { param: [dayInSeconds], where: [`asset::eq::${marketAsset}`, `time::eq::${today}`], order: [`time::desc`, `volume::desc`], limit: 10, count: true },
   })
 
   const recentBlocks = useFetchView({
