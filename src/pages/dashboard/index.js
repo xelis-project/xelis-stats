@@ -223,7 +223,7 @@ function BoxMarketCap(props) {
 
   const { value, extra, data, bottomInfo } = dataChart
   const noData = data.length === 0
-  const loading = marketHistoryDaily.loading || blocksDaily.loading
+  const loading = marketHistoryDaily.firstLoading || blocksDaily.firstLoading
 
   return <Box name={t(`Market cap.`)} value={value} extra={extra} loading={loading} noData={noData} bottomInfo={bottomInfo}>
     <BoxAreaChart data={data} areaType="monotone" xDataKey="time" yDataKey="market_cap" xFormat={xFormat} yName={t(`Market Cap.`)} yFormat={yFormat} />
@@ -266,7 +266,7 @@ function BoxExchanges(props) {
 
 
   const { value, data } = boxData
-  const loading = marketHistoryExchangeDaily.loading
+  const loading = marketHistoryExchangeDaily.firstLoading
 
   return <Box name={t(`Exchanges (last 24h)`)} value={value} loading={loading}>
     <BoxTable headers={headers} data={data} />
@@ -307,7 +307,7 @@ function BoxBlocks(props) {
     })
   }, [recentBlocks])
 
-  const loading = recentBlocks.loading
+  const loading = recentBlocks.firstLoading
 
   return <Box name={t(`Blocks`)} value={totalBlocks} loading={loading} link={`/views/blocks_by_range?period=1&view=table`}>
     <BoxTable headers={headers} data={data} />
@@ -341,7 +341,7 @@ function BoxTimeChart(props) {
   const { value, extra, rows } = boxData
   const noData = rows.length === 0
 
-  return <Box name={name} value={value} extra={extra} info={info} loading={data.loading} link={link} bottomInfo={bottomInfo} noData={noData}>
+  return <Box name={name} value={value} extra={extra} info={info} loading={data.firstLoading} link={link} bottomInfo={bottomInfo} noData={noData}>
     <BoxAreaChart data={rows} areaType={areaType} xDataKey="time" yDataKey={yDataKey} xFormat={xFormat} yName={yName} yFormat={yFormat} yDomain={yDomain} />
   </Box>
 }
@@ -456,7 +456,7 @@ function BoxTopMiners(props) {
   }, [minersDaily, stats])
 
   const { value, extra, data } = boxData
-  const loading = minersDaily.loading || stats.loading
+  const loading = minersDaily.firstLoading || stats.firstLoading
 
   return <Box name={t(`Top Miners (1d)`)} value={value} extra={extra} loading={loading}
     link={`/views/get_miners_blocks_time?period=86400&view=table&order=time::desc`}>
@@ -512,7 +512,7 @@ function BoxTopAccounts(props) {
   }, [accountsWeekly, stats])
 
   const { value, extra, data } = boxData
-  const loading = accountsWeekly.loading
+  const loading = accountsWeekly.firstLoading
 
   return <Box name={t(`Top Accounts (1w)`)} value={value} extra={extra} loading={loading}
     link={`/views/get_accounts_txs_time?period=604800&view=table&order=time::desc`}>
@@ -548,7 +548,7 @@ function BoxBlockTypes(props) {
   }, [blocksDaily, t])
 
   const { value, extra, data } = boxData
-  const loading = blocksDaily.loading
+  const loading = blocksDaily.firstLoading
 
   return <Box name={t(`Block Types (1d)`)} value={value} extra={extra} loading={loading}
     link={`/views/blocks_by_time?columns=time,side_block_count,orphaned_block_count,sync_block_count,block_count&period=86400&view=table&order=time::desc`}>
@@ -649,7 +649,7 @@ function TopStats(props) {
 
   const data = stats.rows[0] || {}
 
-  if (stats.loading) {
+  if (stats.firstLoading) {
     return <div className={style.topStats}>
       <div className="loading">loading<DotLoading /></div>
     </div>
@@ -693,7 +693,6 @@ function Home() {
   //const hourInSeconds = useMemo(() => 60 * 60, [])
   const dayInSeconds = useMemo(() => 60 * 60 * 24, [])
   const weekInSeconds = useMemo(() => 86400 * 7, [])
-  const [reload, setReload] = useState()
   const marketAsset = `USDT`
   const today = useMemo(() => {
     return dayjs().format(`YYYY-MM-DD`)
@@ -703,83 +702,81 @@ function Home() {
   const marketTickersHourly = useFetchView({
     view: `get_market_tickers_time(*)`,
     params: { param: [hourInSeconds], where: [`asset::eq::${marketAsset}`], order: [`time::desc`], limit: 24, count: true },
-    reload
   })
   */
 
   const marketTickersDaily = useFetchView({
     view: `get_market_tickers_time(*)`,
     params: { param: [dayInSeconds], where: [`asset::eq::${marketAsset}`], order: [`time::desc`], limit: 24, count: true },
-    reload
   })
 
   const marketTickersExchangeDaily = useFetchView({
     view: `get_market_tickers_exchange_time(*)`,
     params: { param: [dayInSeconds], where: [`asset::eq::${marketAsset}`, `time::eq::${today}`], order: [`time::desc`, `volume::desc`], limit: 3, count: true },
-    reload
   })
 
   const recentBlocks = useFetchView({
     view: `blocks`,
     params: { order: [`topoheight::desc`], limit: 5, count: true },
-    reload
   })
 
   const blocksDaily = useFetchView({
     view: `get_blocks_time(*)`,
     params: { param: [dayInSeconds], order: ["time::desc"], limit: 20, count: true },
-    reload
   })
 
   const stats = useFetchView({
     view: `get_stats()`,
-    reload
   })
 
   const minersDaily = useFetchView({
     view: `get_miners_blocks_time(*)`,
     params: { param: [dayInSeconds], count: true, limit: 5, order: [`time::desc`, `total_blocks::desc`], },
-    reload
   })
 
   const minersCountDaily = useFetchView({
     view: `get_miners_count_time(*)`,
     params: { param: [dayInSeconds], count: true, limit: 20, order: [`time::desc`], },
-    reload
   })
 
   const accountsCountDaily = useFetchView({
     view: `get_accounts_count_time(*)`,
     params: { param: [dayInSeconds], count: true, limit: 20, order: [`time::desc`], },
-    reload
   })
 
   const accountsWeekly = useFetchView({
     view: `get_accounts_txs_time(*)`,
     params: { param: [weekInSeconds], count: true, limit: 20, order: [`time::desc`, `total_txs::desc`], },
-    reload
   })
 
   const activeAccountsWeekly = useFetchView({
     view: `get_accounts_active_time(*)`,
     params: { param: [weekInSeconds], count: true, limit: 20, order: [`time::desc`], },
-    reload
   })
 
   const txsDaily = useFetchView({
     view: `get_txs_time(*)`,
     params: { param: [dayInSeconds], count: true, limit: 20, order: [`time::desc`], },
-    reload
   })
 
   const minersDistributionDaily = useFetchView({
     view: `get_miners_blocks_time(*)`,
-    params: { param: [dayInSeconds], count: true, limit: 100, where: [`time::eq::${today}`], order: [`total_blocks::desc`] },
-    reload
+    params: { param: [dayInSeconds], count: true, limit: 100, where: [`time::eq::${today}`], order: [`total_blocks::desc`] }
   })
 
   const update = useCallback(() => {
-    setReload(new Date().getTime())
+    marketTickersDaily.fetch()
+    marketTickersExchangeDaily.fetch()
+    recentBlocks.fetch()
+    blocksDaily.fetch()
+    stats.fetch()
+    minersDaily.fetch()
+    minersCountDaily.fetch()
+    accountsCountDaily.fetch()
+    accountsWeekly.fetch()
+    activeAccountsWeekly.fetch()
+    txsDaily.fetch()
+    minersDistributionDaily.fetch()
   }, [])
 
   // Transactions per minute

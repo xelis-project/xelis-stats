@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import Table from 'xelis-explorer/src/components/table'
 import { useLang } from 'g45-react/hooks/useLang'
 import { reduceText, formatXelis, formatHashRate } from 'xelis-explorer/src/utils'
@@ -8,10 +8,10 @@ import { css } from 'goober'
 import theme from 'xelis-explorer/src/style/theme'
 import dayjs from 'dayjs'
 import { AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Area } from 'recharts'
+import Icon from 'g45-react/components/fontawesome_icon'
 
 import { useFetchView } from '../../hooks/useFetchView'
 import { useChartStyle, style as boxStyle } from '../dashboard/box'
-
 
 const style = {
   container: css`
@@ -71,6 +71,18 @@ const style = {
         height: 300px;
         position: relative;
 
+        .loading {
+          position: absolute;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+          height: 100%;
+          opacity: .7;
+          top: 0;
+          left: 0;
+        }
+
         > select {
           right: 1em;
           top: -.9em;
@@ -113,23 +125,22 @@ function HashrateChart() {
   const chartStyle = useChartStyle()
 
   const [period, setPeriod] = useState(14400)
-  const [reload, setReload] = useState()
 
-  const data = useFetchView({
+  const blocksTime = useFetchView({
     view: `get_blocks_time(*)`,
     params: { count: true, param: [period], order: [`time::desc`] },
-    reload
   })
-
-  const items = useMemo(() => {
-    const { rows = [] } = data
-    return Object.assign([], rows).reverse();
-  }, [data])
 
   const onChangePeriod = useCallback((e) => {
     setPeriod(parseInt(e.target.value))
-    setReload(new Date().getTime())
   }, [])
+
+  useEffect(() => {
+    blocksTime.fetch()
+  }, [period])
+
+  const { loading, rows } = blocksTime
+  const items = Object.assign([], rows).reverse()
 
   return <div className="hashrate-chart">
     <div>Network Hashrate</div>
@@ -170,6 +181,7 @@ function HashrateChart() {
           <Area type="monotone" dataKey="avg_difficulty" isAnimationActive={false} strokeWidth={1} {...chartStyle} />
         </AreaChart>
       </ResponsiveContainer>
+      {loading && <div className="loading"><Icon name="circle-notch" className="fa-spin" /></div>}
     </div>
   </div>
 }
@@ -177,13 +189,13 @@ function HashrateChart() {
 function TopMinersAllTime(props) {
   const { t } = useLang()
 
-  const data = useFetchView({
+  const minersBlocks = useFetchView({
     view: `get_miners_blocks()`,
     params: { count: true, limit: 100, order: [`total_blocks::desc`], }
   })
 
-  const { loading, err, count, rows } = data
-  console.log(rows)
+  const { loading, err, count, rows } = minersBlocks
+
   return <div>
     <div>Top miners (All time)</div>
     <div>{count} total miners</div>
@@ -219,12 +231,12 @@ function TopMinersToday() {
     return dayjs().format("YYYY-MM-DD")
   })
 
-  const data = useFetchView({
+  const minersBlocksTime = useFetchView({
     view: `get_miners_blocks_time(*)`,
     params: { param: [86400], count: true, limit: 100, order: [`time::desc`, `total_blocks::desc`], where: [`time::eq::${today}`] }
   })
 
-  const { loading, err, count, rows } = data
+  const { loading, err, count, rows } = minersBlocksTime
 
   return <div>
     <div>Top miners (Today)</div>
@@ -255,12 +267,12 @@ function TopMinersToday() {
 function BlockTypes() {
   const { t } = useLang()
 
-  const data = useFetchView({
+  const blocksTime = useFetchView({
     view: `get_blocks_time(*)`,
     params: { count: false, param: [86400], order: [`time::desc`], limit: 4 },
   })
 
-  const { loading, err, count, rows } = data
+  const { loading, err, rows } = blocksTime
 
   return <div className="blocks">
     <div>{t(`Blocks (Daily)`)}</div>

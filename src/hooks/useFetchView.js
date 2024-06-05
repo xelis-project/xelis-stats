@@ -1,6 +1,6 @@
 import to from 'await-to-js'
 import queryString from 'query-string'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 export async function fetchView(viewName, params) {
   const endpoint = queryString.stringifyUrl({
@@ -23,27 +23,32 @@ export async function fetchView(viewName, params) {
 }
 
 export function useFetchView(props) {
-  const { view, params, reload } = props
+  const { view, params, fetchOnLoad = true } = props
 
+  const [firstLoading, setFirstLoading] = useState(true)
   const [loading, setLoading] = useState(true)
+  const firstFetch = useRef(true)
   const [err, setErr] = useState(null)
   const [rows, setRows] = useState([])
   const [count, setCount] = useState(0)
 
-  const load = useCallback(async () => {
+  const fetch = useCallback(async () => {
     setErr(null)
     setLoading(true)
+    if (firstFetch.current) setFirstLoading(true)
     const [err, data] = await to(fetchView(view, params))
     setLoading(false)
+    if (firstFetch.current) setFirstLoading(false)
     if (err) return setErr(err)
 
     setRows(data.rows)
     setCount(data.count)
+    firstFetch.current = false
   }, [view, params])
 
   useEffect(() => {
-    load()
-  }, [reload])
+    if (fetchOnLoad) fetch()
+  }, [])
 
-  return { loading, err, rows, count }
+  return { firstLoading, loading, err, rows, count, fetch }
 }
