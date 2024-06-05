@@ -574,7 +574,7 @@ function BoxMinersDistribution(props) {
 
   return <Box name={t(`Miners Distribution (Today)`)} loading={loading} noData={data.length === 0}
     link={`/views/get_miners_blocks_time?period=86400&view=table&where=time::eq::${today}&order=total_blocks::desc`}>
-    <ResponsiveContainer>
+    <ResponsiveContainer height="100%" width="100%" style={{ overflow: `hidden` }}>
       <PieChart>
         <Pie isAnimationActive={false} dataKey="value" data={data} innerRadius={50} {...chartStyle} outerRadius={75} paddingAngle={5} />
         <Tooltip isAnimationActive={false}
