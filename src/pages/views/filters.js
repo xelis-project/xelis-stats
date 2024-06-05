@@ -4,10 +4,6 @@ import { useLang } from 'g45-react/hooks/useLang'
 import { fetchView } from '../../hooks/useFetchView'
 import to from 'await-to-js'
 
-const style = {
-
-}
-
 export function FilterDropdown(props) {
   const { name, query, setQuery, list, queryKey, refetch } = props
   const { t } = useLang()

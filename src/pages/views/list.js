@@ -1,55 +1,18 @@
-import { css } from 'goober'
-import { scaleOnHover } from 'xelis-explorer/src/style/animate'
-import theme from 'xelis-explorer/src/style/theme'
 import { Link } from 'react-router-dom'
 
 import useSources from './sources'
-
-const style = {
-  container: css`
-    display: grid;
-    gap: 1em;
-    grid-template-columns: 1fr;
-    margin-top: 2em;
-
-    ${theme.query.minDesktop} {
-      grid-template-columns: 1fr 1fr;
-    }
-
-    > a {
-      background: var(--bg-color);
-      padding: 1em;
-      border-radius: .5em;
-      cursor: pointer;
-      text-decoration: none;
-      color: var(--text-color);
-      border: thin solid ${theme.apply({ xelis: `#39746d`, dark: `#414141`, light: `#b9b9b9` })};
-      ${scaleOnHover()}
-
-      > :nth-child(1) {
-        font-size: 1.2em;
-        font-weight: bold;
-        margin-bottom: .25em;
-      }
-
-      > :nth-child(2) {
-        font-size: .9em;
-        opacity: .6;
-      }
-    }
-  `
-}
+import style from './style'
 
 function DisplayList() {
   const sources = useSources()
 
-  return <div className={style.container}>
+  return <div className={style.list.container}>
     {sources.map((source) => {
       const { key, title, description } = source
       const link = `/views/${key}`
-      return <Link key={key} to={link}>
-        <div>{title}</div>
-        <div>{description}</div>
+      return <Link key={key} to={link} className={style.list.item}>
+        <div className={style.list.title}>{title}</div>
+        <div className={style.list.description}>{description}</div>
       </Link>
     })}
   </div>

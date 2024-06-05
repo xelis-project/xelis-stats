@@ -7,13 +7,14 @@ import { useLang } from 'g45-react/hooks/useLang'
 import TableFlex from 'xelis-explorer/src/components/tableFlex'
 import { Helmet } from 'react-helmet-async'
 import useQueryString from 'g45-react/hooks/useQueryString'
+import { useParams } from 'react-router-dom'
+import Icon from 'g45-react/components/fontawesome_icon'
+import useTheme from 'xelis-explorer/src/hooks/useTheme'
+import to from 'await-to-js'
 
 import useControls from './controls'
 import useSources from './sources'
-import useTheme from 'xelis-explorer/src/hooks/useTheme'
-import to from 'await-to-js'
-import { useParams } from 'react-router-dom'
-import Icon from 'g45-react/components/fontawesome_icon'
+import style from './style'
 
 // This makes sure controls panel is always open if screen is larger
 glob`
@@ -33,54 +34,6 @@ glob`
     }
   }
 `
-
-const style = {
-  container: css`
-    .chart {
-      height: 15rem;
-      margin-bottom: 1em;
-      background: #00000075;
-      align-items: center;
-      display: flex;
-      justify-content: center;
-      border-radius: 0.5em;
-      position: relative;
-
-      ${theme.query.minMobile} {
-        height: 30em;
-      }
-
-      ${theme.query.minDesktop} {
-        height: 35em;
-      }
-
-      .trademark a {
-        position: absolute;
-        z-index: 1;
-        padding: 1em;
-        font-size: .7em;
-      }
-
-      .tv-lightweight-charts {
-        border-radius: .5em;
-        position: relative;
-        z-index: 0;
-      }
-
-      .loading {
-        position: absolute;
-        z-index: 2;
-        display: flex;
-        width: 100%;
-        height: 100%;
-        justify-content: center;
-        align-items: center;
-        font-size: 2em;
-        top: 0;
-      }
-    }
-  `
-}
 
 function ViewStats(props) {
   const { dataSource } = useParams()
@@ -341,19 +294,19 @@ function ViewStats(props) {
     })
   }, [source, loading, query])
 
-  return <div className={style.container}>
+  return <div>
     <Helmet bodyAttributes={{ [`data-layout`]: `stats` }}>
       <title>{source.title}</title>
     </Helmet>
     {controls.tab}
-    <div className="chart" ref={chartDivRef} style={{ display: query.view === `chart` ? `block` : `none` }}>
-      <div className="trademark">
+    <div className={style.chart.container} ref={chartDivRef} style={{ display: query.view === `chart` ? `block` : `none` }}>
+      <div className={style.chart.trademark}>
         <a href="https://tradingview.github.io/lightweight-charts/">Powered by Lightweight Charts™</a>
       </div>
-      {loading && <div className="loading">
+      {loading && <div className={style.chart.loading}>
         <Icon name="circle-notch" className="fa-spin" />
       </div>}
-      {(!loading && list.length === 0) && <div className="loading">
+      {(!loading && list.length === 0) && <div className={style.chart.loading}>
         NO DATA
       </div>}
     </div>

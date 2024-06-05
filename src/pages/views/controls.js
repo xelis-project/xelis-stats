@@ -1,173 +1,15 @@
 import { useCallback, useState, useMemo, cloneElement } from 'react'
-import { css } from 'goober'
 import Dropdown from 'xelis-explorer/src/components/dropdown'
 import { saveAs } from 'file-saver'
 import OffCanvas from 'xelis-explorer/src/components/offCanvas'
 import Icon from 'g45-react/components/fontawesome_icon'
 import { useLang } from 'g45-react/hooks/useLang'
 import Button from 'xelis-explorer/src/components/button'
-import { scaleOnHover } from 'xelis-explorer/src/style/animate'
-import theme from 'xelis-explorer/src/style/theme'
 import { useNavigate } from 'react-router-dom'
 
 import { useNotification } from 'xelis-explorer/src/components/notifications'
 
-const style = {
-  container: css`
-    padding: 1em;
-    display: flex;
-    flex-direction: column;
-    gap: 1em;
-    overflow-y: auto;
-
-    > :nth-child(1) {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-
-      > :nth-child(1) {
-        font-weight: bold;
-        font-size: 1.5em;
-      }
-
-      button {
-        border: none;
-        background-color: var(--text-color);
-        color: var(--bg-color);
-        border-radius: 50%;
-        height: 40px;
-        width: 40px;
-        font-size: 1em;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: .25s transform;
-
-        &:hover {
-          transform: scale(0.9);
-        }
-
-        ${theme.query.minLarge} {
-          display: none;
-        }
-      }
-    }
-
-    > :nth-child(2) {
-      display: flex;
-      gap: .5em;
-      align-items: center;
-
-      button {
-        padding: .5em 1em;
-        border-radius: .5em;
-        border: none;
-        background: var(--text-color);
-        color: var(--bg-color);
-        display: flex;
-        align-items: center;
-        cursor: pointer;
-        white-space: nowrap;
-        gap: .5em;
-        ${scaleOnHover()}
-      }
-    }
-
-    > :nth-child(3) {
-      display: flex;
-      flex-direction: column;
-      gap: 1em;
-
-      > div {
-        display: flex;
-        gap: .5em;
-        flex-direction: column;
-
-        > :nth-child(1) {
-          font-size: 1.1em;
-          opacity: .8;
-        }  
-      }
-    }
-  `,
-  tab: css`
-    > :nth-child(1) {
-      padding: 1em;
-      border-radius: .5em;
-      display: flex;
-      background-color: var(--bg-color);
-      align-items: center;
-      justify-content: space-between;
-      gap: .5em;
-      margin: 1em 0 .5em 0;
-
-      > :nth-child(1) {
-        font-size: 1.4em;
-        font-weight: bold;
-      }
-
-      > button {
-        font-size: 1.2em;
-        background: none;
-        border: none;
-        color: var(--text-color);
-        cursor: pointer;
-        display: flex;
-        gap: .5em;
-        align-items: center;
-        border: thin solid var(--text-color);
-        padding: .4em .6em;
-        border-radius: .5em;
-
-        ${theme.query.minLarge} {
-          display: none;
-        }
-      }
-    }
-
-    > :nth-child(2) {
-      margin-bottom: .5em;
-      font-size: .8em;
-      word-break: break-all;
-      background: black;
-      padding: 1em;
-      border-radius: 0.5em;
-      line-height: 1.1em;
-    }
-  `,
-  columnList: css`
-    > :nth-child(2) {
-      display: flex;
-      gap: .25em;
-      align-items: center;
-      user-select: none;
-    }
-
-    > :nth-child(3) {
-      display: flex;
-      gap: .5em;
-      flex-direction: column;
-
-      > div {
-        display: flex;
-        gap: 0.5em;
-        padding: 1em;
-        border-radius: 0.5em;
-        border: thin solid var(--text-color);
-        color: var(--text-color);
-        background: var(--table-td-bg-color);
-        flex-direction: column;
-
-        > div {
-          display: flex;
-          gap: .5em;
-          align-items: center;
-        }
-      }
-    }
-  `
-}
+import style from './style'
 
 function useControls(props) {
   const { sources, source, dataSource, query, setQuery, list, chartRef } = props
@@ -246,17 +88,26 @@ function useControls(props) {
     })
   }, [])
 
-  const render = <OffCanvas maxWidth={500} position="right" opened={opened} className={style.container}>
-    <div>
-      <div>{t(`Controls`)}</div>
-      <button onClick={() => setOpened(false)}><Icon name="close" /></button>
+  const render = <OffCanvas maxWidth={500} position="right"
+    opened={opened} className={style.controls.container}>
+    <div className={style.controls.header.container}>
+      <div className={style.controls.header.title}>{t(`Controls`)}</div>
+      <button className={style.controls.header.closeButton} onClick={() => setOpened(false)}>
+        <Icon name="close" />
+      </button>
     </div>
-    <div>
-      <Button icon="link" onClick={copyShareLink}>{t(`Copy Link`)}</Button>
-      {query.view !== `table` && <Button icon="camera" onClick={clipChart}>{t(`Clip Chart`)}</Button>}
-      <Button icon="file-arrow-down" onClick={exportData}>{t(`Export`)}</Button>
+    <div className={style.controls.actionButtons}>
+      <Button icon="link" onClick={copyShareLink}>
+        {t(`Copy Link`)}
+      </Button>
+      {query.view !== `table` && <Button icon="camera" onClick={clipChart}>
+        {t(`Clip Chart`)}
+      </Button>}
+      <Button icon="file-arrow-down" onClick={exportData}>
+        {t(`Export`)}
+      </Button>
     </div>
-    <div>
+    <div className={style.controls.rows}>
       <div>
         <div>Data Source</div>
         <Dropdown items={sourceList} value={dataSource} onChange={(item) => {
@@ -292,14 +143,18 @@ function useControls(props) {
     </div>
   </OffCanvas>
 
-  const tab = <div className={style.tab}>
-    <div>
-      <div>{source.title}</div>
-      <Button iconLocation="right" icon="window-maximize" iconProps={{ type: 'regular', className: 'fa-rotate-90' }} onClick={() => setOpened(!opened)}>
+  const tab = <div>
+    <div className={style.pageHeader.container}>
+      <div className={style.pageHeader.title}>{source.title}</div>
+      <Button iconLocation="right"
+        icon="window-maximize"
+        className={style.pageHeader.toggleButton}
+        iconProps={{ type: 'regular', className: 'fa-rotate-90' }}
+        onClick={() => setOpened(!opened)}>
         {t(`Controls`)}
       </Button>
     </div>
-    <div>Params: {JSON.stringify(query)}</div>
+    <div className={style.pageHeader.params}>Params: {JSON.stringify(query)}</div>
   </div>
 
   return { tab, render, opened, setOpened }
@@ -394,13 +249,13 @@ function TableColumns(props) {
     return obj
   }, [query.where])
 
-  return <div className={style.columnList}>
+  return <div>
     <div>{t(`Columns ({})`, [tableColumns.length])}</div>
-    <div>
+    <div className={style.columns.showAll}>
       <input type="checkbox" checked={query.columns == null} onChange={showAllColumns} />
       <div>{t(`Show All`)}</div>
     </div>
-    <div>
+    <div className={style.columns.items}>
       {tableColumns.map((column) => {
         return <RowColumnControl
           columns={columnKeys} visibleColumns={visibleColumns}
@@ -523,25 +378,25 @@ function RowColumnControl(props) {
     update({ sort: ``, filterOp: `eq`, filterValue: `` })
   }, [update])
 
-  return <div>
-    <div>
+  return <div className={style.columns.item}>
+    <div className={style.columns.row}>
       <div>{t(`Key:`)}</div>
       <div>{column.title} [{column.key}]</div>
     </div>
-    <div>
+    <div className={style.columns.row}>
       <div>{t(`Visible:`)}</div>
       <input type="checkbox" checked={visible} onChange={onVisibleChange} />
     </div>
-    <div>
+    <div className={style.columns.row}>
       <div>{t(`Sort:`)}</div>
       <SortSelect value={sort} onChange={(e) => setSort(e.target.value)} />
     </div>
-    <div>
+    <div className={style.columns.row}>
       <div>{t(`Filter:`)}</div>
       <OperatorSelect value={filterOp} onChange={(e) => setFilterOp(e.target.value)} />
       <input type="text" value={filterValue} onChange={(e) => setFilterValue(e.target.value)} />
     </div>
-    <div>
+    <div className={style.columns.row}>
       <button onClick={reset}>{t(`Reset`)}</button>
       <button onClick={apply}>{t(`Apply`)}</button>
     </div>

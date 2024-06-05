@@ -4,125 +4,34 @@ import { useLang } from 'g45-react/hooks/useLang'
 import { reduceText, formatXelis, formatHashRate } from 'xelis-explorer/src/utils'
 import PageTitle from 'xelis-explorer/src/layout/page_title'
 import Hashicon from 'xelis-explorer/src/components/hashicon'
-import { css } from 'goober'
-import theme from 'xelis-explorer/src/style/theme'
 import dayjs from 'dayjs'
 import { AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Area } from 'recharts'
 import Icon from 'g45-react/components/fontawesome_icon'
 
 import { useFetchView } from '../../hooks/useFetchView'
-import { useChartStyle, style as boxStyle } from '../dashboard/box'
-
-const style = {
-  container: css`
-    .table-miners {
-      display: flex;
-      flex-direction: column;
-      gap: 2em;
-
-      ${theme.query.minDesktop} {
-        flex-direction: row;
-        gap: 1em;
-      }
-
-      > div {
-        flex: 1;
-
-        > :nth-child(1) {
-          font-size: 1.4em;
-          margin-bottom: .25em;
-        }
-
-        > :nth-child(2) {
-          margin-bottom: .5em;
-          color: var(--muted-color);
-        }
-
-        > :nth-child(3) {
-          max-height: 500px;
-          overflow: auto;
-        }
-      }
-    }
-
-    .blocks {
-      margin-bottom: 2em;
-
-      > :nth-child(1) {
-        font-size: 1.4em;
-        margin-bottom: .5em;
-      }
-    }
-
-    .hashrate-chart {
-      margin-bottom: 2em;
-
-      > :nth-child(1) {
-        font-size: 1.4em;
-        margin-bottom: .5em;
-      }
-
-      > :nth-child(2) {
-        margin-bottom: .5em;
-        background-color: ${theme.apply({ xelis: `rgb(0 0 0 / 50%)`, dark: `rgb(0 0 0 / 50%)`, light: `rgb(255 255 255 / 50%)` })};
-        padding: 1em;
-        border-radius: .5em;
-        width: 100%; 
-        height: 300px;
-        position: relative;
-
-        .loading {
-          position: absolute;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 100%;
-          height: 100%;
-          opacity: .7;
-          top: 0;
-          left: 0;
-        }
-
-        > select {
-          right: 1em;
-          top: -.9em;
-          position: absolute;
-          font-size: 1.2em;
-
-          background: var(--table-td-bg-color);
-          border-radius: .5em;
-          padding: .25em;
-          border-color: transparent;
-          color: var(--text-color);
-        }
-      }
-    }
-
-    .miner-addr {
-      display: flex;
-      gap: 1em;
-      align-items: center;
-      gap: .5em;
-    }
-  `
-}
+import { useChartStyle } from '../dashboard/box'
+import boxStyle from '../dashboard/box/style'
+import style from './style'
 
 function Mining() {
   const { t } = useLang()
 
-  return <div className={style.container}>
+  return <div >
     <PageTitle title={t('Mining Stats')} />
-    <BlockTypes />
-    <HashrateChart />
-    <div className="table-miners">
-      <TopMinersAllTime />
-      <TopMinersToday />
+    <div className={style.container}>
+      <BlockTypes />
+      <HashrateChart />
+      <div className={style.twoRow.container}>
+        <TopMinersAllTime />
+        <TopMinersToday />
+      </div>
     </div>
   </div>
 }
 
 function HashrateChart() {
   const chartStyle = useChartStyle()
+  const { t } = useLang()
 
   const [period, setPeriod] = useState(14400)
 
@@ -142,16 +51,16 @@ function HashrateChart() {
   const { loading, rows } = blocksTime
   const items = Object.assign([], rows).reverse()
 
-  return <div className="hashrate-chart">
-    <div>Network Hashrate</div>
-    <div>
-      <select value={period} onChange={onChangePeriod}>
+  return <div>
+    <div className={style.title}>{t(`Network Hashrate`)}</div>
+    <div className={style.chart.container}>
+      <select className={style.chart.select} value={period} onChange={onChangePeriod}>
         <option value="900">15m</option>
         <option value="3600">1h</option>
         <option value="14400">4h</option>
         <option value="86400">1d</option>
       </select>
-      <ResponsiveContainer >
+      <ResponsiveContainer>
         <AreaChart
           data={items}
           margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
@@ -170,7 +79,7 @@ function HashrateChart() {
             content={({ active, payload }) => {
               if (active && payload && payload[0]) {
                 const { name, value, payload: item } = payload[0]
-                return <div className={boxStyle.tooltip}>
+                return <div className={boxStyle.chart.tooltip}>
                   <div>{item[`time`]}</div>
                   <div>{formatHashRate(value)}</div>
                 </div>
@@ -181,7 +90,9 @@ function HashrateChart() {
           <Area type="monotone" dataKey="avg_difficulty" isAnimationActive={false} strokeWidth={1} {...chartStyle} />
         </AreaChart>
       </ResponsiveContainer>
-      {loading && <div className="loading"><Icon name="circle-notch" className="fa-spin" /></div>}
+      {loading && <div className={style.chart.loading}>
+        <Icon name="circle-notch" className="fa-spin" />
+      </div>}
     </div>
   </div>
 }
@@ -196,30 +107,33 @@ function TopMinersAllTime(props) {
 
   const { loading, err, count, rows } = minersBlocks
 
-  return <div>
-    <div>Top miners (All time)</div>
-    <div>{count} total miners</div>
-    <Table
-      headers={[t(`Miner`), t(`Blocks`), t(`Rewards`)]}
-      list={rows} loading={loading} err={err} emptyText={t('No miners')} colSpan={3}
-      onItem={(item) => {
-        return <React.Fragment key={item.miner}>
-          <tr>
-            <td>
-              <div className="miner-addr">
-                <Hashicon size={25} value={item.miner} />
-                <a href={`${EXPLORER_LINK}/accounts/${item.miner}`} target="_blank">
-                  {reduceText(item.miner, 0, 7)}
-                </a>
-              </div>
+  return <div className={style.twoRow.content}>
+    <div className={style.title}>Top miners (All time)</div>
+    <div className={style.subtitle}>{count} total miners</div>
+    <div className={style.twoRow.overflow}>
+      <Table
+        headers={[t(`Miner`), t(`Blocks`), t(`Rewards`)]}
+        list={rows} loading={loading} err={err} emptyText={t('No miners')} colSpan={3}
+        onItem={(item) => {
+          return <React.Fragment key={item.miner}>
+            <tr>
+              <td>
+                <div className={style.minerAddr}>
+                  <Hashicon size={25} value={item.miner} />
+                  <a href={`${EXPLORER_LINK}/accounts/${item.miner}`} target="_blank">
+                    {reduceText(item.miner, 0, 7)}
+                  </a>
+                </div>
 
-            </td>
-            <td>{item.total_blocks}</td>
-            <td>{formatXelis(item.total_reward)}</td>
-          </tr>
-        </React.Fragment>
-      }}
-    />
+              </td>
+              <td>{item.total_blocks}</td>
+              <td>{formatXelis(item.total_reward)}</td>
+            </tr>
+          </React.Fragment>
+        }}
+      />
+    </div>
+
   </div>
 }
 
@@ -238,29 +152,31 @@ function TopMinersToday() {
 
   const { loading, err, count, rows } = minersBlocksTime
 
-  return <div>
-    <div>Top miners (Today)</div>
-    <div>{count} total miners</div>
-    <Table
-      headers={[t(`Miner`), t(`Blocks`), t(`Rewards`)]}
-      list={rows} loading={loading} err={err} emptyText={t('No miners')} colSpan={3}
-      onItem={(item) => {
-        return <React.Fragment key={item.miner}>
-          <tr>
-            <td>
-              <div className="miner-addr">
-                <Hashicon size={25} value={item.miner} />
-                <a href={`${EXPLORER_LINK}/accounts/${item.miner}`} target="_blank">
-                  {reduceText(item.miner, 0, 7)}
-                </a>
-              </div>
-            </td>
-            <td>{item.total_blocks}</td>
-            <td>{formatXelis(item.total_reward)}</td>
-          </tr>
-        </React.Fragment>
-      }}
-    />
+  return <div className={style.twoRow.content}>
+    <div className={style.title}>Top miners (Today)</div>
+    <div className={style.subtitle}>{count} total miners</div>
+    <div className={style.twoRow.overflow}>
+      <Table
+        headers={[t(`Miner`), t(`Blocks`), t(`Rewards`)]}
+        list={rows} loading={loading} err={err} emptyText={t('No miners')} colSpan={3}
+        onItem={(item) => {
+          return <React.Fragment key={item.miner}>
+            <tr>
+              <td>
+                <div className={style.minerAddr}>
+                  <Hashicon size={25} value={item.miner} />
+                  <a href={`${EXPLORER_LINK}/accounts/${item.miner}`} target="_blank">
+                    {reduceText(item.miner, 0, 7)}
+                  </a>
+                </div>
+              </td>
+              <td>{item.total_blocks}</td>
+              <td>{formatXelis(item.total_reward)}</td>
+            </tr>
+          </React.Fragment>
+        }}
+      />
+    </div>
   </div>
 }
 
@@ -274,8 +190,8 @@ function BlockTypes() {
 
   const { loading, err, rows } = blocksTime
 
-  return <div className="blocks">
-    <div>{t(`Blocks (Daily)`)}</div>
+  return <div>
+    <div className={style.title}>{t(`Blocks (Daily)`)}</div>
     <Table
       headers={[t(`Time`), t(`Sync`), t(`Side`), t(`Orphaned`), t(`Txs`), t(`Tx Fees`)]}
       list={rows} loading={loading} err={err} emptyText={t('No miners')} colSpan={6}

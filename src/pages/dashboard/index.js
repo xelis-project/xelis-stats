@@ -1,6 +1,4 @@
-import { css } from 'goober'
 import Icon from 'g45-react/components/fontawesome_icon'
-import theme from 'xelis-explorer/src/style/theme'
 import { useLang } from 'g45-react/hooks/useLang'
 import prettyMs from 'pretty-ms'
 import { formatHashRate, formatSize, formatXelis, reduceText } from 'xelis-explorer/src/utils'
@@ -15,118 +13,9 @@ dayjs.extend(utc)
 
 import Box, { BoxAreaChart, BoxTable, useChartStyle } from './box'
 import { useFetchView } from '../../hooks/useFetchView'
-import { style as boxStyle } from './box'
+import boxStyle from './box/style'
 import supplyEmissionData from '../../data/supply_emission.json'
-
-const style = {
-  title: css`
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    margin: 2em 0 3em 0;
-    gap: 1em;
-
-    > :nth-child(1) {
-      width: 3em;
-      height: 3em;
-      display: block;
-      background-size: contain;
-      background-repeat: no-repeat;
-      background-image: ${theme.apply({ xelis: `url('public/img/white_background_black_logo.svg')`, light: `url('public/img/black_background_white_logo.svg')`, dark: `url('public/img/white_background_black_logo.svg')`, })};
-    }
-
-    > :nth-child(2) {
-      font-size: 2.5em;
-      font-weight: bold;
-    }
-
-    > :nth-child(3) {
-      max-width: 27em;
-      text-align: center;
-      opacity: .9;
-    }
-  `,
-  autoUpdate: css`
-    background: rgb(0 0 0 / 30%);
-    padding: 0.5em 1em;
-    border-radius: 0.5em;
-    opacity: .8;
-    margin: 0 auto;
-    width: 12em;
-    text-align: center;
-    color: var(--text-color);
-  `,
-  topStats: css`
-    padding: 1em;
-    margin-bottom: 2em;
-    background-color: ${theme.apply({ xelis: ` rgb(0 0 0 / 50%)`, dark: ` rgb(0 0 0 / 50%)`, light: ` rgb(255 255 255 / 50%)` })};
-    border-radius: 0.5em;
-    color: var(--text-color);
-    display: flex;
-    gap: 2.5em;
-    overflow: auto;
-    justify-content: space-between;
-
-    > div {
-      display: flex;
-      gap: .3em;
-      flex-direction: column;
-
-      > :nth-child(1) {
-        font-size: .9em;
-        opacity: .6;
-      }
-
-      > :nth-child(2) {
-        font-size: 1.5em;
-        white-space: nowrap;
-      }
-    }
-
-    .loading {
-      opacity: .6;
-    }
-  `,
-  container: css`
-    display: flex;
-    gap: 2em;
-    flex-direction: column;
-
-    > div {
-      display: flex;
-      gap: 1.5em;
-      flex-direction: column;
-
-      > :nth-child(1) {
-        font-weight: bold;
-        font-size: 1.8em;
-        display: flex;
-        gap: .5em;
-        align-items: center;
-      }
-
-      > :nth-child(2) {
-        display: flex;
-        gap: 1em;
-        overflow-x: scroll;
-        padding-bottom: 1em;
-      }
-
-      > :nth-child(3) {
-        display: flex;
-        flex-wrap: wrap;
-        gap: .5em;
-
-        > a {
-          white-space: nowrap;
-          padding: .5em;
-          background: rgb(0 0 0 / 40%);
-          text-decoration: none;
-        }
-      }
-    }
-  `
-}
+import style from './style'
 
 function randomData({ min = 5, max = 50 } = {}) {
   const data = []
@@ -637,8 +526,17 @@ function AutoUpdate(props) {
     return () => clearInterval(intervalId)
   }, [onUpdate, duration])
 
-  return <div className={style.autoUpdate}>
+  return <div className={style.header.autoUpdate}>
     {t(`Auto Update in {}`, [prettyMs(time)])}
+  </div>
+}
+
+function TopStatsItem(props) {
+  const { title, value } = props
+
+  return <div className={style.topStats.item}>
+    <div className={style.topStats.item.title}>{title}</div>
+    <div className={style.topStats.item.value}>{value}</div>
   </div>
 }
 
@@ -650,40 +548,19 @@ function TopStats(props) {
   const data = stats.rows[0] || {}
 
   if (stats.firstLoading) {
-    return <div className={style.topStats}>
-      <div className="loading">loading<DotLoading /></div>
+    return <div className={style.topStats.container}>
+      <div className={style.topStats.loading}>loading<DotLoading /></div>
     </div>
   }
 
-  return <div className={style.topStats}>
-    <div>
-      <div>{t(`Topoheight`)}</div>
-      <div>{data.topoheight ? data.topoheight.toLocaleString() : `--`}</div>
-    </div>
-    <div>
-      <div>{t(`Circulating Supply`)}</div>
-      <div>{formatXelis(data.circulating_supply, { withSuffix: false }) || `--`}</div>
-    </div>
-    <div>
-      <div>{t(`Accounts`)}</div>
-      <div>{data.account_count ? data.account_count.toLocaleString() : `--`}</div>
-    </div>
-    <div>
-      <div>{t(`Txs`)}</div>
-      <div>{data.tx_count ? data.tx_count.toLocaleString() : `--`}</div>
-    </div>
-    <div>
-      <div>{t(`Contracts`)}</div>
-      <div>{data.contract_count ? data.contract_count.toLocaleString() : `--`}</div>
-    </div>
-    <div>
-      <div>{t(`Blockchain Size`)}</div>
-      <div>{formatSize(data.blockchain_size) || `--`}</div>
-    </div>
-    <div>
-      <div>{t(`Total Fees`)}</div>
-      <div>{formatXelis(data.sum_fees, { withSuffix: false }) || `--`}</div>
-    </div>
+  return <div className={style.topStats.container}>
+    <TopStatsItem title={t(`Topoheight`)} value={data.topoheight ? data.topoheight.toLocaleString() : `--`} />
+    <TopStatsItem title={t(`Circulating Supply`)} value={formatXelis(data.circulating_supply, { withSuffix: false }) || `--`} />
+    <TopStatsItem title={t(`Accounts`)} value={data.account_count ? data.account_count.toLocaleString() : `--`} />
+    <TopStatsItem title={t(`Txs`)} value={data.tx_count ? data.tx_count.toLocaleString() : `--`} />
+    <TopStatsItem title={t(`Contracts`)} value={data.contract_count ? data.contract_count.toLocaleString() : `--`} />
+    <TopStatsItem title={t(`Blockchain Size`)} value={formatSize(data.blockchain_size) || `--`} />
+    <TopStatsItem title={t(`Total Fees`)} value={formatXelis(data.sum_fees, { withSuffix: false }) || `--`} />
   </div>
 }
 
@@ -792,20 +669,20 @@ function Home() {
 
   return <div>
     <Helmet>
-      <title>Dashboard</title>
+      <title>{t(`Dashboard`)}</title>
       <meta name="description" content={description} />
     </Helmet>
-    <div className={style.title}>
-      <div /> {/* This is the logo */}
-      <h1>XELIS Statistics</h1>
-      <div>{description}</div>
+    <div className={style.header.container}>
+      <div className={style.header.logo}></div>
+      <h1 className={style.header.title}>XELIS Statistics</h1>
+      <div className={style.header.description}>{description}</div>
       <AutoUpdate onUpdate={update} />
     </div >
     <TopStats stats={stats} />
-    <div className={style.container}>
-      <div>
-        <div><Icon name="coins" />{t(`Market (USDT)`)}</div>
-        <div>
+    <div className={style.sections.container}>
+      <div className={style.sections.item}>
+        <div className={style.sections.title}><Icon name="coins" />{t(`Market (USDT)`)}</div>
+        <div className={style.sections.boxes}>
           <BoxTimeChart data={marketTickersDaily} areaType="monotone" name={t(`Price (1d)`)} yDataKey="price" yFormat={(v) => formatNumber(v)}
             link={`/views/market_tickers?chart_key=price&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
           <BoxTimeChart data={marketTickersDaily} areaType="step" name={t(`Volume (1d)`)} yDataKey="volume" yFormat={(v) => formatNumber(v)}
@@ -814,9 +691,9 @@ function Home() {
           <BoxExchanges marketHistoryExchangeDaily={marketTickersExchangeDaily} />
         </div>
       </div>
-      <div>
-        <div><Icon name="cube" />{t(`Blockchain`)}</div>
-        <div>
+      <div className={style.sections.item}>
+        <div className={style.sections.title}><Icon name="cube" />{t(`Blockchain`)}</div>
+        <div className={style.sections.boxes}>
           <BoxBlocks recentBlocks={recentBlocks} />
           <BoxSupplyEmission />
           <BoxTimeChart data={blocksDaily} areaType="monostone" name={t(`Circulating Supply`)} yDataKey="cumulative_block_reward" yFormat={(v) => formatXelis(v, { withSuffix: false })}
@@ -830,9 +707,9 @@ function Home() {
           <BoxDevFee stats={stats} />
         </div>
       </div>
-      <div>
-        <div><Icon name="receipt" />{t(`Transactions`)}</div>
-        <div>
+      <div className={style.sections.item}>
+        <div className={style.sections.title}><Icon name="receipt" />{t(`Transactions`)}</div>
+        <div className={style.sections.boxes}>
           <BoxTimeChart data={blocksDaily} areaType="step" name={t(`Total`)} yDataKey="cumulative_tx_count" yFormat={(v) => v.toLocaleString()}
             link={`/views/blocks_by_time?chart_key=cumulative_tx_count&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
           <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Txs (1d)`)} yDataKey="sum_tx_count" yFormat={(v) => v.toLocaleString()} bottomInfo={<>{tpm} TPM</>}
@@ -844,9 +721,9 @@ function Home() {
             link={`/views/blocks_by_time?chart_key=sum_block_fees&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
         </div>
       </div>
-      <div>
-        <div><Icon name="microchip" />{t(`Mining`)}</div>
-        <div>
+      <div className={style.sections.item}>
+        <div className={style.sections.title}><Icon name="microchip" />{t(`Mining`)}</div>
+        <div className={style.sections.boxes}>
           <BoxTimeChart data={minersCountDaily} areaType="step" name={t(`Miners (1d)`)} yName={t(`Miners`)} yDataKey="miner_count" yFormat={(v) => `${v.toLocaleString()}`}
             info={t(`The network can have way more active miners. These are only the miners who were succesful in mining at least one block.`)} yDomain={[0, 'dataMax']}
             link={`/views/get_miners_count_time?chart_key=miner_count&chart_view=area&period=${dayInSeconds}&view=chart&order=time::desc`} />
@@ -858,9 +735,9 @@ function Home() {
           <BoxTopMiners minersDaily={minersDaily} stats={stats} />
         </div>
       </div>
-      <div>
-        <div><Icon name="users" />{t(`Accounts`)}</div>
-        <div>
+      <div className={style.sections.item}>
+        <div className={style.sections.title}><Icon name="users" />{t(`Accounts`)}</div>
+        <div className={style.sections.boxes}>
           <BoxTimeChart data={accountsCountDaily} areaType="monotstep" name={t(`Accounts`)} yName={t(`Accounts`)} yDataKey="cumulative_account_count" yFormat={(v) => `${v.toLocaleString()}`}
             link={`/views/get_accounts_count_time?chart_key=cumulative_account_count&chart_view=area&period=${dayInSeconds}&view=chart&order=time::desc`} />
           <BoxTopAccounts accountsWeekly={accountsWeekly} stats={stats} />
@@ -870,9 +747,9 @@ function Home() {
             yFormat={(v) => `${v.toLocaleString()}`} info={t(`Number of accounts that sent at least one transaction.`)} yDomain={[0, 'dataMax']} />
         </div>
       </div>
-      <div>
-        <div><Icon name="file-code" />{t(`Contracts`)}</div>
-        <div>
+      <div className={style.sections.item}>
+        <div className={style.sections.title}><Icon name="file-code" />{t(`Contracts`)}</div>
+        <div className={style.sections.boxes}>
           <Box name="Total" value="--" noData>
             <BoxAreaChart />
           </Box>
@@ -888,7 +765,7 @@ function Home() {
         </div>
       </div>
     </div>
-  </div >
+  </div>
 }
 
 export default Home
