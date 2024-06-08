@@ -6,14 +6,14 @@ import Footer from 'xelis-explorer/src/layout/footer'
 import Header from 'xelis-explorer/src/layout/header'
 import Background from 'xelis-explorer/src/layout/background'
 import { css } from 'goober'
+import layoutStyle from 'xelis-explorer/src/style/layout'
 
 import packageJSON from '../../package.json'
-import { style as layoutStyle } from 'xelis-explorer/src/style/layout'
 
 const style = {
   header: css`
     padding: 2em 0 1em 0;
-  `
+  `,
 }
 
 function Layout() {
@@ -22,6 +22,14 @@ function Layout() {
   const firstLoad = firstLocation.key === location.key
 
   const { t } = useLang()
+
+  const links = useMemo(() => {
+    return [
+      { path: `/`, title: t(`Dashboard`), icon: <Icon name="dashboard" /> },
+      { path: `/views`, title: t(`Database`), icon: <Icon name="database" /> },
+      { path: `/mining`, title: t(`Mining Stats`), icon: <Icon name="chart-simple" /> },
+    ]
+  }, [t])
 
   const footerProps = useMemo(() => {
     return {
@@ -35,26 +43,14 @@ function Layout() {
         { href: `https://github.com/xelis-project`, title: `GitHub`, icon: <Icon name="github" type="brands" /> },
         { href: `https://discord.gg/z543umPUdj`, title: `Discord`, icon: <Icon name="discord" type="brands" /> },
       ],
-      pages: [
-        { link: `/`, title: t('Dashboard') },
-        { link: `/views`, title: t(`Database`) },
-        { link: `/mining`, title: t(`Mining Stats`) },
-      ]
+      pages: links
     }
-  }, [t])
-
-  const links = useMemo(() => {
-    return [
-      { path: `/`, title: t(`Dashboard`), icon: <Icon name="dashboard" /> },
-      { path: `/views`, title: t(`Database`), icon: <Icon name="database" /> },
-      { path: `/mining`, title: t(`Mining Stats`), icon: <Icon name="chart-simple" /> },
-    ]
   }, [t])
 
   return <div className={layoutStyle.container}>
     <Background />
-    <div className={layoutStyle.layoutFlex}>
-      <div className="layout-max-width">
+    <div className={layoutStyle.pageFlex}>
+      <div className={layoutStyle.pageMaxWidth}>
         <Header title={t(`Statistics`)} links={links} className={style.header} />
         <div data-opacity={firstLoad} key={location.key}> {/* Keep location key to re-trigger page transition animation */}
           <Outlet />

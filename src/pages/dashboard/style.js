@@ -59,6 +59,8 @@ export default {
       title: css`
         font-size: .9em;
         opacity: .6;
+        white-space: nowrap;
+        margin-bottom: .1em;
       `,
       value: css`
         font-size: 1.5em;

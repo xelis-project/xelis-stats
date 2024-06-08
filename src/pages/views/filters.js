@@ -4,6 +4,8 @@ import { useLang } from 'g45-react/hooks/useLang'
 import { fetchView } from '../../hooks/useFetchView'
 import to from 'await-to-js'
 
+import style from './style'
+
 export function FilterDropdown(props) {
   const { name, query, setQuery, list, queryKey, refetch } = props
   const { t } = useLang()
@@ -122,7 +124,7 @@ export function FilterTimePeriod(props) {
   return <div>
     <div>{t(`Period (Time)`)}</div>
     <Dropdown items={items} value={dropdownPeriod} onChange={onDropdownChange} />
-    <div>
+    <div className={style.customInput}>
       <span>{t(`Seconds:`)}</span>
       <input type="text" value={inputPeriod} onChange={(e) => setInputPeriod(e.target.value)} />
       <button onClick={applyCustom}>{t(`Apply`)} </button>
@@ -176,7 +178,7 @@ export function FilterUnitPeriod(props) {
   return <div>
     <div>{t(`Period (Unit)`)}</div>
     <Dropdown items={items} value={dropdownPeriod} onChange={onDropdownChange} />
-    <div>
+    <div className={style.customInput}>
       <span>{t(`Amount:`)}</span>
       <input type="text" value={inputPeriod} onChange={(e) => setInputPeriod(e.target.value)} />
       <button onClick={applyCustom}>{t(`Apply`)} </button>

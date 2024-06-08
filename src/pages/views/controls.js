@@ -1,8 +1,6 @@
 import { useCallback, useState, useMemo, cloneElement } from 'react'
 import Dropdown from 'xelis-explorer/src/components/dropdown'
 import { saveAs } from 'file-saver'
-import OffCanvas from 'xelis-explorer/src/components/offCanvas'
-import Icon from 'g45-react/components/fontawesome_icon'
 import { useLang } from 'g45-react/hooks/useLang'
 import Button from 'xelis-explorer/src/components/button'
 import { useNavigate } from 'react-router-dom'
@@ -11,11 +9,10 @@ import { useNotification } from 'xelis-explorer/src/components/notifications'
 
 import style from './style'
 
-function useControls(props) {
+function Controls(props) {
   const { sources, source, dataSource, query, setQuery, list, chartRef } = props
   const { t } = useLang()
 
-  const [opened, setOpened] = useState(false)
   const navigate = useNavigate()
   const { pushNotification } = useNotification()
 
@@ -88,15 +85,8 @@ function useControls(props) {
     })
   }, [])
 
-  const render = <OffCanvas maxWidth={500} position="right"
-    opened={opened} className={style.controls.container}>
-    <div className={style.controls.header.container}>
-      <div className={style.controls.header.title}>{t(`Controls`)}</div>
-      <button className={style.controls.header.closeButton} onClick={() => setOpened(false)}>
-        <Icon name="close" />
-      </button>
-    </div>
-    <div className={style.controls.actionButtons}>
+  return <div className={style.controls}>
+    <div className={style.actionButtons}>
       <Button icon="link" onClick={copyShareLink}>
         {t(`Copy Link`)}
       </Button>
@@ -107,7 +97,7 @@ function useControls(props) {
         {t(`Export`)}
       </Button>
     </div>
-    <div className={style.controls.rows}>
+    <div className={style.dropdowns}>
       <div>
         <div>Data Source</div>
         <Dropdown items={sourceList} value={dataSource} onChange={(item) => {
@@ -139,25 +129,9 @@ function useControls(props) {
           <MinMaxCheckbox query={query} setQuery={setQuery} />
         </div>
       </>}
-      <TableColumns source={source} query={query} setQuery={setQuery} />
     </div>
-  </OffCanvas>
-
-  const tab = <div>
-    <div className={style.pageHeader.container}>
-      <div className={style.pageHeader.title}>{source.title}</div>
-      <Button iconLocation="right"
-        icon="window-maximize"
-        className={style.pageHeader.toggleButton}
-        iconProps={{ type: 'regular', className: 'fa-rotate-90' }}
-        onClick={() => setOpened(!opened)}>
-        {t(`Controls`)}
-      </Button>
-    </div>
-    <div className={style.pageHeader.params}>Params: {JSON.stringify(query)}</div>
+    <TableColumns source={source} query={query} setQuery={setQuery} />
   </div>
-
-  return { tab, render, opened, setOpened }
 }
 
 function MinMaxCheckbox(props) {
@@ -249,11 +223,13 @@ function TableColumns(props) {
     return obj
   }, [query.where])
 
-  return <div>
-    <div>{t(`Columns ({})`, [tableColumns.length])}</div>
-    <div className={style.columns.showAll}>
-      <input type="checkbox" checked={query.columns == null} onChange={showAllColumns} />
-      <div>{t(`Show All`)}</div>
+  return <div className={style.columns.container}>
+    <div className={style.columns.header}>
+      <div>{t(`Columns ({})`, [tableColumns.length])}</div>
+      <div>
+        <input type="checkbox" checked={query.columns == null} onChange={showAllColumns} />
+        <div>{t(`Show All`)}</div>
+      </div>
     </div>
     <div className={style.columns.items}>
       {tableColumns.map((column) => {
@@ -380,16 +356,17 @@ function RowColumnControl(props) {
 
   return <div className={style.columns.item}>
     <div className={style.columns.row}>
-      <div>{t(`Key:`)}</div>
-      <div>{column.title} [{column.key}]</div>
+      <div>{column.title}</div>
     </div>
     <div className={style.columns.row}>
-      <div>{t(`Visible:`)}</div>
-      <input type="checkbox" checked={visible} onChange={onVisibleChange} />
-    </div>
-    <div className={style.columns.row}>
-      <div>{t(`Sort:`)}</div>
-      <SortSelect value={sort} onChange={(e) => setSort(e.target.value)} />
+      <div>
+        <div>{t(`Visible:`)}</div>
+        <input type="checkbox" checked={visible} onChange={onVisibleChange} />
+      </div>
+      <div>
+        <div>{t(`Sort:`)}</div>
+        <SortSelect value={sort} onChange={(e) => setSort(e.target.value)} />
+      </div>
     </div>
     <div className={style.columns.row}>
       <div>{t(`Filter:`)}</div>
@@ -403,4 +380,4 @@ function RowColumnControl(props) {
   </div>
 }
 
-export default useControls
+export default Controls

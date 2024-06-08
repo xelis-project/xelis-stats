@@ -22,7 +22,7 @@ export default {
       text-decoration: none;
       color: var(--text-color);
       border: thin solid ${theme.apply({ xelis: `#39746d`, dark: `#414141`, light: `#b9b9b9` })};
-      ${scaleOnHover()}
+      ${scaleOnHover()};
     `,
     title: css`
       font-size: 1.2em;
@@ -36,27 +36,14 @@ export default {
   },
   chart: {
     container: css`
-      height: 15rem;
-      margin-bottom: 1em;
-      background: #00000075;
       align-items: center;
       display: flex;
       justify-content: center;
-      border-radius: 0.5em;
       position: relative;
 
       .tv-lightweight-charts {
-        border-radius: .5em;
         position: relative;
         z-index: 0;
-      }
-
-      ${theme.query.minMobile} {
-        height: 30em;
-      }
-
-      ${theme.query.minDesktop} {
-        height: 35em;
       }
     `,
     trademark: css`
@@ -64,6 +51,8 @@ export default {
       z-index: 1;
       padding: 1em;
       font-size: .7em;
+      top: 0;
+      left: 0;
     `,
     tradingView: css`
       border-radius: .5em;
@@ -82,147 +71,137 @@ export default {
       top: 0;
     `
   },
-  controls: {
-    container: css`
-      padding: 1em;
+  controls: css`
+    overflow-y: auto;
+    background: var(--stats-bg-color);
+    max-height: 750px;
+    border-radius: .5em;
+    display: flex;
+    flex-direction: column;
+  `,
+  actionButtons: css`
+    display: flex;
+    gap: .5em;
+    align-items: center;
+    padding: 1em;
+    
+    button {
+      padding: .5em 1em;
+      border-radius: .5em;
+      border: none;
+      background: var(--text-color);
+      color: var(--bg-color);
       display: flex;
-      flex-direction: column;
-      gap: 1em;
-      overflow-y: auto;
-    `,
-    header: {
-      container: css`
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-      `,
-      title: css`
-        font-weight: bold;
-        font-size: 1.5em;
-      `,
-      closeButton: css`
-        border: none;
-        background-color: var(--text-color);
-        color: var(--bg-color);
-        border-radius: 50%;
-        height: 40px;
-        width: 40px;
-        font-size: 1em;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: .25s transform;
+      align-items: center;
+      cursor: pointer;
+      white-space: nowrap;
+      gap: .5em;
+      ${scaleOnHover()}
+    }
+  `,
+  dropdowns: css`
+    display: flex;
+    gap: 1em;
+    flex-direction: column;
+    padding: 1em;
+    padding-top: 0;
 
-        &:hover {
-          transform: scale(0.9);
-        }
-
-        ${theme.query.minLarge} {
-          display: none;
-        }
-      `
-    },
-    actionButtons: css`
+    > div {
       display: flex;
       gap: .5em;
-      align-items: center;
-      
-      button {
-        padding: .5em 1em;
-        border-radius: .5em;
-        border: none;
-        background: var(--text-color);
-        color: var(--bg-color);
-        display: flex;
-        align-items: center;
-        cursor: pointer;
-        white-space: nowrap;
-        gap: .5em;
-        ${scaleOnHover()}
-      }
-    `,
-    rows: css`
-      display: flex;
-      gap: 1em;
       flex-direction: column;
-
-      > div {
-        display: flex;
-        gap: .5em;
-        flex-direction: column;
-      }
-    `,
-
-  },
-  pageHeader: {
+    }
+  `,
+  columns: {
     container: css`
-      padding: 1em;
       border-radius: .5em;
+      background-color: var(--table-td-bg-color);
+      flex: 1;
+    `,
+    header: css`
+      padding: 1em;
       display: flex;
-      background-color: var(--bg-color);
+      flex-direction: row;
+      user-select: none;
       align-items: center;
       justify-content: space-between;
-      gap: .5em;
-      margin: 1em 0 .5em 0;
-    `,
-    title: css`
-      font-size: 1.4em;
-      font-weight: bold;
-    `,
-    toggleButton: css`
-      font-size: 1.2em;
-      background: none;
-      border: none;
-      color: var(--text-color);
-      cursor: pointer;
-      display: flex;
-      gap: .5em;
-      align-items: center;
-      border: thin solid var(--text-color);
-      padding: .4em .6em;
-      border-radius: .5em;
 
-      ${theme.query.minLarge} {
-        display: none;
+      > :nth-child(2) {
+        display: flex;
+        flex-direction: row;
+        gap: .5em;
+        align-items: center;
       }
-    `,
-    params: css`
-      margin-bottom: .5em;
-      font-size: .8em;
-      word-break: break-all;
-      background: black;
-      padding: 1em;
-      border-radius: 0.5em;
-      line-height: 1.1em;
-    `
-  },
-  columns: {
-    showAll: css`
-      display: flex;
-      gap: .25em;
-      align-items: center;
-      user-select: none;
-    `,
-    items: css`
-      display: flex;
-      gap: .5em;
-      flex-direction: column;
     `,
     item: css`
       display: flex;
       gap: 0.5em;
-      padding: 1em;
-      border-radius: 0.5em;
-      border: thin solid var(--text-color);
-      color: var(--text-color);
-      background: var(--table-td-bg-color);
       flex-direction: column;
+      padding: 1em;
+
+      &:nth-child(odd) {
+        background: ${theme.apply({ xelis: `#161616`, dark: `#161616`, light: `#e9e9e9` })};
+      }
+
+      &:nth-child(even) {
+        background: var(--table-td-bg-color);
+      }
     `,
     row: css`
       display: flex;
       gap: .5em;
       align-items: center;
+
+      > div {
+        display: flex;
+        flex-direction: row;
+        gap: .5em;
+      }
     `
   },
+  customInput: css`
+    padding: .5em;
+    border: thin solid white;
+    border-radius: .5em;
+    gap: .5em;
+    display: flex;
+    align-items: center;
+  `,
+  page: css`
+    display: flex;
+    gap: 1em;
+    flex-direction: column;
+
+    ${theme.query.minDesktop} {
+      display: flex;
+      gap: 1em;
+      flex-direction: row;
+    }
+    
+    > :nth-child(1) {
+      max-height: 750px;
+      flex: 1;
+      overflow: auto;
+      background: var(--stats-bg-color);
+      border-radius: .5em;
+
+      > div {
+        overflow: visible;
+      }
+    }
+  `,
+  header: {
+    title: css`
+      font-size: 1.2em;
+      padding: 1em;
+      background: var(--stats-bg-color);
+      border-radius: .5em;
+      margin: 1em 0;
+    `,
+    subtitle: css`
+      margin-top: .5em;
+      font-size: .8em;
+      opacity: .5;
+    `
+  }
 }

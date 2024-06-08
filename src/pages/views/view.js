@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState, useMemo } from 'react'
-import { css, glob } from 'goober'
 import { ColorType, LineStyle, createChart } from 'lightweight-charts'
 import { useRef } from 'react'
-import theme from 'xelis-explorer/src/style/theme'
 import { useLang } from 'g45-react/hooks/useLang'
 import TableFlex from 'xelis-explorer/src/components/tableFlex'
 import { Helmet } from 'react-helmet-async'
@@ -12,28 +10,9 @@ import Icon from 'g45-react/components/fontawesome_icon'
 import useTheme from 'xelis-explorer/src/hooks/useTheme'
 import to from 'await-to-js'
 
-import useControls from './controls'
+import Controls from './controls'
 import useSources from './sources'
 import style from './style'
-
-// This makes sure controls panel is always open if screen is larger
-glob`
-  body[data-layout="stats"] {
-    ${theme.query.minLarge} {
-      .layout-max-width {
-        margin: 0 490px 0 0 !important;
-        max-width: inherit !important;
-        width: inherit !important;
-      }
-  
-      [data-open="false"] {
-        translate: 0 !important;
-        opacity: 1 !important;
-        transition: none !important;
-      }
-    }
-  }
-`
 
 function ViewStats(props) {
   const { dataSource } = useParams()
@@ -56,6 +35,7 @@ function ViewStats(props) {
     if (typeof source.getData !== `function`) return
     setList([])
     setLoading(true)
+    setErr(null)
 
     const resErr = (err) => {
       setLoading(false)
@@ -68,7 +48,6 @@ function ViewStats(props) {
     //setCount(count)
     setList(data.rows)
     setLoading(false)
-    setErr(null)
   }, [source.getData, query.refetch])
 
   useEffect(() => {
@@ -86,7 +65,7 @@ function ViewStats(props) {
     return (source.columns || []).find((column) => column.key === query.chart_key)
   }, [source, query])
 
-  const controls = useControls({ sources, source, dataSource, query, setQuery, list, chartRef })
+  //const controls = useControls({ sources, source, dataSource, query, setQuery, list, chartRef })
 
   // load trading view chart
   useEffect(() => {
@@ -294,29 +273,41 @@ function ViewStats(props) {
     })
   }, [source, loading, query])
 
+  const subtitle = useMemo(() => {
+    return Object.keys(query).map((key) => {
+      if (key === `refetch`) return null
+      return `${key}:${query[key]}`
+    }).filter((x) => x !== null).join(` / `)
+  }, [query])
+
   return <div>
-    <Helmet bodyAttributes={{ [`data-layout`]: `stats` }}>
+    <Helmet>
       <title>{source.title}</title>
     </Helmet>
-    {controls.tab}
-    <div className={style.chart.container} ref={chartDivRef} style={{ display: query.view === `chart` ? `block` : `none` }}>
-      <div className={style.chart.trademark}>
-        <a href="https://tradingview.github.io/lightweight-charts/">Powered by Lightweight Charts™</a>
+    <div>
+      <h1 className={style.header.title}>
+        {source.title}
+        <div className={style.header.subtitle}>{subtitle}</div>
+      </h1>
+      <div className={style.page}>
+        {query.view === `chart` && <div className={style.chart.container} ref={chartDivRef}>
+          <div className={style.chart.trademark}>
+            <a href="https://tradingview.github.io/lightweight-charts/">Powered by Lightweight Charts™</a>
+          </div>
+          {loading && <div className={style.chart.loading}>
+            <Icon name="circle-notch" className="fa-spin" />
+          </div>}
+          {(!loading && list.length === 0) && <div className={style.chart.loading}>
+            NO DATA
+          </div>}
+        </div>}
+        {query.view === `table` && <TableFlex data={list} rowKey={(_, i) => i} err={err} loading={loading} emptyText={t('No data')}
+          headers={tableHeaders} keepTableDisplay mobileFormat={false}
+        />}
+        <Controls sources={sources} source={source} dataSource={dataSource} query={query} setQuery={setQuery} list={list} chartRef={chartRef} />
       </div>
-      {loading && <div className={style.chart.loading}>
-        <Icon name="circle-notch" className="fa-spin" />
-      </div>}
-      {(!loading && list.length === 0) && <div className={style.chart.loading}>
-        NO DATA
-      </div>}
     </div>
-    <div style={{ display: query.view === `table` ? `block` : `none` }}>
-      <TableFlex data={list} rowKey={(_, i) => i} err={err} loading={loading} emptyText={t('No data')}
-        headers={tableHeaders} keepTableDisplay mobileFormat={false}
-      />
-    </div>
-    {controls.render}
-  </div >
+  </div>
 }
 
 export default ViewStats
