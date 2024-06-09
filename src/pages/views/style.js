@@ -72,12 +72,15 @@ export default {
     `
   },
   controls: css`
-    overflow-y: auto;
     background: var(--stats-bg-color);
-    max-height: 750px;
     border-radius: .5em;
     display: flex;
     flex-direction: column;
+    
+    ${theme.query.minDesktop} {
+      overflow-y: auto;
+      max-height: 750px;
+    }
   `,
   actionButtons: css`
     display: flex;
@@ -166,6 +169,7 @@ export default {
     gap: .5em;
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
   `,
   page: css`
     display: flex;
@@ -179,11 +183,17 @@ export default {
     }
     
     > :nth-child(1) {
-      max-height: 750px;
+      max-height: 400px;
+      min-height: 400px;
       flex: 1;
       overflow: auto;
       background: var(--stats-bg-color);
       border-radius: .5em;
+
+      ${theme.query.minDesktop} {
+        max-height: 750px;
+        min-height: 750px;
+      }
 
       > div {
         overflow: visible;
