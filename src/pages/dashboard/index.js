@@ -470,7 +470,7 @@ function BoxMinersDistribution(props) {
           content={({ active, payload }) => {
             if (active && payload[0]) {
               const { name, value } = payload[0]
-              return <div className={boxStyle.tooltip}>
+              return <div className={boxStyle.chart.tooltip}>
                 <div>{reduceText(name)}</div>
                 <div>{t(`Blocks : {}`, [value.toLocaleString()])}</div>
               </div>
