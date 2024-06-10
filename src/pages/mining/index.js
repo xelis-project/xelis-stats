@@ -1,14 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import Table from 'xelis-explorer/src/components/table'
 import { useLang } from 'g45-react/hooks/useLang'
-import { reduceText, formatXelis, formatHashRate } from 'xelis-explorer/src/utils'
+import { formatXelis, formatHashRate } from 'xelis-explorer/src/utils'
 import PageTitle from 'xelis-explorer/src/layout/page_title'
 import Hashicon from 'xelis-explorer/src/components/hashicon'
 import dayjs from 'dayjs'
-import { AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Area } from 'recharts'
+import { AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Area, LineChart, Line } from 'recharts'
 import Icon from 'g45-react/components/fontawesome_icon'
+import { formatMiner } from 'xelis-explorer/src/utils/pools'
 
-import { useFetchView } from '../../hooks/useFetchView'
+import { fetchView, useFetchView } from '../../hooks/useFetchView'
 import { useChartStyle } from '../dashboard/box'
 import boxStyle from '../dashboard/box/style'
 import style from './style'
@@ -21,6 +22,7 @@ function Mining() {
     <div className={style.container}>
       <BlockTypes />
       <HashrateChart />
+      <TopMinersComparison />
       <div className={style.twoRow.container}>
         <TopMinersAllTime />
         <TopMinersToday />
@@ -38,6 +40,7 @@ function HashrateChart() {
   const blocksTime = useFetchView({
     view: `get_blocks_time(*)`,
     params: { count: true, param: [period], order: [`time::desc`] },
+    fetchOnLoad: false
   })
 
   const onChangePeriod = useCallback((e) => {
@@ -97,6 +100,124 @@ function HashrateChart() {
   </div>
 }
 
+function TopMinersComparison() {
+  const chartStyle = useChartStyle()
+  const { t } = useLang()
+
+  const period = 86400 * 7 // week
+  const limit = 10
+  const yesterday = useMemo(() => dayjs().add(-1).format("YYYY-MM-DD"), [])
+
+  // const [miners, setMiners] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [items, setItems] = useState({})
+
+  const colors = useMemo(() => [`red`, `blue`, `yellow`, `green`, `cyan`, `orange`])
+
+  const load = useCallback(async () => {
+    const views = []
+    setLoading(true)
+
+    function setErr(err) {
+      setLoading(false)
+      console.log(err)
+    }
+
+    const miners = await fetchView(`get_miners_blocks_time(*)`, {
+      param: [86400], limit: 6, count: true, order: [`total_blocks::desc`],
+      where: [`time::eq::${yesterday}`]
+    }).catch((err) => setErr(err))
+
+    miners.rows.forEach((row) => {
+      const { miner } = row
+      views.push(fetchView(`get_miners_blocks_time(*)`, {
+        param: [period], limit: limit, count: true, order: [`time::desc`],
+        where: [`miner::eq::${miner}`]
+      }))
+    })
+
+    const results = await Promise.all(views).catch((err) => setErr(err))
+    const data = {}
+
+    function parse(rows, key) {
+      rows.forEach((row) => {
+        const { time, total_blocks, miner } = row
+        if (data[time]) {
+          data[time] = { ...data[time], [`${key}_miner`]: miner, [`${key}_blocks`]: total_blocks }
+        } else {
+          data[time] = { [`${key}_miner`]: miner, [`${key}_blocks`]: total_blocks }
+        }
+      })
+    }
+
+    results.forEach((result, i) => {
+      parse(result.rows, `m${i}`)
+    })
+
+    const items = Object.keys(data).map((key) => {
+      return { time: key, ...data[key] }
+    }).sort((a, b) => new Date(a.time) - new Date(b.time))
+
+    setItems(items)
+    setLoading(false)
+  }, [])
+
+  useEffect(() => {
+    load()
+  }, [])
+
+  return <div>
+    <div className={style.title}>{t(`Top Miners (Monthly)`)}</div>
+    <div className={style.chart.container}>
+      <ResponsiveContainer>
+        <LineChart
+          data={items}
+          margin={{ top: 0, right: 0, left: 0, bottom: 0 }}
+        >
+          <XAxis dataKey="time"
+            tickFormatter={(time) => {
+              return new Date(time).toLocaleDateString()
+            }}
+          />
+          <YAxis
+            tickFormatter={(value) => {
+              return value
+            }}
+          />
+          <Tooltip isAnimationActive={false}
+            content={({ active, payload }) => {
+              if (active && payload && payload[0]) {
+                const { payload: data } = payload[0]
+                return <div className={boxStyle.chart.tooltip}>
+                  <div>{new Date(data[`time`]).toLocaleDateString()}</div>
+                  {colors.map((color, i) => {
+                    return <TooltipMiner key={i} miner={data[`m${i}_miner`]} value={data[`m${i}_blocks`]} style={{ color }} />
+                  })}
+                </div>
+              }
+              return null
+            }}
+          />
+          {colors.map((color, i) => {
+            return <Line key={i} type="monotone" dataKey={`m${i}_blocks`} isAnimationActive={false} strokeWidth={1} {...chartStyle} stroke={color} />
+          })}
+        </LineChart>
+      </ResponsiveContainer>
+      {loading && <div className={style.chart.loading}>
+        <Icon name="circle-notch" className="fa-spin" />
+      </div>}
+    </div>
+  </div>
+}
+
+function TooltipMiner(props) {
+  const { miner, value, ...restProps } = props
+  return <div className={style.chart.tooltipMiner} {...restProps}>
+    <div>{formatMiner(miner)}</div>
+    <div>{value}</div>
+  </div>
+}
+
 function TopMinersAllTime(props) {
   const { t } = useLang()
 
@@ -121,7 +242,7 @@ function TopMinersAllTime(props) {
                 <div className={style.minerAddr}>
                   <Hashicon size={25} value={item.miner} />
                   <a href={`${EXPLORER_LINK}/accounts/${item.miner}`} target="_blank">
-                    {reduceText(item.miner, 0, 7)}
+                    {formatMiner(item.miner)}
                   </a>
                 </div>
 
@@ -166,7 +287,7 @@ function TopMinersToday() {
                 <div className={style.minerAddr}>
                   <Hashicon size={25} value={item.miner} />
                   <a href={`${EXPLORER_LINK}/accounts/${item.miner}`} target="_blank">
-                    {reduceText(item.miner, 0, 7)}
+                    {formatMiner(item.miner)}
                   </a>
                 </div>
               </td>

@@ -73,6 +73,11 @@ export default {
       padding: .25em;
       border-color: transparent;
       color: var(--text-color);
+    `,
+    tooltipMiner: css`
+      display: flex;
+      gap: .5em;
+      
     `
   }
 }
