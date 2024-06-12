@@ -95,5 +95,26 @@ export default {
       overflow-x: scroll;
       padding-bottom: 1em;
     `
+  },
+  priceChange: {
+    container: css`
+      padding: .5em 1em;
+      display: grid;
+      gap: 1em;
+      grid-template-columns: 1fr 1fr;
+    `,
+    item: {
+      container: css`
+        display: flex;
+        gap: .25em;
+        flex-direction: column;
+      `,
+      title: css`
+        color: var(--muted-color);
+      `,
+      value: css`
+        font-weight: bold;
+      `
+    }
   }
 }

@@ -505,6 +505,34 @@ function BoxSupplyEmission() {
   </Box>
 }
 
+function PriceChangeItem(props) {
+  const { title, low, high } = props
+  return <div className={style.priceChange.item.container}>
+    <div className={style.priceChange.item.title}>{title}</div>
+    <div className={style.priceChange.item.value}>
+      {(low || 0).toFixed(2)} / {(high || 0).toFixed(2)}
+    </div>
+  </div>
+}
+
+function BoxPriceChange(props) {
+  const { data } = props
+  const { t } = useLang()
+
+  const { rows, firstLoading } = data
+  const item = rows[0] || {}
+
+  return <Box name={t(`Prices (Low / High)`)} loading={firstLoading}>
+    <div className={style.priceChange.container}>
+      <PriceChangeItem title="1h" low={item[`min_price_1h`]} high={item[`max_price_1h`]} />
+      <PriceChangeItem title="24h" low={item[`min_price_24h`]} high={item[`max_price_24h`]} />
+      <PriceChangeItem title="7d" low={item[`min_price_7d`]} high={item[`max_price_7d`]} />
+      <PriceChangeItem title="30d" low={item[`min_price_30d`]} high={item[`max_price_30d`]} />
+      <PriceChangeItem title={t(`All Time`)} low={item[`min_price_all_time`]} high={item[`max_price_all_time`]} />
+    </div>
+  </Box>
+}
+
 function AutoUpdate(props) {
   const { onUpdate, duration = 60 * 1000 } = props
 
@@ -534,7 +562,7 @@ function AutoUpdate(props) {
 function TopStatsItem(props) {
   const { title, value } = props
 
-  return <div className={style.topStats.item}>
+  return <div className={style.topStats.item.container}>
     <div className={style.topStats.item.title}>{title}</div>
     <div className={style.topStats.item.value}>{value}</div>
   </div>
@@ -585,6 +613,11 @@ function Home() {
   const marketTickersDaily = useFetchView({
     view: `get_market_tickers_time(*)`,
     params: { param: [dayInSeconds], where: [`asset::eq::${marketAsset}`], order: [`time::desc`], limit: 24, count: true },
+  })
+
+  const marketTickersPriceChange = useFetchView({
+    view: `get_market_tickers_price_change(*)`,
+    params: { param: [marketAsset] },
   })
 
   const marketTickersExchangeDaily = useFetchView({
@@ -654,6 +687,7 @@ function Home() {
     activeAccountsWeekly.fetch()
     txsDaily.fetch()
     minersDistributionDaily.fetch()
+    marketTickersPriceChange.fetch()
   }, [])
 
   // Transactions per minute
@@ -683,12 +717,14 @@ function Home() {
       <div className={style.sections.item}>
         <div className={style.sections.title}><Icon name="coins" />{t(`Market (USDT)`)}</div>
         <div className={style.sections.boxes}>
+          <BoxPriceChange data={marketTickersPriceChange} />
           <BoxTimeChart data={marketTickersDaily} areaType="monotone" name={t(`Price (1d)`)} yDataKey="price" yFormat={(v) => formatNumber(v)}
             link={`/views/market_tickers?chart_key=price&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
           <BoxTimeChart data={marketTickersDaily} areaType="step" name={t(`Volume (1d)`)} yDataKey="volume" yFormat={(v) => formatNumber(v)}
             link={`/views/market_tickers?chart_key=volume&period=${dayInSeconds}&view=chart&chart_view=area&order=time::desc`} />
           <BoxMarketCap marketHistoryDaily={marketTickersDaily} blocksDaily={blocksDaily} />
           <BoxExchanges marketHistoryExchangeDaily={marketTickersExchangeDaily} />
+
         </div>
       </div>
       <div className={style.sections.item}>

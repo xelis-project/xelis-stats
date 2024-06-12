@@ -114,9 +114,9 @@ function Box(props) {
 
   return <div className={style.container}>
     <div className={style.title}>{name}</div>
-    <div className={style.subtitle.container}>
+    {value != null && <div className={style.subtitle.container}>
       {(loading || noData) ? `--` : <>{value}{extra && <span className={style.subtitle.extra}>{extra}</span>}</>}
-    </div>
+    </div>}
     <div className={style.content}>
       {loading && <div className={style.loading}>
         <Icon name="circle-notch" className="fa-spin" />
