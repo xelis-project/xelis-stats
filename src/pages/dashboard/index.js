@@ -450,7 +450,7 @@ function BoxMinersDistribution(props) {
 
   const { t } = useLang()
   const chartStyle = useChartStyle()
-  const { loading } = minersDistributionDaily
+  const { firstLoading } = minersDistributionDaily
 
   const data = useMemo(() => {
     const { rows } = minersDistributionDaily
@@ -461,7 +461,7 @@ function BoxMinersDistribution(props) {
     })
   }, [minersDistributionDaily])
 
-  return <Box name={t(`Miners Distribution (Today)`)} loading={loading} noData={data.length === 0}
+  return <Box name={t(`Miners Distribution (Today)`)} loading={firstLoading} noData={data.length === 0}
     link={`/views/get_miners_blocks_time?period=86400&view=table&where=time::eq::${today}&order=total_blocks::desc`}>
     <ResponsiveContainer height="100%" width="100%" style={{ overflow: `hidden` }}>
       <PieChart>
@@ -715,7 +715,13 @@ function Home() {
     <TopStats stats={stats} />
     <div className={style.sections.container}>
       <div className={style.sections.item}>
-        <div className={style.sections.title}><Icon name="coins" />{t(`Market (USDT)`)}</div>
+        <div className={style.sections.title}>
+          <Icon name="coins" />{t(`Market`)}
+          <div className={style.sections.usdt.container}>
+            <div className={style.sections.usdt.logo} />
+            USDT
+          </div>
+        </div>
         <div className={style.sections.boxes}>
           <BoxPriceChange data={marketTickersPriceChange} />
           <BoxTimeChart data={marketTickersDaily} areaType="monotone" name={t(`Price (1d)`)} yDataKey="price" yFormat={(v) => formatNumber(v)}

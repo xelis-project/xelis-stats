@@ -1,5 +1,7 @@
 import { css } from 'goober'
 import theme from 'xelis-explorer/src/style/theme'
+import { logoBgUrl } from 'xelis-explorer/src/layout/header'
+import usdtLogoUrl from '../../assets/usdt_logo.svg'
 
 export default {
   header: {
@@ -11,12 +13,12 @@ export default {
       gap: 1em;
     `,
     logo: css`
-    width: 3em;
-    height: 3em;
-    display: block;
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-image: ${theme.apply({ xelis: `url('public/img/white_background_black_logo.svg')`, light: `url('public/img/black_background_white_logo.svg')`, dark: `url('public/img/white_background_black_logo.svg')`, })};
+      width: 3em;
+      height: 3em;
+      display: block;
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-image: ${logoBgUrl};
     `,
     title: css`
       font-size: 2.5em;
@@ -94,7 +96,24 @@ export default {
       gap: 1em;
       overflow-x: scroll;
       padding-bottom: 1em;
-    `
+    `,
+    usdt: {
+      container: css`
+        background-color: ${theme.apply({ xelis: `rgb(0 0 0 / 50%)`, dark: `rgb(0 0 0 / 50%)`, light: `rgb(255 255 255 / 50%)` })};
+        padding: .4em .5em;
+        border-radius: .5em;
+        display: flex;
+        gap: .25em;
+        align-items: center;
+        font-size: .7em;
+      `,
+      logo: css`
+        background-image: url('${usdtLogoUrl}');
+        width: 20px;
+        height: 17px;
+        background-repeat: no-repeat;
+      `
+    }
   },
   priceChange: {
     container: css`
