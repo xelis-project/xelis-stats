@@ -1,7 +1,7 @@
-import App from './app'
+import App from 'xelis-explorer/src/app'
+import NotFound from 'xelis-explorer/src/pages/notFound'
 
 import Dashboard from './pages/dashboard'
-import NotFound from 'xelis-explorer/src/pages/notFound'
 import Layout from './layout/layout'
 import View from './pages/views/view'
 import List from './pages/views/list'
@@ -9,7 +9,7 @@ import Mining from './pages/mining'
 
 const routes = [
   {
-    element: <App />,
+    element: <App title="XELIS Stats" />,
     children: [
       {
         element: <Layout />,
