@@ -767,7 +767,7 @@ function Home() {
         <div className={style.sections.title}><Icon name="microchip" />{t(`Mining`)}</div>
         <div className={style.sections.boxes}>
           <BoxTimeChart data={minersCountDaily} areaType="step" name={t(`Miners (1d)`)} yName={t(`Miners`)} yDataKey="miner_count" yFormat={(v) => `${v.toLocaleString()}`}
-            info={t(`The network can have way more active miners. These are only the miners who were succesful in mining at least one block.`)} yDomain={[0, 'dataMax']}
+            info={t(`The network can have way more active miners. These are only the miners who were succesful in mining at least one block.`)}
             link={`/views/get_miners_count_time?chart_key=miner_count&chart_view=area&period=${dayInSeconds}&view=chart&order=time::desc`} />
           <BoxMinersDistribution today={today} minersDistributionDaily={minersDistributionDaily} />
           <BoxTimeChart data={blocksDaily} areaType="monotone" name={t(`Hash Rate (1d)`)} yName={t(`Hash Rate (avg)`)} yDataKey="avg_difficulty" yFormat={(v) => formatHashRate(v)}
@@ -783,10 +783,10 @@ function Home() {
           <BoxTimeChart data={accountsCountDaily} areaType="monotstep" name={t(`Accounts`)} yName={t(`Accounts`)} yDataKey="cumulative_account_count" yFormat={(v) => `${v.toLocaleString()}`}
             link={`/views/get_accounts_count_time?chart_key=cumulative_account_count&chart_view=area&period=${dayInSeconds}&view=chart&order=time::desc`} />
           <BoxTopAccounts accountsWeekly={accountsWeekly} stats={stats} />
-          <BoxTimeChart data={accountsCountDaily} areaType="monotstep" name={t(`Registered (1d)`)} yName={t(`Accounts`)} yDataKey="account_count" yFormat={(v) => `${v.toLocaleString()}`} yDomain={[0, 'dataMax']}
+          <BoxTimeChart data={accountsCountDaily} areaType="monotstep" name={t(`Registered (1d)`)} yName={t(`Accounts`)} yDataKey="account_count" yFormat={(v) => `${v.toLocaleString()}`}
             link={`/views/get_accounts_count_time?chart_key=account_count&chart_view=area&period=${dayInSeconds}&view=chart&order=time::desc`} />
           <BoxTimeChart data={activeAccountsWeekly} areaType="monotstep" name={t(`Active (1w)`)} yName={t(`Accounts`)} yDataKey="active_accounts"
-            yFormat={(v) => `${v.toLocaleString()}`} info={t(`Number of accounts that sent at least one transaction.`)} yDomain={[0, 'dataMax']} />
+            yFormat={(v) => `${v.toLocaleString()}`} info={t(`Number of accounts that sent at least one transaction.`)} />
         </div>
       </div>
       <div className={style.sections.item}>

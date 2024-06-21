@@ -40,7 +40,7 @@ export function useChartStyle() {
 }
 
 export function BoxAreaChart(props) {
-  let { data = [], areaType = `monotone`, xDataKey = `x`, xFormat, yDataKey = `y`, yName, yFormat, yDomain = ['dataMin', 'dataMax'] } = props
+  let { data = [], areaType = `monotone`, xDataKey = `x`, xFormat, yDataKey = `y`, yName, yFormat, yDomain = ['auto', 'auto'] } = props
 
   const chartStyle = useChartStyle()
 
