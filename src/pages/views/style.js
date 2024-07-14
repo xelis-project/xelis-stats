@@ -72,7 +72,7 @@ export default {
     `
   },
   controls: css`
-    background: var(--stats-bg-color);
+    background: var(--content-bg-color);
     border-radius: .5em;
     display: flex;
     flex-direction: column;
@@ -187,7 +187,7 @@ export default {
       min-height: 400px;
       flex: 1;
       overflow: auto;
-      background: var(--stats-bg-color);
+      background: var(--content-bg-color);
       border-radius: .5em;
 
       ${theme.query.minDesktop} {
@@ -204,7 +204,7 @@ export default {
     title: css`
       font-size: 1.2em;
       padding: 1em;
-      background: var(--stats-bg-color);
+      background: var(--content-bg-color);
       border-radius: .5em;
       margin: 1em 0;
     `,
