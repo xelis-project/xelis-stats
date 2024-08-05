@@ -50,8 +50,8 @@ function Layout() {
   return <div className={layoutStyle.container}>
     <Background />
     <div className={layoutStyle.pageFlex}>
+      <Header title={t(`Statistics`)} links={links} />
       <div className={layoutStyle.pageMaxWidth}>
-        <Header title={t(`Statistics`)} links={links} className={style.header} />
         <div data-opacity={firstLoad} key={location.key}> {/* Keep location key to re-trigger page transition animation */}
           <Outlet />
         </div>

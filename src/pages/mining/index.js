@@ -7,7 +7,7 @@ import Hashicon from 'xelis-explorer/src/components/hashicon'
 import dayjs from 'dayjs'
 import { AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Area, LineChart, Line } from 'recharts'
 import Icon from 'g45-react/components/fontawesome_icon'
-import { formatMiner } from 'xelis-explorer/src/utils/pools'
+import { formatMiner } from 'xelis-explorer/src/utils/known_addrs'
 
 import { fetchView, useFetchView } from '../../hooks/useFetchView'
 import { useChartStyle } from '../dashboard/box'

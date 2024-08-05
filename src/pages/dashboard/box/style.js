@@ -1,5 +1,4 @@
 import { css } from 'goober'
-import { scaleOnHover } from 'xelis-explorer/src/style/animate'
 import theme from 'xelis-explorer/src/style/theme'
 
 export default {
@@ -55,10 +54,10 @@ export default {
     > * {
       cursor: pointer;
       opacity: .5;
-      ${scaleOnHover({ scale: `.9` })}
 
       &:hover {
         opacity: 1;
+        transform: scale(.9);
       }
     }
   `,

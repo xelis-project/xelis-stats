@@ -1,6 +1,6 @@
 {
   "name": "xelis-stats",
-  "version": "0.1.0",
+  "version": "0.1.51",
   "description": "Statistics website for Xelis network",
   "scripts": {
     "make-lang": "node ./node_modules/g45-react/lang-dict.js --src ./src --outfile ./lang/en.json",
@@ -28,7 +28,7 @@
     "xelis-explorer": "github:xelis-project/xelis-explorer"
   },
   "devDependencies": {
-    "g45-react": "^0.1.15",
+    "g45-react": "^0.1.18",
     "shx": "^0.3.4",
     "wrangler": "^3.61.0"
   }

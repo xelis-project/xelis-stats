@@ -1,5 +1,4 @@
 import { css } from 'goober'
-import { scaleOnHover } from 'xelis-explorer/src/style/animate'
 import theme from 'xelis-explorer/src/style/theme'
 
 export default {
@@ -22,7 +21,10 @@ export default {
       text-decoration: none;
       color: var(--text-color);
       border: thin solid ${theme.apply({ xelis: `#39746d`, dark: `#414141`, light: `#b9b9b9` })};
-      ${scaleOnHover()};
+
+      &:hover {
+        transform: scale(.95);
+      }
     `,
     title: css`
       font-size: 1.2em;
@@ -99,7 +101,10 @@ export default {
       cursor: pointer;
       white-space: nowrap;
       gap: .5em;
-      ${scaleOnHover()}
+
+      &:hover {
+        transform: scale(.95);
+      }
     }
   `,
   dropdowns: css`
