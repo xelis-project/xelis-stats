@@ -8,6 +8,7 @@ import dayjs from 'dayjs'
 import { AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis, Area, LineChart, Line } from 'recharts'
 import Icon from 'g45-react/components/fontawesome_icon'
 import { formatMiner } from 'xelis-explorer/src/utils/known_addrs'
+import { Link } from 'react-router-dom'
 
 import { fetchView, useFetchView } from '../../hooks/useFetchView'
 import { useChartStyle } from '../dashboard/box'
@@ -18,7 +19,7 @@ function Mining() {
   const { t } = useLang()
 
   return <div >
-    <PageTitle title={t('Mining Stats')} />
+    <PageTitle title={t('Mining')} />
     <div className={style.container}>
       <BlockTypes />
       <HashrateChart />
@@ -241,13 +242,12 @@ function TopMinersAllTime(props) {
               <td>
                 <div className={style.minerAddr}>
                   <Hashicon size={25} value={item.miner} />
-                  <a href={`${EXPLORER_LINK}/accounts/${item.miner}`} target="_blank">
+                  <Link to={`/accounts/${item.miner}`}>
                     {formatMiner(item.miner)}
-                  </a>
+                  </Link>
                 </div>
-
               </td>
-              <td>{item.total_blocks}</td>
+              <td>{item.total_blocks.toLocaleString()}</td>
               <td>{formatXelis(item.total_reward)}</td>
             </tr>
           </React.Fragment>
@@ -286,12 +286,12 @@ function TopMinersToday() {
               <td>
                 <div className={style.minerAddr}>
                   <Hashicon size={25} value={item.miner} />
-                  <a href={`${EXPLORER_LINK}/accounts/${item.miner}`} target="_blank">
+                  <Link to={`/accounts/${item.miner}`}>
                     {formatMiner(item.miner)}
-                  </a>
+                  </Link>
                 </div>
               </td>
-              <td>{item.total_blocks}</td>
+              <td>{item.total_blocks.toLocaleString()}</td>
               <td>{formatXelis(item.total_reward)}</td>
             </tr>
           </React.Fragment>

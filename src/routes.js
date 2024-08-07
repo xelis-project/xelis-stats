@@ -6,6 +6,8 @@ import Layout from './layout/layout'
 import View from './pages/views/view'
 import List from './pages/views/list'
 import Mining from './pages/mining'
+import Accounts from './pages/accounts'
+import Account from './pages/account'
 
 const routes = [
   {
@@ -29,6 +31,14 @@ const routes = [
           {
             path: '/mining',
             element: <Mining />
+          },
+          {
+            path: '/accounts',
+            element: <Accounts />
+          },
+          {
+            path: '/accounts/:addr',
+            element: <Account />
           },
           {
             path: '*',

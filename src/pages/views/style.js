@@ -20,10 +20,11 @@ export default {
       cursor: pointer;
       text-decoration: none;
       color: var(--text-color);
-      border: thin solid ${theme.apply({ xelis: `#39746d`, dark: `#414141`, light: `#b9b9b9` })};
+      border: .15em solid ${theme.apply({ xelis: `#39746d`, dark: `#414141`, light: `#b9b9b9` })};
+      transition: .25s all;
 
       &:hover {
-        transform: scale(.95);
+        transform: scale(.99);
       }
     `,
     title: css`

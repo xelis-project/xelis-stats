@@ -44,11 +44,12 @@ export function useFetchView(props) {
     setRows(data.rows)
     setCount(data.count)
     firstFetch.current = false
-  }, [view, params])
+  }, [view, JSON.stringify(params)])
+  // make sure params is stringify to avoid infinte callback because params can contain array object, etc... that can be compared at first level
 
   useEffect(() => {
     if (fetchOnLoad) fetch()
-  }, [])
+  }, [fetch])
 
   return { firstLoading, loading, err, rows, count, fetch }
 }

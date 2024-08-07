@@ -27,7 +27,8 @@ function Layout() {
     return [
       { path: `/`, title: t(`Dashboard`), icon: <Icon name="dashboard" /> },
       { path: `/views`, title: t(`Database`), icon: <Icon name="database" /> },
-      { path: `/mining`, title: t(`Mining Stats`), icon: <Icon name="chart-simple" /> },
+      { path: `/mining`, title: t(`Mining`), icon: <Icon name="cubes" /> },
+      { path: `/accounts`, title: t(`Accounts`), icon: <Icon name="users" /> },
     ]
   }, [t])
 
