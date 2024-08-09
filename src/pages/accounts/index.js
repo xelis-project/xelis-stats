@@ -5,8 +5,8 @@ import { formatAddr } from 'xelis-explorer/src/utils/known_addrs'
 import Table from 'xelis-explorer/src/components/table'
 import Hashicon from 'xelis-explorer/src/components/hashicon'
 import memPoolStyle from 'xelis-explorer/src/pages/memPool/style'
-import dayjs from 'dayjs'
 import { Link, useNavigate } from 'react-router-dom'
+import { Helmet } from 'react-helmet-async'
 
 import { useFetchView } from '../../hooks/useFetchView'
 import style from './style'
@@ -21,10 +21,18 @@ function Accounts() {
 
   const { loading, err, count, rows } = accounts
 
+  const description = useMemo(() => {
+    return t('List popular accounts or search a specific one.')
+  }, [t])
+
   return <div className={style.container}>
     <SearchAccount />
     <div>
-      <div className={style.title}>Popular accounts</div>
+      <div className={style.title}>{t(`Popular accounts`)}</div>
+      <Helmet>
+        <title>{t(`Accounts`)}</title>
+        <meta name="description" content={description} />
+      </Helmet>
       <Table
         headers={[t(`Address`), t(`Last Activity`), t(`Txs`), t(`Fees`), t(`Transfers (In / Out)`), t(`Mined Blocks`), t(`Rewards`)]}
         list={rows} loading={loading} err={err} emptyText={t('No accounts')} colSpan={7}

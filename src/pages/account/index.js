@@ -11,6 +11,7 @@ import { addrs, formatAddr } from 'xelis-explorer/src/utils/known_addrs'
 import Dropdown from 'xelis-explorer/src/components/dropdown'
 import Icon from 'g45-react/components/fontawesome_icon'
 import DotLoading from 'xelis-explorer/src/components/dotLoading'
+import { Helmet } from 'react-helmet-async'
 
 import style from './style'
 import { useFetchView } from '../../hooks/useFetchView'
@@ -19,6 +20,7 @@ const defaultQuery = { tab: `executed-transactions` }
 
 function Account() {
   const [query, setQuery] = useQueryString(defaultQuery)
+  const { addr } = useParams()
   const { t } = useLang()
 
   const changeTab = useCallback((item) => {
@@ -52,6 +54,9 @@ function Account() {
   }, [t])
 
   return <div>
+    <Helmet>
+      <title>{t(`Account ${addr}`)}</title>
+    </Helmet>
     <Profile />
     <div className={style.tabDropdown}>
       <Dropdown items={dropdownTabs} onChange={changeTab}
