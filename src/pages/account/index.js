@@ -35,7 +35,7 @@ function Account() {
 
   const setPageState = useCallback((value) => {
     _setPageState(value)
-    setQuery({ ...query, value })
+    setQuery({ ...query, ...value })
   }, [query])
 
   const offset = (pageState.page - 1) * pageState.size

@@ -1,6 +1,6 @@
 {
   "name": "xelis-stats",
-  "version": "0.1.53",
+  "version": "0.1.54",
   "description": "Statistics website for Xelis network",
   "scripts": {
     "make-lang": "node ./node_modules/g45-react/lang-dict.js --src ./src --outfile ./lang/en.json",

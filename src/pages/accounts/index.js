@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react'
+import React, { useCallback, useMemo, useState } from 'react'
 import { useLang } from 'g45-react/hooks/useLang'
 import { formatXelis } from 'xelis-explorer/src/utils'
 import { formatAddr } from 'xelis-explorer/src/utils/known_addrs'
@@ -7,16 +7,32 @@ import Hashicon from 'xelis-explorer/src/components/hashicon'
 import memPoolStyle from 'xelis-explorer/src/pages/memPool/style'
 import { Link, useNavigate } from 'react-router-dom'
 import { Helmet } from 'react-helmet-async'
+import useQueryString from 'g45-react/hooks/useQueryString'
+import Pagination from 'xelis-explorer/src/components/pagination'
 
 import { useFetchView } from '../../hooks/useFetchView'
 import style from './style'
 
 function Accounts() {
   const { t } = useLang()
+  const [query, setQuery] = useQueryString({})
+
+  const [pageState, _setPageState] = useState(() => {
+    const page = parseInt(query.page) || 1
+    const size = parseInt(query.size) || 20
+    return { page, size }
+  })
+
+  const setPageState = useCallback((value) => {
+    _setPageState(value)
+    setQuery({ ...query, ...value })
+  }, [query])
+
+  const offset = (pageState.page - 1) * pageState.size
 
   const accounts = useFetchView({
     view: `get_accounts()`,
-    params: { count: true, limit: 20, order: [`total_txs::desc`], }
+    params: { count: true, limit: pageState.size, offset, order: [`total_txs::desc`], }
   })
 
   const { loading, err, count, rows } = accounts
@@ -58,6 +74,9 @@ function Accounts() {
             </tr>
           </React.Fragment>
         }}
+      />
+      <Pagination state={pageState} setState={setPageState} count={count}
+        formatCount={(count) => t('{} accounts', [count.toLocaleString()])}
       />
     </div>
   </div>
