@@ -104,9 +104,9 @@ function Profile(props) {
             </a>
           </div>
           <div className={style.profile.statsItems}>
-            <StatsItem title={t(`Last Activity`)} value={new Date(data.last_activity).toLocaleString()} />
+            <StatsItem title={t(`Last Activity`)} value={data.last_activity ? new Date(data.last_activity).toLocaleString() : `--`} />
             <StatsItem title={t(`Txs`)} value={data.total_txs.toLocaleString()} />
-            <StatsItem title={t(`Transfers (In / Out)`)} value={`${data.in_transfers.toLocaleString()} / ${data.out_transfers.toLocaleString()}`} />
+            <StatsItem title={t(`Transfers (In / Out)`)} value={`${(data.in_transfers || 0).toLocaleString()} / ${(data.out_transfers || 0).toLocaleString()}`} />
             <StatsItem title={t(`Mined Blocks`)} value={data.mined_blocks.toLocaleString()} />
             <StatsItem title={t(`Rewards`)} value={formatXelis(data.rewards)} />
           </div>
