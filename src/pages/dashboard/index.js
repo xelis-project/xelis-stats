@@ -630,9 +630,11 @@ function Home() {
     params: { order: [`topoheight::desc`], limit: 5, count: true },
   })
 
+  // make sure limit is higher than marketTickersDaily limit
+  // we use both to match rows (check marketcap component logic)
   const blocksDaily = useFetchView({
     view: `get_blocks_time(*)`,
-    params: { param: [dayInSeconds], order: ["time::desc"], limit: 20, count: true },
+    params: { param: [dayInSeconds], order: ["time::desc"], limit: 30, count: true },
   })
 
   const stats = useFetchView({
