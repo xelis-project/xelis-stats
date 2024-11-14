@@ -1,6 +1,6 @@
 {
   "name": "xelis-stats",
-  "version": "0.1.55",
+  "version": "0.1.56",
   "description": "Statistics website for Xelis network",
   "scripts": {
     "make-lang": "node ./node_modules/g45-react/lang-dict.js --src ./src --outfile ./lang/en.json",
@@ -16,7 +16,7 @@
     "await-to-js": "^3.0.0",
     "dayjs": "^1.11.10",
     "file-saver": "^2.0.5",
-    "goober": "^2.1.10",
+    "goober": "2.1.10",
     "lightweight-charts": "^4.1.1",
     "pretty-ms": "^8.0.0",
     "query-string": "^8.1.0",
