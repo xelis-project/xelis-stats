@@ -1,4 +1,5 @@
 -- Xelis Stats — D1 schema (Cloudflare live side)
+-- Consolidated init schema (merges former 0001–0004 migrations).
 -- sync state: separate per-stage checkpoints
 CREATE TABLE IF NOT EXISTS sync_state (
   stage TEXT PRIMARY KEY,
@@ -19,12 +20,18 @@ CREATE TABLE IF NOT EXISTS blocks (
 CREATE INDEX IF NOT EXISTS idx_blocks_height ON blocks(height);
 CREATE INDEX IF NOT EXISTS idx_blocks_hash ON blocks(hash);
 CREATE INDEX IF NOT EXISTS idx_blocks_ts ON blocks(ts);
+-- per-address miner lookups (miner profile page, account page, search)
+CREATE INDEX IF NOT EXISTS idx_blocks_miner ON blocks(miner_address);
 
 CREATE TABLE IF NOT EXISTS tx_index (
   hash TEXT PRIMARY KEY, block_topo INTEGER, ts INTEGER,
   fee INTEGER, size INTEGER, tx_type TEXT, sender TEXT,
   transfer_count INTEGER, version INTEGER, multisig INTEGER, contract_id TEXT,
-  gas INTEGER, executed INTEGER, encrypted INTEGER DEFAULT 0
+  gas INTEGER, executed INTEGER, encrypted INTEGER DEFAULT 0,
+  -- burn payloads are public on Xelis: the burned amount and asset are plaintext
+  -- on-chain (unlike transfer amounts); NULL burn_asset marks legacy rows
+  -- still needing a backfill
+  burn_amount INTEGER DEFAULT 0, burn_asset TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tx_block ON tx_index(block_topo);
 CREATE INDEX IF NOT EXISTS idx_tx_sender ON tx_index(sender);
@@ -70,6 +77,7 @@ CREATE TABLE IF NOT EXISTS daily_miners (
   date TEXT, address TEXT, blocks_found INTEGER, rewards_earned INTEGER,
   PRIMARY KEY (date, address)
 );
+CREATE INDEX IF NOT EXISTS idx_daily_miners_addr ON daily_miners(address);
 
 -- Sender-observation stats only. 'sent' counts transfer outputs publicly visible
 -- as counts, not amounts. No 'received' column (receivers are encrypted).
@@ -114,6 +122,19 @@ CREATE INDEX IF NOT EXISTS idx_market_ex ON market_snapshots(exchange, ts);
 
 CREATE TABLE IF NOT EXISTS mempool_snapshots (ts INTEGER PRIMARY KEY, size INTEGER);
 
+-- peers
+CREATE TABLE IF NOT EXISTS peer_snapshots (
+  ts INTEGER PRIMARY KEY,
+  total INTEGER, hidden INTEGER, pruned INTEGER,
+  lagging INTEGER, stale INTEGER, divergent INTEGER,
+  avg_lag REAL, avg_peer_view REAL, avg_conn_age INTEGER,
+  new_conns INTEGER, bytes_recv INTEGER, bytes_sent INTEGER
+);
+CREATE TABLE IF NOT EXISTS node_versions (date TEXT, version TEXT, peer_count INTEGER, pruned_count INTEGER, PRIMARY KEY (date, version));
+-- hourly tag / IP-prefix concentration rollups
+CREATE TABLE IF NOT EXISTS daily_peer_tags (date TEXT, tag TEXT, peers INTEGER, PRIMARY KEY (date, tag));
+CREATE TABLE IF NOT EXISTS daily_peer_prefixes (date TEXT, prefix TEXT, peers INTEGER, PRIMARY KEY (date, prefix));
+
 -- archive export tracking (R2 chunks + publication status)
 CREATE TABLE IF NOT EXISTS archive_manifests (
   chunk_key TEXT PRIMARY KEY, table_name TEXT, topo_start INTEGER, topo_end INTEGER,
@@ -126,5 +147,3 @@ CREATE TABLE IF NOT EXISTS ingestion_failures (
   retries INTEGER DEFAULT 0, resolved INTEGER DEFAULT 0, first_seen INTEGER, last_seen INTEGER,
   PRIMARY KEY (stage, record_id)
 );
-
-CREATE TABLE IF NOT EXISTS node_versions (date TEXT, version TEXT, peer_count INTEGER, PRIMARY KEY (date, version));
