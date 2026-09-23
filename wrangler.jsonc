@@ -1,0 +1,46 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "xelis-stats",
+  "main": "src/server/index.ts",
+  "compatibility_date": "2025-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "not_found_handling": "single-page-application"
+  },
+  "observability": {
+    "enabled": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "xelis-stats",
+      "database_id": "TODO_CREATE_WITH_WRANGLER"
+    }
+  ],
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "TODO_CREATE_WITH_WRANGLER"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "COLLECTOR",
+        "class_name": "StatsCollector"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["StatsCollector"]
+    }
+  ],
+  "triggers": {
+    "crons": ["*/2 * * * *", "0 * * * *"]
+  },
+  "vars": {
+    "XELIS_NODE": "https://node.xelis.io"
+  }
+}
