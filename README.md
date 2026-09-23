@@ -1,6 +1,6 @@
 # xelis-stats
 
-Charts and stats for the Xelis network, built with Vite, Hono, Preact, and uPlot. Runs on Cloudflare Workers (D1 + KV + R2 + Durable Objects).
+Charts and stats for the Xelis network, built with Vite, Hono, and uPlot. Runs on Cloudflare Workers (D1 + KV + R2 + Durable Objects).
 
 ## What it does
 

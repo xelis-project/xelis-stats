@@ -8,12 +8,13 @@ const ENDPOINTS: Array<[string, string, string]> = [
   ["GET", "/api/stats", "Aggregated chain overview (KV-cached 60s)"],
   ["GET", "/api/summary", "Compact full-state JSON — AI/agent friendly"],
   ["GET", "/api/market", "Aggregated XEL market data + per-exchange tickers"],
-  ["GET", "/api/history/:metric?range=7d|30d|90d|1y|all&interval=day|week|month|year&format=json|csv", "Time-series. Metrics: txs, transfers, transfer-volume, accounts, active-accounts, miners, hashrate, fees, fee-p90, supply, burned-supply, market-cap, tx-volume-usd, miner-rev-usd, miner-revenue, orphans, block-time, nakamoto, gini, encrypted, block-types, price, quote-volume, mempool"],
-  ["GET", "/api/blocks?before=&limit=", "Cursor-paginated blocks (D1)"],
-  ["GET", "/api/transactions?before=&type=&limit=", "Cursor-paginated transactions (D1)"],
-  ["GET", "/api/accounts?sort=active|txs&limit=", "Observed senders, recently active or top by tx count"],
-  ["GET", "/api/node-versions", "Peer count by node version (latest hourly snapshot)"],
-  ["GET", "/api/top/:kind?period=day|week|month|all&date=&limit=", "Rankings: miners, senders, burners, assets, contracts (date defaults to latest indexed day)"],
+  ["GET", "/api/blocks?before=&type=&limit=&sort=&dir=", "Blocks (D1). ?type filters block_type (Normal|Side|Sync). ?sort runs over the full dataset: topo|hash|time|txs|difficulty|reward|type"],
+  ["GET", "/api/transactions?before=&type=&limit=&sort=&dir=", "Transactions (D1). ?sort over the full dataset: block|time|type|sender|fee|result"],
+  ["GET", "/api/accounts?sort=&dir=&limit=", "Observed senders. ?sort: address|first|last|txs (legacy active|txs)"],
+  ["GET", "/api/node-versions", "Peer count + pruned count by node version (latest hourly snapshot)"],
+  ["GET", "/api/peers", "Latest peer network snapshot (counts, lag, staleness, divergence, tags, prefixes) + node versions"],
+  ["GET", "/api/history/:metric?range=7d|30d|90d|1y|all&interval=day|week|month|year&format=json|csv", "Time-series. Metrics: txs, transfers, transfer-volume, accounts, active-accounts, miners, hashrate, fees, fee-p90, supply, burned-supply, market-cap, tx-volume-usd, miner-rev-usd, miner-revenue, orphans, block-time, nakamoto, gini, encrypted, block-types, price, quote-volume, mempool, peers, peers-hidden, peers-pruned, peers-lagging, peers-stale, peers-divergent, peers-new, peer-lag, peer-view, peer-age, peer-traffic-in, peer-traffic-out"],
+  ["GET", "/api/top/:kind?period=day|week|month|all&date=&limit=&sort=&dir=", "Rankings: miners, senders, burners, assets, contracts (date defaults to latest indexed day)"],
   ["GET", "/api/tx/:hash", "Transaction detail"],
   ["GET", "/ws", "Live WebSocket: new_block events + 30s ticks"],
 ];
@@ -54,6 +55,6 @@ misc.get("/status", async (c) => {
 });
 
 misc.get("/favicon.svg", (c) => c.body(
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 778 743" fill="#02ffcf"><path fill-rule="evenodd" clip-rule="evenodd" d="M388.909 742.872L777.817 353.964L424.056 0.202599L478.809 132.737L700.036 353.964L388.909 665.091L77.7817 353.964L299.507 129.121L353.964 0L0 353.964L388.909 742.872Z"/><path d="M388.909 665.091L353.964 0L299.507 129.121L388.909 665.091Z"/><path d="M424.056 0.202599L388.909 665.091L478.809 132.737L424.056 0.202599Z"/></svg>`,
-  200, { "Content-Type": "image/svg+xml" }
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><circle cx="500" cy="500" r="500" fill="#02ffcf"/><g fill="#000" transform="translate(111 128.5)"><path fill-rule="evenodd" clip-rule="evenodd" d="M388.909 742.872L777.817 353.964L424.056 0.202599L478.809 132.737L700.036 353.964L388.909 665.091L77.7817 353.964L299.507 129.121L353.964 0L0 353.964L388.909 742.872Z"/><path d="M388.909 665.091L353.964 0L299.507 129.121L388.909 665.091Z"/><path d="M424.056 0.202599L388.909 665.091L478.809 132.737L424.056 0.202599Z"/></g></svg>`,
+  200, { "Content-Type": "image/svg+xml", "Cache-Control": "public, max-age=3600" }
 ));

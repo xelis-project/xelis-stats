@@ -3,6 +3,7 @@ import type { Env } from "./app";
 import { layout, notFound, statCard } from "../client/layout";
 import { fmt, fmtInt, fmtPct, shortHash, fmtTime, ago, atomic, atomicPrecise } from "../client/format";
 import { knownEntity } from "./entities";
+import { srvSort, BLOCK_COLS, TX_COLS, ACCT_COLS, TOP_COLS } from "./sort";
 
 export const pages = new Hono<{ Bindings: Env }>();
 
@@ -36,11 +37,12 @@ function pager(base: string, page: number, totalPages: number): string {
 pages.get("/blocks", async (c) => {
   const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
   const db = c.env.DB;
+  const srt = srvSort((n) => c.req.query(n), BLOCK_COLS, "topo", "topoheight DESC", (s) => `/blocks${s ? `?${s}` : ""}`);
   let rows: Record<string, unknown>[];
   let total = 0;
   try {
     total = await db.prepare("SELECT COUNT(*) AS n FROM blocks").first<{ n: number }>().then((r) => r?.n ?? 0);
-    rows = await db.prepare("SELECT * FROM blocks ORDER BY topoheight DESC LIMIT ? OFFSET ?")
+    rows = await db.prepare(`SELECT * FROM blocks ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
       .bind(PAGE_SIZE + 1, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>().then((r) => r.results ?? []);
   } catch {
     rows = [];
@@ -54,6 +56,7 @@ pages.get("/blocks", async (c) => {
         const topo = b.topoheight as number;
         const ts = b.ts as number;
         const orphan = b.is_orphan ? ' <span class="badge fail">orphan</span>' : "";
+        const type = esc(String(b.block_type ?? "normal"));
         return `<tr>
           <td><a href="/block/${topo}"><span class="mint">${fmtInt(topo)}</span></a></td>
           <td><span class="hash">${shortHash(b.hash as string)}</span></td>
@@ -61,17 +64,17 @@ pages.get("/blocks", async (c) => {
           <td class="num">${fmtInt(b.tx_count as number)}</td>
           <td class="num">${fmt((b.difficulty as number) ?? 0)}</td>
           <td class="num">${atomic(b.miner_reward as number)}</td>
-          <td>${b.block_type as string}${orphan}</td>
+          <td><span class="badge ${type.toLowerCase()}">${type}</span>${orphan}</td>
         </tr>`;
       }).join("")
     : `<tr><td colspan="7" style="color:var(--text-dim)">No indexed blocks yet — historical backfill pending. Live data unavailable until D1 import.</td></tr>`;
 
   const content = `<div class="panel"><h2>Blocks <span style="color:var(--text-dim)">${fmtInt(total)} total</span></h2>
-    <div class="tablewrap"><table>
-      <thead><tr><th>Topo</th><th>Hash</th><th>Time</th><th class="num">Txs</th><th class="num">Difficulty</th><th class="num">Reward (XEL)</th><th>Type</th></tr></thead>
+    <div class="tablewrap"><table data-srvsort="1">
+      <thead><tr>${srt.th("topo", "Topo")}${srt.th("hash", "Hash")}${srt.th("time", "Time")}${srt.th("txs", "Txs", true)}${srt.th("difficulty", "Difficulty", true)}${srt.th("reward", "Reward (XEL)", true)}${srt.th("type", "Type")}</tr></thead>
       <tbody>${body}</tbody>
     </table></div>
-    ${pager("/blocks", page, totalPages)}
+    ${pager(srt.link(srt.key, srt.dir), page, totalPages)}
   </div>`;
   return c.html(layout("Blocks", content, "/blocks"));
 });
@@ -80,14 +83,14 @@ pages.get("/blocks", async (c) => {
 
 pages.get("/accounts", async (c) => {
   const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
-  const sort = c.req.query("sort") === "txs" ? "tx_count DESC" : c.req.query("sort") === "first" ? "first_seen ASC" : "last_active DESC";
-  const base = `/accounts?sort=${sort === "tx_count DESC" ? "txs" : sort === "first_seen ASC" ? "first" : "active"}`;
+  // legacy ?sort=active|txs|first URLs map onto the same columns and defaults
+  const srt = srvSort((n) => c.req.query(n), ACCT_COLS, "last", "address", (s) => `/accounts${s ? `?${s}` : ""}`);
   const db = c.env.DB;
   let rows: Record<string, unknown>[];
   let total = 0;
   try {
     total = await db.prepare("SELECT COUNT(*) AS n FROM accounts").first<{ n: number }>().then((r) => r?.n ?? 0);
-    rows = await db.prepare(`SELECT address, first_seen, last_active, tx_count FROM accounts ORDER BY ${sort} LIMIT ? OFFSET ?`)
+    rows = await db.prepare(`SELECT address, first_seen, last_active, tx_count FROM accounts ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
       .bind(PAGE_SIZE, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>().then((r) => r.results ?? []);
   } catch {
     rows = [];
@@ -107,20 +110,12 @@ pages.get("/accounts", async (c) => {
       }).join("")
     : `<tr><td colspan="4" style="color:var(--text-dim)">No observed accounts yet.</td></tr>`;
 
-  const sortLink = (label: string, s: string, active: boolean) =>
-    active ? `<span class="btn mint" aria-current="true">${label}</span>` : `<a class="btn ghost" href="/accounts?sort=${s}">${label}</a>`;
-
   const content = `<div class="panel"><h2>Accounts <span style="color:var(--text-dim)">${fmtInt(total)} observed</span></h2>
-    <div style="margin:0.75rem 0">
-      ${sortLink("Recently active", "active", sort === "last_active DESC")}
-      ${sortLink("Most txs", "txs", sort === "tx_count DESC")}
-      ${sortLink("Earliest", "first", sort === "first_seen ASC")}
-    </div>
-    <div class="tablewrap"><table>
-      <thead><tr><th>Address</th><th>First seen</th><th>Last active</th><th class="num">Txs</th></tr></thead>
+    <div class="tablewrap"><table data-srvsort="1">
+      <thead><tr>${srt.th("address", "Address")}${srt.th("first", "First seen")}${srt.th("last", "Last active")}${srt.th("txs", "Txs", true)}</tr></thead>
       <tbody>${body}</tbody>
     </table></div>
-    ${pager(base, page, totalPages)}
+    ${pager(srt.link(srt.key, srt.dir), page, totalPages)}
   </div>`;
   return c.html(layout("Accounts", content, "/accounts"));
 });
@@ -363,6 +358,13 @@ pages.get("/transactions", async (c) => {
   const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
   const type = c.req.query("type") ?? "";
   const db = c.env.DB;
+  const srt = srvSort((n) => c.req.query(n), TX_COLS, "block", "hash", (s) => {
+    const p = new URLSearchParams();
+    if (type) p.set("type", type);
+    if (s) for (const [k, v] of new URLSearchParams(s)) p.set(k, v);
+    const q = p.toString();
+    return q ? `/transactions?${q}` : "/transactions";
+  });
 
   let rows: Record<string, unknown>[] = [];
   let total = 0;
@@ -372,7 +374,7 @@ pages.get("/transactions", async (c) => {
     if (type) { conds.push("tx_type = ?"); binds.push(type); }
     const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
     total = await db.prepare(`SELECT COUNT(*) AS n FROM tx_index ${where}`).bind(...binds).first<{ n: number }>().then((r) => r?.n ?? 0);
-    rows = await db.prepare(`SELECT * FROM tx_index ${where} ORDER BY block_topo DESC LIMIT ? OFFSET ?`)
+    rows = await db.prepare(`SELECT * FROM tx_index ${where} ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
       .bind(...binds, PAGE_SIZE + 1, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>().then((r) => r.results ?? []);
   } catch { /* db not ready */ }
   const hasMore = rows.length > PAGE_SIZE;
@@ -396,13 +398,13 @@ pages.get("/transactions", async (c) => {
 
   const content = `<div class="panel"><h2>Transactions <span style="color:var(--text-dim)">${fmtInt(total)} total</span></h2>
     <div style="margin-bottom:1rem">
-      <select onchange="location.href='/transactions?type='+this.value">${typeOpts}</select>
+      <select onchange="location.href='/transactions?type='+this.value${srt.qs ? `+'&${srt.qs}'` : ""}">${typeOpts}</select>
     </div>
-    <div class="tablewrap"><table>
-      <thead><tr><th>Hash</th><th>Block</th><th>Time</th><th>Type</th><th>Sender</th><th class="num">Fee (XEL)</th><th>Result</th></tr></thead>
+    <div class="tablewrap"><table data-srvsort="1">
+      <thead><tr><th>Hash</th>${srt.th("block", "Block")}${srt.th("time", "Time")}${srt.th("type", "Type")}${srt.th("sender", "Sender")}${srt.th("fee", "Fee (XEL)", true)}${srt.th("result", "Result")}</tr></thead>
       <tbody>${body}</tbody>
     </table></div>
-    ${pager(`/transactions${type ? `?type=${type}` : ""}`, page, totalPages)}
+    ${pager(srt.link(srt.key, srt.dir), page, totalPages)}
   </div>`;
   return c.html(layout("Transactions", content, "/transactions"));
 });
@@ -593,7 +595,7 @@ pages.get("/tx/:hash", async (c) => {
   </table></div>`;
 
   const contractPanel = contractId ? `<div class="panel"><h2>Contract Execution</h2><table class="kv">
-    <tr><td>Contract</td><td><a class="mono" href="/contracts">${shortHash(contractId, 12)}</a> <button class="copybtn" type="button" onclick="blkCopy('${esc(contractId)}', this)">copy</button></td></tr>
+    <tr><td>Contract</td><td><a class="mono" href="/contracts/${esc(contractId)}">${shortHash(contractId, 12)}</a> <button class="copybtn" type="button" onclick="blkCopy('${esc(contractId)}', this)">copy</button></td></tr>
     ${gas || maxGas ? `<tr><td>Gas</td><td>${fmtInt(gas || maxGas)}${maxGas && gas && maxGas !== gas ? ` <span style="color:var(--text-dim)">· max ${fmtInt(maxGas)}</span>` : ""}</td></tr>` : ""}
     ${contract ? `
       ${num(contract.invoke_count) ? `<tr><td>Invokes seen</td><td>${fmtInt(contract.invoke_count as number)}</td></tr>` : ""}
@@ -802,11 +804,14 @@ pages.get("/account/:address", async (c) => {
 pages.get("/market", async (c) => {
   const content = `
     <div class="panel"><h2>XEL Markets</h2>
-      <div id="market-cards" class="cards" style="grid-template-columns:repeat(3,1fr)"><div class="card"><div class="label">Loading…</div></div></div>
+      <div id="market-cards" class="cards"><div class="card"><div class="label">Loading…</div></div></div>
       <div class="tablewrap"><table id="market-table">
         <thead><tr><th>Exchange</th><th>Market</th><th class="num">Last</th><th class="num">24h %</th><th class="num">High</th><th class="num">Low</th><th class="num">Bid</th><th class="num">Ask</th><th class="num">Vol (XEL)</th><th class="num">Vol (USDT)</th><th>Updated</th></tr></thead>
         <tbody><tr><td colspan="11" style="color:var(--text-dim)">loading…</td></tr></tbody>
       </table></div>
+      <h3 class="sub-h">Volume share</h3>
+      <div id="market-volshare" class="volshare"></div>
+      <div id="market-volshare-legend" class="volshare-legend"></div>
     </div>
     <div class="panel"><h2>Price history</h2><div id="u-price-history" style="min-height:260px"></div></div>`;
   return c.html(layout("Market", content, "/market"));
@@ -818,6 +823,14 @@ pages.get("/miners", async (c) => {
   const period = c.req.query("period") ?? "day";
   const date = c.req.query("date") ?? "";
   const db = c.env.DB;
+  const srt = srvSort((n) => c.req.query(n), TOP_COLS.miners, "blocks", "address", (s) => {
+    const p = new URLSearchParams();
+    p.set("period", period);
+    if (date) p.set("date", date);
+    if (s) for (const [k, v] of new URLSearchParams(s)) p.set(k, v);
+    const q = p.toString();
+    return q ? `/miners?${q}` : "/miners";
+  });
 
   // Day views anchor on the latest day that actually has data so the
   // leaderboard stays populated while live indexing lags behind "today".
@@ -835,22 +848,22 @@ pages.get("/miners", async (c) => {
   try {
     if (period === "all") {
       rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(rewards_earned) rewards
-        FROM daily_miners GROUP BY address ORDER BY blocks DESC LIMIT 50`)
+        FROM daily_miners GROUP BY address ORDER BY ${srt.order} LIMIT 50`)
         .all<Record<string, unknown>>().then((r) => r.results ?? []);
     } else if (period === "month") {
       rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(rewards_earned) rewards
-        FROM daily_miners WHERE date LIKE ? || '%' GROUP BY address ORDER BY blocks DESC LIMIT 50`)
+        FROM daily_miners WHERE date LIKE ? || '%' GROUP BY address ORDER BY ${srt.order} LIMIT 50`)
         .bind(date || new Date().toISOString().slice(0, 7))
         .all<Record<string, unknown>>().then((r) => r.results ?? []);
     } else if (period === "week") {
       rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(rewards_earned) rewards
-        FROM daily_miners WHERE date > date(?, '-7 days') GROUP BY address ORDER BY blocks DESC LIMIT 50`)
+        FROM daily_miners WHERE date > date(?, '-7 days') GROUP BY address ORDER BY ${srt.order} LIMIT 50`)
         .bind(date || new Date().toISOString().slice(0, 10))
         .all<Record<string, unknown>>().then((r) => r.results ?? []);
     } else {
       const day = date || await latestDay();
       rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(rewards_earned) rewards
-        FROM daily_miners WHERE date = ? GROUP BY address ORDER BY blocks DESC LIMIT 50`)
+        FROM daily_miners WHERE date = ? GROUP BY address ORDER BY ${srt.order} LIMIT 50`)
         .bind(day).all<Record<string, unknown>>().then((r) => r.results ?? []);
     }
     // fallback: derive from the blocks table when daily rollups have no rows yet
@@ -862,7 +875,7 @@ pages.get("/miners", async (c) => {
       else if (period === "week") { conds.push("ts > ?"); args.push(Date.now() - 7 * 86400_000); }
       else if (period === "month") { conds.push("ts > ?"); args.push(Date.now() - 30 * 86400_000); }
       rows = await db.prepare(`SELECT miner_address address, COUNT(*) blocks, SUM(miner_reward) rewards
-        FROM blocks WHERE ${conds.join(" AND ")} GROUP BY miner_address ORDER BY blocks DESC LIMIT 50`)
+        FROM blocks WHERE ${conds.join(" AND ")} GROUP BY miner_address ORDER BY ${srt.order} LIMIT 50`)
         .bind(...args).all<Record<string, unknown>>().then((r) => r.results ?? []).catch(() => []);
     }
   } catch { /* db not ready */ }
@@ -883,11 +896,11 @@ pages.get("/miners", async (c) => {
 
 const content = `<div class="panel"><h2>Miner leaderboard</h2>
     <div style="margin-bottom:1rem;display:flex;gap:0.8rem;align-items:center">
-      <select onchange="location.href='/miners?period='+this.value">${periodOpts}</select>
-      ${dateHint ? `<input type="text" class="period" placeholder="${dateHint}" value="${date || (period === "day" ? resolvedDay : "")}" onchange="location.href='/miners?period=${period}&date='+this.value" />` : ""}
+      <select onchange="location.href='/miners?period='+this.value${srt.qs ? `+'&${srt.qs}'` : ""}">${periodOpts}</select>
+      ${dateHint ? `<input type="text" class="period" placeholder="${dateHint}" value="${date || (period === "day" ? resolvedDay : "")}" onchange="location.href='/miners?period=${period}&date='+this.value${srt.qs ? `+'&${srt.qs}'` : ""}" />` : ""}
     </div>
-    <div class="tablewrap"><table>
-      <thead><tr><th class="num">#</th><th>Miner</th><th class="num">Blocks</th><th class="num">Rewards (XEL)</th></tr></thead>
+    <div class="tablewrap"><table data-srvsort="1">
+      <thead><tr><th class="num">#</th>${srt.th("address", "Miner")}${srt.th("blocks", "Blocks", true)}${srt.th("rewards", "Rewards (XEL)", true)}</tr></thead>
       <tbody>${body}</tbody>
     </table></div>
   </div>`;
@@ -1233,6 +1246,10 @@ pages.get("/charts", async (c) => {
     ["hashrate", "Hashrate"], ["transfers", "Transfers"], ["fees", "Fees"],
     ["supply", "Supply"], ["market-cap", "Market Cap"], ["block-types", "Block types"],
     ["fees-rewards", "Fees vs rewards"], ["decentralization", "Decentralization"],
+    ["peers", "Peer count"], ["peers-pruned", "Pruned peers"], ["peers-lagging", "Lagging peers"],
+    ["peers-stale", "Stale peers"], ["peers-divergent", "Divergent peers"], ["peer-lag", "Avg peer lag"],
+    ["peers-hidden", "Hidden peers"], ["peers-new", "New connections"], ["peer-age", "Connection age"],
+    ["peer-view", "Peer visibility"], ["peer-traffic-in", "Peer traffic in"], ["peer-traffic-out", "Peer traffic out"],
   ];
   const metricOpts = metrics.map(([m, name]) => `<option value="${m}" ${metric === m ? "selected" : ""}>${name}</option>`).join("");
   const rangeOpts = ["7d", "30d", "90d", "1y", "all", "custom"].map((r) => `<option value="${r}" ${range === r ? "selected" : ""}>${r === "custom" ? "custom period" : r}</option>`).join("");
@@ -1290,9 +1307,16 @@ pages.get("/charts", async (c) => {
 // ---------- assets & contracts ----------
 
 pages.get("/assets", async (c) => {
+  const srt = srvSort((n) => c.req.query(n), {
+    asset: { sql: "asset_id", def: "asc" },
+    name: { sql: "name", def: "asc" },
+    symbol: { sql: "symbol", def: "asc" },
+    decimals: { sql: "decimals", def: "asc" },
+    first: { sql: "first_seen_topo", def: "desc" },
+  }, "first", "asset_id", (s) => `/assets${s ? `?${s}` : ""}`);
   let rows: Record<string, unknown>[] = [];
   try {
-    rows = await c.env.DB.prepare("SELECT * FROM assets ORDER BY first_seen_topo DESC LIMIT 100")
+    rows = await c.env.DB.prepare(`SELECT * FROM assets ORDER BY ${srt.order} LIMIT 100`)
       .all<Record<string, unknown>>().then((r) => r.results ?? []);
   } catch { /* table empty or missing */ }
 
@@ -1306,22 +1330,29 @@ pages.get("/assets", async (c) => {
       </tr>`).join("")
     : `<tr><td colspan="5" style="color:var(--text-dim)">No assets indexed yet (populated during tx detail pass).</td></tr>`;
 
-  const content = `<div class="panel"><h2>Assets</h2><div class="tablewrap"><table>
-    <thead><tr><th>Asset ID</th><th>Name</th><th>Symbol</th><th class="num">Decimals</th><th class="num">First seen (topo)</th></tr></thead>
+  const content = `<div class="panel"><h2>Assets <span style="color:var(--text-dim)">showing ${fmtInt(rows.length)} of indexed</span></h2><div class="tablewrap"><table data-srvsort="1">
+    <thead><tr>${srt.th("asset", "Asset ID")}${srt.th("name", "Name")}${srt.th("symbol", "Symbol")}${srt.th("decimals", "Decimals", true)}${srt.th("first", "First seen (topo)", true)}</tr></thead>
     <tbody>${body}</tbody></table></div></div>`;
   return c.html(layout("Assets", content, "/assets"));
 });
 
 pages.get("/contracts", async (c) => {
+  const srt = srvSort((n) => c.req.query(n), {
+    contract: { sql: "contract_id", def: "asc" },
+    deployer: { sql: "deployer", def: "asc" },
+    deployed: { sql: "deploy_topo", def: "desc" },
+    invokes: { sql: "invoke_count", def: "desc" },
+    gas: { sql: "gas_total", def: "desc" },
+  }, "deployed", "contract_id", (s) => `/contracts${s ? `?${s}` : ""}`);
   let rows: Record<string, unknown>[] = [];
   try {
-    rows = await c.env.DB.prepare("SELECT * FROM contracts ORDER BY deploy_topo DESC LIMIT 100")
+    rows = await c.env.DB.prepare(`SELECT * FROM contracts ORDER BY ${srt.order} LIMIT 100`)
       .all<Record<string, unknown>>().then((r) => r.results ?? []);
   } catch { /* not ready */ }
 
   const body = rows.length
     ? rows.map((ct) => `<tr>
-        <td><span class="mono">${shortHash(ct.contract_id as string, 10)}</span></td>
+        <td><a class="mono" href="/contracts/${ct.contract_id}">${shortHash(ct.contract_id as string, 10)}</a></td>
         <td><a class="mono" href="/account/${ct.deployer}">${shortHash(ct.deployer as string, 8)}</a></td>
         <td class="num">${fmtInt(ct.deploy_topo as number)}</td>
         <td class="num">${fmtInt(ct.invoke_count as number)}</td>
@@ -1329,10 +1360,95 @@ pages.get("/contracts", async (c) => {
       </tr>`).join("")
     : `<tr><td colspan="5" style="color:var(--text-dim)">No contracts indexed yet (populated during tx detail pass).</td></tr>`;
 
-  const content = `<div class="panel"><h2>Contracts</h2><div class="tablewrap"><table>
-    <thead><tr><th>Contract</th><th>Deployer</th><th class="num">Deployed (topo)</th><th class="num">Invokes</th><th class="num">Gas</th></tr></thead>
+  const content = `<div class="panel"><h2>Contracts <span style="color:var(--text-dim)">showing ${fmtInt(rows.length)} of indexed</span></h2><div class="tablewrap"><table data-srvsort="1">
+    <thead><tr>${srt.th("contract", "Contract")}${srt.th("deployer", "Deployer")}${srt.th("deployed", "Deployed (topo)", true)}${srt.th("invokes", "Invokes", true)}${srt.th("gas", "Gas", true)}</tr></thead>
     <tbody>${body}</tbody></table></div></div>`;
   return c.html(layout("Contracts", content, "/contracts"));
+});
+
+pages.get("/contracts/:id", async (c) => {
+  const id = c.req.param("id");
+  const db = c.env.DB;
+  const n = (v: unknown): number => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
+
+  let ct: Record<string, unknown> | undefined;
+  let invokes: Record<string, unknown>[] = [];
+  try {
+    ct = (await db.prepare("SELECT * FROM contracts WHERE contract_id = ?").bind(id).first()) ?? undefined;
+    invokes = await db.prepare(
+      `SELECT hash, block_topo, ts, fee, result, sender FROM tx_index WHERE contract_id = ? ORDER BY block_topo DESC LIMIT 25`
+    ).bind(id).all<Record<string, unknown>>().then((r) => r.results ?? []);
+  } catch { /* db not ready */ }
+
+  if (!ct) return c.html(layout("Not found", notFound("Contract"), "/contracts"));
+
+  const invokeCount = n(ct.invoke_count);
+  const gasTotal = n(ct.gas_total);
+  const deployTopo = n(ct.deploy_topo);
+  const deployer = String(ct.deployer ?? "");
+  const deployHash = String(ct.contract_id ?? id);
+  const lastTs = invokes.length ? n(invokes[0].ts) : null;
+
+  const hero = `<div class="panel blk-hero">
+    <div class="blk-head">
+      <div class="blk-id">
+        <h2 class="blk-title">Contract <span class="mint mono" style="font-size:0.72em">${shortHash(deployHash, 12)}</span></h2>
+        <div class="blk-meta">
+          ${invokeCount > 0 ? `<span class="badge">${fmtInt(invokeCount)} invoke${invokeCount === 1 ? "" : "s"}</span>` : '<span class="badge">no invokes observed</span>'}
+          ${lastTs ? `<span class="blk-when">last invoked ${ago(lastTs)}</span>` : ""}
+        </div>
+        <div class="hash-row">
+          <span class="hashline mono">${esc(deployHash)}</span>
+          <button class="copybtn" type="button" onclick="blkCopy('${esc(deployHash)}', this)">copy</button>
+        </div>
+      </div>
+      <div class="blk-nav"><a class="btn ghost" href="/contracts" title="All indexed contracts">Contracts ›</a></div>
+    </div>
+    <div class="cards blk-cards">
+      ${statCard("Invokes", invokeCount > 0 ? fmtInt(invokeCount) : "—", "indexed contract calls")}
+      ${statCard("Gas Total", gasTotal > 0 ? fmtInt(gasTotal) : "—", "sum of max_gas across invokes")}
+      ${statCard("Deployer", deployer ? `<a class="mono" href="/account/${esc(deployer)}">${shortHash(deployer, 8)}</a>` : "—", "account that deployed")}
+      ${statCard("Deployed", deployTopo > 0 ? `<a href="/block/${deployTopo}">#${fmtInt(deployTopo)}</a>` : "—", "deploy tx block")}
+      ${statCard("Last Invoke", lastTs ? ago(lastTs) : "—", lastTs ? fmtTime(lastTs) : "not observed")}
+    </div>
+  </div>`;
+
+  const overview = `<div class="panel"><h2>Overview</h2><table class="kv">
+    <tr><td>Contract ID</td><td><span class="mono">${esc(deployHash)}</span> <button class="copybtn" type="button" onclick="blkCopy('${esc(deployHash)}', this)">copy</button></td></tr>
+    <tr><td>Deployer</td><td>${deployer ? `<a class="mono" href="/account/${esc(deployer)}">${shortHash(deployer, 10)}</a>${entityTag(deployer)} <button class="copybtn" type="button" onclick="blkCopy('${esc(deployer)}', this)">copy</button>` : "—"}</td></tr>
+    ${deployTopo > 0 ? `<tr><td>Deployed at</td><td><a href="/block/${deployTopo}"><span class="mint">#${fmtInt(deployTopo)}</span></a></td></tr>` : ""}
+    <tr><td>Invokes seen</td><td>${invokeCount > 0 ? fmtInt(invokeCount) : "—"}</td></tr>
+    <tr><td>Gas total</td><td>${gasTotal > 0 ? fmtInt(gasTotal) : "—"}</td></tr>
+    ${n(ct.events_count) ? `<tr><td>Events seen</td><td>${fmtInt(ct.events_count as number)}</td></tr>` : ""}
+  </table></div>`;
+
+  const invokeRows = invokes.length
+    ? invokes.map((t) => {
+        const h = String(t.hash ?? "");
+        const result = t.result ? String(t.result) : "";
+        return `<tr>
+          <td><a class="mono" href="/tx/${esc(h)}">${shortHash(h, 12)}</a></td>
+          <td><a href="/block/${n(t.block_topo)}"><span class="mint">${fmtInt(n(t.block_topo))}</span></a></td>
+          <td>${fmtTime(n(t.ts))}</td>
+          <td><a class="mono" href="/account/${esc(t.sender as string)}">${shortHash(t.sender as string, 8)}</a>${entityTag(t.sender as string)}</td>
+          <td class="num">${atomic(n(t.fee), 6)}</td>
+          <td>${result ? `<span class="badge ${result === "ok" ? "ok" : "fail"}">${esc(result)}</span>` : '<span style="color:var(--text-dim)">—</span>'}</td>
+        </tr>`;
+      }).join("")
+    : `<tr><td colspan="6" style="color:var(--text-dim)">No indexed invocations for this contract yet.</td></tr>`;
+
+  const invokesPanel = `<div class="panel"><h2>Recent Invocations ${invokes.length ? `<span style="color:var(--text-dim)">latest ${fmtInt(invokes.length)}</span>` : ""}</h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Hash</th><th>Block</th><th>Time</th><th>Sender</th><th class="num">Fee (XEL)</th><th>Result</th></tr></thead>
+      <tbody>${invokeRows}</tbody>
+    </table></div>
+  </div>`;
+
+  const content = `${hero}
+    ${overview}
+    ${invokesPanel}
+    <script>${blkCopyScript}</script>`;
+  return c.html(layout(`Contract ${shortHash(deployHash, 8)}`, content, "/contracts"));
 });
 
 // ---------- assets & contracts nav additions handled in layout ----------
@@ -1361,6 +1477,8 @@ pages.get("/search/:query", async (c) => {
     if (block) return c.redirect(`/block/${block.topoheight}`);
     const acct = await db.prepare("SELECT address FROM accounts WHERE address = ?").bind(q).first();
     if (acct) return c.redirect(`/account/${q}`);
+    const ct = await db.prepare("SELECT contract_id FROM contracts WHERE contract_id = ?").bind(q).first();
+    if (ct) return c.redirect(`/contracts/${q}`);
   } catch { /* db not ready */ }
   return c.html(layout("Search", notFound(`"${q.slice(0, 20)}"`), ""));
 });

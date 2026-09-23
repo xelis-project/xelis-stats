@@ -1,5 +1,6 @@
 import { renderChart, renderCompare, cumulativePoints, ACCENTS, accentHex, type SeriesPoint, type LineWidth } from "./charts";
 import { fmt, fmtInt, fmtPct, shortHash, atomic, ago } from "./format";
+import { refreshSort } from "./sortable";
 import type uPlot from "uplot";
 
 type Kind = "stat" | "chart" | "compare" | "rank" | "list";
@@ -25,6 +26,9 @@ interface CatalogItem {
 // Per-widget user settings, persisted with the layout. Filter fields only
 // apply to matching kinds: range/interval/type/log/cum/fill/points/lineWidth ->
 // chart, period/limit -> rank and list, valueSize/hideSub -> stat,
+// sort/dir -> table widgets backed by a sortable API (src/server/sort.ts),
+// txType -> txs list, blockType -> blocks list,
+// hiddenCols -> table widgets (per-column show/hide),
 // title/accent -> everything.
 interface WidgetOpts {
   title?: string;
@@ -43,6 +47,11 @@ interface WidgetOpts {
   lineWidth?: LineWidth;
   valueSize?: "small" | "normal" | "large";
   hideSub?: boolean;
+  sort?: string;
+  dir?: "asc" | "desc";
+  txType?: string;
+  blockType?: string;
+  hiddenCols?: string[];
 }
 
 interface Widget {
@@ -81,6 +90,7 @@ interface Summary {
   block_time_target_s?: number;
   block_reward?: number;
   mempool?: number;
+  peers?: number;
   counts?: { transactions?: number; accounts?: number; assets?: number };
   supply?: { circulating?: number; emitted?: number; burned?: number; max?: number };
   market?: { price?: number; change_pct_24h?: number | null; quote_volume_24h?: number; exchanges?: number } | null;
@@ -112,6 +122,7 @@ const CATALOG: CatalogItem[] = [
   { key: "stat-exchanges", kind: "stat", field: "exchanges", label: "Exchanges", desc: "Active market feeds", w: 3, h: 2 },
   { key: "stat-reward", kind: "stat", field: "reward", label: "Block reward", desc: "Miner + dev reward per block", w: 3, h: 2 },
   { key: "stat-target", kind: "stat", field: "target", label: "Target block time", desc: "Node emission target", w: 3, h: 2 },
+  { key: "stat-peers", kind: "stat", field: "peers", label: "Peers", desc: "Connected peers (2-min snapshot)", w: 3, h: 2 },
 
   { key: "chart-txs", kind: "chart", metric: "txs", label: "Transactions / day", desc: "Daily transaction count", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-price", kind: "chart", metric: "price", label: "XEL price", desc: "Median USDT quote over time", range: "30d", interval: "day", w: 6, h: 5 },
@@ -137,6 +148,12 @@ const CATALOG: CatalogItem[] = [
   { key: "chart-burned", kind: "chart", metric: "burned-supply", label: "Burned supply", desc: "Cumulative publicly burned XEL", range: "1y", interval: "week", w: 6, h: 5 },
   { key: "chart-block-types", kind: "chart", metric: "block-types", label: "Block types", desc: "Normal/Side/Sync counts per day", range: "30d", interval: "day", w: 6, h: 5 },
   { key: "chart-mempool", kind: "chart", metric: "mempool", label: "Mempool", desc: "Pending tx count over time", range: "3d", interval: "day", w: 6, h: 5 },
+  { key: "chart-peers", kind: "chart", metric: "peers", label: "Peer count", desc: "Connected peers over time", range: "7d", interval: "day", w: 6, h: 5 },
+  { key: "chart-peers-pruned", kind: "chart", metric: "peers-pruned", label: "Pruned peers", desc: "Pruned nodes over time", range: "7d", interval: "day", w: 6, h: 5 },
+  { key: "chart-peer-lag", kind: "chart", metric: "peer-lag", label: "Peer sync lag", desc: "Average topoheight lag vs our tip", range: "7d", interval: "day", w: 6, h: 5 },
+  { key: "chart-peers-stale", kind: "chart", metric: "peers-stale", label: "Stale peers", desc: "No ping for over an hour", range: "7d", interval: "day", w: 6, h: 5 },
+  { key: "chart-peer-age", kind: "chart", metric: "peer-age", label: "Connection age", desc: "Average peer connection age (s)", range: "7d", interval: "day", w: 6, h: 5 },
+  { key: "compare-peers-divergent", kind: "compare", metrics: ["peers", "peers-divergent"], label: "Peers vs divergent", desc: "Connected peers against divergent tips", range: "7d", interval: "day", w: 6, h: 5 },
 
   { key: "compare-price-volume", kind: "compare", metrics: ["price", "quote-volume"], log: true, label: "Price vs volume", desc: "Median price against USDT volume", range: "30d", interval: "day", w: 6, h: 5 },
   { key: "compare-txs-accounts", kind: "compare", metrics: ["txs", "active-accounts"], label: "Txs vs senders", desc: "Transactions against active senders", range: "90d", interval: "day", w: 6, h: 5 },
@@ -156,6 +173,7 @@ const CATALOG: CatalogItem[] = [
   { key: "list-accounts-top", kind: "list", src: "accounts-top", limit: 12, label: "Top senders (all-time)", desc: "Most active senders since indexing", w: 6, h: 5 },
   { key: "list-exchanges", kind: "list", src: "exchanges", limit: 10, label: "Exchanges", desc: "Per-exchange price, spread and volume", w: 6, h: 5 },
   { key: "list-peers", kind: "list", src: "peers", limit: 10, label: "Node versions", desc: "Peer count by node version", w: 6, h: 5 },
+  { key: "list-peer-tags", kind: "list", src: "peer-tags", limit: 10, label: "Peer tags", desc: "Tagged peers by tag", w: 6, h: 5 },
 ];
 
 const byKey = new Map(CATALOG.map((c) => [c.key, c]));
@@ -167,13 +185,14 @@ const DEFAULT_LAYOUT: Widget[] = [
   { id: "d4", key: "stat-mempool", x: 9, y: 0, w: 3, h: 2 },
   { id: "d5", key: "chart-txs", x: 0, y: 2, w: 6, h: 5 },
   { id: "d6", key: "chart-price", x: 6, y: 2, w: 6, h: 5 },
-  { id: "d7", key: "chart-miners", x: 0, y: 7, w: 6, h: 5 },
-  { id: "d8", key: "stat-supply", x: 6, y: 7, w: 3, h: 2 },
-  { id: "d9", key: "stat-marketcap", x: 9, y: 7, w: 3, h: 2 },
-  { id: "d10", key: "stat-blocktime", x: 6, y: 9, w: 3, h: 2 },
-  { id: "d11", key: "stat-accounts", x: 9, y: 9, w: 3, h: 2 },
-  { id: "d12", key: "list-blocks", x: 0, y: 12, w: 6, h: 5 },
-  { id: "d13", key: "list-txs", x: 6, y: 12, w: 6, h: 5 },
+  { id: "d7", key: "chart-hashrate", x: 0, y: 7, w: 6, h: 5 },
+  { id: "d8", key: "chart-miners", x: 6, y: 7, w: 6, h: 5 },
+  { id: "d9", key: "list-blocks", x: 0, y: 12, w: 6, h: 5 },
+  { id: "d10", key: "list-txs", x: 6, y: 12, w: 6, h: 5 },
+  { id: "d11", key: "chart-supply", x: 0, y: 17, w: 6, h: 5 },
+  { id: "d12", key: "chart-market-cap", x: 6, y: 17, w: 6, h: 5 },
+  { id: "d13", key: "chart-nakamoto", x: 0, y: 22, w: 6, h: 5 },
+  { id: "d14", key: "chart-gini", x: 6, y: 22, w: 6, h: 5 },
 ];
 
 let widgets: Widget[] = [];
@@ -211,8 +230,11 @@ const RANGES = ["7d", "30d", "90d", "1y", "all", "custom"];
 const INTERVALS = ["day", "week", "month", "year"];
 const RANK_PERIODS = ["day", "week", "month", "all"];
 const LIMITS = [5, 10, 25, 50];
+// Values the /api/transactions and /api/blocks ?type= filters accept
+const TX_TYPES = ["transfer", "burn", "invoke_contract", "deploy_contract", "multisig"];
+const BLOCK_TYPES = ["Normal", "Side", "Sync"];
 
-function sanitizeOpts(raw: unknown): WidgetOpts {
+function sanitizeOpts(raw: unknown, item?: CatalogItem): WidgetOpts {
   const out: WidgetOpts = {};
   if (!raw || typeof raw !== "object") return out;
   const v = raw as Record<string, unknown>;
@@ -232,6 +254,16 @@ function sanitizeOpts(raw: unknown): WidgetOpts {
   if (v.lineWidth === "thin" || v.lineWidth === "normal" || v.lineWidth === "thick") out.lineWidth = v.lineWidth;
   if (v.valueSize === "small" || v.valueSize === "normal" || v.valueSize === "large") out.valueSize = v.valueSize;
   if (v.hideSub === true) out.hideSub = true;
+  const sortCols = item ? WIDGET_COLS[item.src ?? ""] : undefined;
+  if (typeof v.sort === "string" && sortCols?.cols.some((c) => c.key === v.sort)) out.sort = v.sort;
+  if (v.dir === "asc" || v.dir === "desc") out.dir = v.dir;
+  if (typeof v.txType === "string" && TX_TYPES.includes(v.txType)) out.txType = v.txType;
+  if (typeof v.blockType === "string" && BLOCK_TYPES.some((b) => b.toLowerCase() === v.blockType?.toLowerCase())) out.blockType = v.blockType;
+  if (Array.isArray(v.hiddenCols)) {
+    const allowed = item ? tableCols(item).map((c) => c.key) : [];
+    const hid = v.hiddenCols.filter((k) => typeof k === "string" && allowed.includes(k));
+    if (hid.length) out.hiddenCols = hid;
+  }
   return out;
 }
 
@@ -248,7 +280,7 @@ function parseLayout(text: string): Widget[] | null {
     const w = raw as Widget;
     if (!w || typeof w.key !== "string" || !byKey.has(w.key)) continue;
     if (![w.x, w.y, w.w, w.h].every((n) => Number.isFinite(n))) continue;
-    clean.push({ id: nid(), key: w.key, x: w.x, y: w.y, w: w.w, h: w.h, opts: sanitizeOpts(w.opts) });
+    clean.push({ id: nid(), key: w.key, x: w.x, y: w.y, w: w.w, h: w.h, opts: sanitizeOpts(w.opts, byKey.get(w.key)) });
   }
   if (clean.length || !parsed.widgets.length) return clean;
   return null;
@@ -349,6 +381,7 @@ function statValue(field: string | undefined, s: Summary): { value: string; sub:
       return { value: Number.isFinite(mc) ? `$${fmt(mc)}` : "—", sub: `${fmt(circ)} XEL circulating` };
     }
     case "mempool": return { value: fmtInt(s.mempool ?? NaN), sub: "pending transactions" };
+    case "peers": return { value: fmtInt(s.peers ?? NaN), sub: `${fmtInt(s.peers ?? 0)} connected peers` };
     case "supply": {
       const circ = (s.supply?.circulating ?? 0) / 1e8;
       const max = (s.supply?.max ?? 0) / 1e8;
@@ -462,37 +495,29 @@ function addrCell(r: Record<string, unknown>, key: string, size = 6, base = "/ac
   return `<td title="${esc(a)}"><a href="${base}${esc(a)}">${esc(shortHash(a, size))}</a>${tag}</td>`;
 }
 
-function rankHead(src: string): string {
+// Rows render as [column key, cell html] pairs so tableHtml can hide columns.
+// "__pre"/"__post" mark the unhideable fixed columns around the data ones
+// (rank #, tx hash, block miner).
+function rankRow(src: string, r: Record<string, unknown>, i: number): Array<[string, string]> {
+  const rank: [string, string] = ["__pre", `<td class="num rank">${i + 1}</td>`];
   switch (src) {
-    case "miners": return "<th class='num'>#</th><th>Miner</th><th class='num'>Blocks</th><th class='num'>Rewards</th>";
-    case "senders": return "<th class='num'>#</th><th>Sender</th><th class='num'>Txs</th><th class='num'>Outputs</th>";
-    case "burners": return "<th class='num'>#</th><th>Address</th><th class='num'>Burned</th>";
-    case "assets": return "<th class='num'>#</th><th>Asset</th><th class='num'>Txs</th><th class='num'>Transfers</th>";
-    case "contracts": return "<th class='num'>#</th><th>Contract</th><th class='num'>Invokes</th><th class='num'>Gas</th>";
-    default: return "<th class='num'>#</th><th>Address</th>";
-  }
-}
-
-function rankRow(src: string, r: Record<string, unknown>, i: number): string {
-  const rank = `<td class="num rank">${i + 1}</td>`;
-  switch (src) {
-    case "miners": return `${rank}${addrCell(r, "address", 6, "/miner/")}<td class="num">${fmtInt(Number(r.blocks))}</td><td class="num">${atomic(Number(r.rewards))} XEL</td>`;
-    case "senders": return `${rank}${addrCell(r, "address", 8)}<td class="num">${fmtInt(Number(r.tx_count))}</td><td class="num">${fmtInt(Number(r.transfer_outputs))}</td>`;
-    case "burners": return `${rank}${addrCell(r, "address", 8)}<td class="num">${atomic(Number(r.burned))} XEL</td>`;
+    case "miners": return [rank, ["address", addrCell(r, "address", 6, "/miner/")], ["blocks", `<td class="num">${fmtInt(Number(r.blocks))}</td>`], ["rewards", `<td class="num">${atomic(Number(r.rewards))} XEL</td>`]];
+    case "senders": return [rank, ["address", addrCell(r, "address", 8)], ["txs", `<td class="num">${fmtInt(Number(r.tx_count))}</td>`], ["outputs", `<td class="num">${fmtInt(Number(r.transfer_outputs))}</td>`]];
+    case "burners": return [rank, ["address", addrCell(r, "address", 8)], ["burned", `<td class="num">${atomic(Number(r.burned))} XEL</td>`]];
     case "assets": {
       const sym = String(r.symbol ?? "");
       const id = String(r.asset_id ?? "");
-      return `${rank}<td title="${esc(id)}">${esc(sym || shortHash(id, 8))}</td><td class="num">${fmtInt(Number(r.tx_count))}</td><td class="num">${fmtInt(Number(r.transfers))}</td>`;
+      return [rank, ["asset", `<td title="${esc(id)}">${esc(sym || shortHash(id, 8))}</td>`], ["txs", `<td class="num">${fmtInt(Number(r.tx_count))}</td>`], ["transfers", `<td class="num">${fmtInt(Number(r.transfers))}</td>`]];
     }
     case "contracts": {
       const id = String(r.contract_id ?? "");
-      return `${rank}<td title="${esc(id)}">${esc(shortHash(id, 10))}</td><td class="num">${fmtInt(Number(r.invokes))}</td><td class="num">${atomic(Number(r.gas))} XEL</td>`;
+      return [rank, ["contract", `<td title="${esc(id)}">${esc(shortHash(id, 10))}</td>`], ["invokes", `<td class="num">${fmtInt(Number(r.invokes))}</td>`], ["gas", `<td class="num">${atomic(Number(r.gas))} XEL</td>`]];
     }
-    default: return `${rank}${addrCell(r, "address")}`;
+    default: return [rank, ["address", addrCell(r, "address")]];
   }
 }
 
-function listRow(src: string, r: Record<string, unknown>): string {
+function listRow(src: string, r: Record<string, unknown>): Array<[string, string]> {
   if (src === "exchanges") {
     const bid = Number(r.bid ?? 0);
     const ask = Number(r.ask ?? 0);
@@ -501,59 +526,279 @@ function listRow(src: string, r: Record<string, unknown>): string {
     const chgHtml = chg === null || chg === undefined || !Number.isFinite(Number(chg))
       ? "—"
       : `<span style="color:${Number(chg) >= 0 ? "var(--mint)" : "var(--danger)"}">${Number(chg) >= 0 ? "+" : ""}${Number(chg).toFixed(2)}%</span>`;
-    return `<td>${esc(r.exchange)}</td><td>${esc(r.market)}</td>
-      <td class="num">$${Number(r.last ?? 0).toFixed(4)}</td>
-      <td class="num">${chgHtml}</td>
-      <td class="num">${spread}</td>
-      <td class="num">${fmt(Number(r.baseVolume ?? 0))}</td>
-      <td class="num">$${fmt(Number(r.quoteVolume ?? 0))}</td>
-      <td class="num">${ago(normSecs(Number(r.timestamp)))}</td>`;
+    return [
+      ["exchange", `<td>${esc(r.exchange)}</td>`],
+      ["market", `<td>${esc(r.market)}</td>`],
+      ["price", `<td class="num">$${Number(r.last ?? 0).toFixed(4)}</td>`],
+      ["chg24h", `<td class="num">${chgHtml}</td>`],
+      ["spread", `<td class="num">${spread}</td>`],
+      ["volBase", `<td class="num">${fmt(Number(r.baseVolume ?? 0))}</td>`],
+      ["volQuote", `<td class="num">$${fmt(Number(r.quoteVolume ?? 0))}</td>`],
+      ["quoteAge", `<td class="num">${ago(normSecs(Number(r.timestamp)))}</td>`],
+    ];
   }
   if (src === "peers") {
-    return `<td>${esc(r.version)}</td><td class="num">${fmtInt(Number(r.peer_count))}</td>`;
+    return [
+      ["version", `<td>${esc(r.version)}</td>`],
+      ["peers", `<td class="num">${fmtInt(Number(r.peer_count))}</td>`],
+      ["pruned", `<td class="num">${fmtInt(Number(r.pruned_count ?? 0))}</td>`],
+    ];
+  }
+  if (src === "peer-tags") {
+    return [["tag", `<td>${esc(r.tag)}</td>`], ["peers", `<td class="num">${fmtInt(Number(r.peers))}</td>`]];
   }
   if (src === "txs") {
     const hash = String(r.hash ?? "");
     const type = String(r.tx_type ?? "?");
     const topo = Number(r.block_topo);
-    return `<td title="${esc(hash)}"><a href="/tx/${esc(hash)}">${esc(shortHash(hash))}</a></td>
-      <td><span class="badge ${esc(type)}">${esc(type)}</span></td>
-      <td><a href="/block/${topo}"><span class="mint">${fmtInt(topo)}</span></a></td>
-      <td class="num">${ago(normSecs(Number(r.ts)))}</td>
-      <td class="num">${atomic(Number(r.fee), 6)} XEL</td>
-      ${addrCell(r, "sender", 8)}`;
+    return [
+      ["__pre", `<td title="${esc(hash)}"><a href="/tx/${esc(hash)}">${esc(shortHash(hash))}</a></td>`],
+      ["type", `<td><span class="badge ${esc(type)}">${esc(type)}</span></td>`],
+      ["block", `<td><a href="/block/${topo}"><span class="mint">${fmtInt(topo)}</span></a></td>`],
+      ["time", `<td class="num">${ago(normSecs(Number(r.ts)))}</td>`],
+      ["fee", `<td class="num">${atomic(Number(r.fee), 6)} XEL</td>`],
+      ["sender", addrCell(r, "sender", 8)],
+    ];
   }
   if (src === "accounts" || src === "accounts-top") {
-    const cols = src === "accounts"
-      ? `<td class="num">${ago(normSecs(Number(r.last_active)))}</td>`
-      : `<td class="num">${fmtInt(Number(r.tx_count))}</td>`;
-    const first = src === "accounts" ? "" : `<td class="num">${ago(normSecs(Number(r.first_seen)))}</td>`;
-    return `${addrCell(r, "address", 8)}${cols}${first}`;
+    const cols: Array<[string, string]> = [["address", addrCell(r, "address", 8)]];
+    if (src === "accounts") cols.push(["last", `<td class="num">${ago(normSecs(Number(r.last_active)))}</td>`]);
+    else {
+      cols.push(["txs", `<td class="num">${fmtInt(Number(r.tx_count))}</td>`]);
+      cols.push(["first", `<td class="num">${ago(normSecs(Number(r.first_seen)))}</td>`]);
+    }
+    return cols;
   }
   const type = String(r.block_type ?? "?");
   const topo = Number(r.topoheight);
-  return `<td><a href="/block/${topo}"><span class="mint">${fmtInt(topo)}</span></a></td>
-    <td class="num">${ago(normSecs(Number(r.ts)))}</td>
-    <td class="num">${fmtInt(Number(r.tx_count))}</td>
-    <td><span class="bt ${esc(type.toLowerCase())}">${esc(type)}</span></td>
-    ${addrCell(r, "miner_address", 6, "/miner/")}`;
+  return [
+    ["topo", `<td><a href="/block/${topo}"><span class="mint">${fmtInt(topo)}</span></a></td>`],
+    ["time", `<td class="num">${ago(normSecs(Number(r.ts)))}</td>`],
+    ["txs", `<td class="num">${fmtInt(Number(r.tx_count))}</td>`],
+    ["type", `<td><span class="bt ${esc(type.toLowerCase())}">${esc(type)}</span></td>`],
+    ["__post", addrCell(r, "miner_address", 6, "/miner/")],
+  ];
 }
 
-const LIST_HEADS: Record<string, string> = {
-  blocks: "<th>Block</th><th class='num'>Age</th><th class='num'>Txs</th><th>Type</th><th>Miner</th>",
-  txs: "<th>Hash</th><th>Type</th><th>Block</th><th class='num'>Age</th><th class='num'>Fee</th><th>Sender</th>",
-  accounts: "<th>Sender</th><th class='num'>Last active</th>",
-  "accounts-top": "<th>Sender</th><th class='num'>Txs</th><th class='num'>First seen</th>",
-  exchanges: "<th>Exchange</th><th>Market</th><th class='num'>Price</th><th class='num'>24h</th><th class='num'>Spread</th><th class='num'>Vol (XEL)</th><th class='num'>Vol (USDT)</th><th class='num'>Quote age</th>",
-  peers: "<th>Node version</th><th class='num'>Peers</th>",
+// Hideable list-table columns (sources not covered by the sortable
+// WIDGET_COLS spec).
+const LIST_COLS: Record<string, Array<{ key: string; label: string; num?: boolean }>> = {
+  exchanges: [
+    { key: "exchange", label: "Exchange" },
+    { key: "market", label: "Market" },
+    { key: "price", label: "Price", num: true },
+    { key: "chg24h", label: "24h", num: true },
+    { key: "spread", label: "Spread", num: true },
+    { key: "volBase", label: "Vol (XEL)", num: true },
+    { key: "volQuote", label: "Vol (USDT)", num: true },
+    { key: "quoteAge", label: "Quote age", num: true },
+  ],
+  peers: [
+    { key: "version", label: "Node version" },
+    { key: "peers", label: "Peers", num: true },
+    { key: "pruned", label: "Pruned", num: true },
+  ],
+  "peer-tags": [
+    { key: "tag", label: "Tag" },
+    { key: "peers", label: "Peers", num: true },
+  ],
 };
 
-function tableHtml(item: CatalogItem, rows: Array<Record<string, unknown>>): string {
-  const body = item.kind === "rank"
-    ? rows.map((r, i) => `<tr>${rankRow(item.src ?? "", r, i)}</tr>`).join("")
-    : rows.map((r) => `<tr>${listRow(item.src ?? "blocks", r)}</tr>`).join("");
-  const head = item.kind === "rank" ? rankHead(item.src ?? "") : LIST_HEADS[item.src ?? "blocks"] ?? "";
-  return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+// Widget tables whose rows are sorted in SQL over the full dataset: headers
+// refetch with ?sort/&dir instead of shuffling the fetched rows. Keys must
+// exist in the API whitelists (src/server/sort.ts). pre/post are unsortable
+// columns around the sortable ones (rank #, hash, miner).
+interface SortCol {
+  key: string;
+  label: string;
+  num?: boolean;
+  def: "asc" | "desc";
+}
+
+interface SortCols {
+  pre: string;
+  post: string;
+  cols: SortCol[];
+}
+
+const WIDGET_COLS: Record<string, SortCols> = {
+  miners: {
+    pre: '<th class="num">#</th>',
+    post: "",
+    cols: [
+      { key: "address", label: "Miner", def: "asc" },
+      { key: "blocks", label: "Blocks", num: true, def: "desc" },
+      { key: "rewards", label: "Rewards", num: true, def: "desc" },
+    ],
+  },
+  senders: {
+    pre: '<th class="num">#</th>',
+    post: "",
+    cols: [
+      { key: "address", label: "Sender", def: "asc" },
+      { key: "txs", label: "Txs", num: true, def: "desc" },
+      { key: "outputs", label: "Outputs", num: true, def: "desc" },
+    ],
+  },
+  burners: {
+    pre: '<th class="num">#</th>',
+    post: "",
+    cols: [
+      { key: "address", label: "Address", def: "asc" },
+      { key: "burned", label: "Burned", num: true, def: "desc" },
+    ],
+  },
+  assets: {
+    pre: '<th class="num">#</th>',
+    post: "",
+    cols: [
+      { key: "asset", label: "Asset", def: "asc" },
+      { key: "txs", label: "Txs", num: true, def: "desc" },
+      { key: "transfers", label: "Transfers", num: true, def: "desc" },
+    ],
+  },
+  contracts: {
+    pre: '<th class="num">#</th>',
+    post: "",
+    cols: [
+      { key: "contract", label: "Contract", def: "asc" },
+      { key: "invokes", label: "Invokes", num: true, def: "desc" },
+      { key: "gas", label: "Gas", num: true, def: "desc" },
+    ],
+  },
+  blocks: {
+    pre: "",
+    post: "<th>Miner</th>",
+    cols: [
+      { key: "topo", label: "Block", num: true, def: "desc" },
+      { key: "time", label: "Age", num: true, def: "asc" },
+      { key: "txs", label: "Txs", num: true, def: "desc" },
+      { key: "type", label: "Type", def: "asc" },
+    ],
+  },
+  txs: {
+    pre: "<th>Hash</th>",
+    post: "",
+    cols: [
+      { key: "type", label: "Type", def: "asc" },
+      { key: "block", label: "Block", num: true, def: "desc" },
+      { key: "time", label: "Age", num: true, def: "asc" },
+      { key: "fee", label: "Fee", num: true, def: "desc" },
+      { key: "sender", label: "Sender", def: "asc" },
+    ],
+  },
+  accounts: {
+    pre: "",
+    post: "",
+    cols: [
+      { key: "address", label: "Sender", def: "asc" },
+      { key: "last", label: "Last active", num: true, def: "desc" },
+    ],
+  },
+  "accounts-top": {
+    pre: "",
+    post: "",
+    cols: [
+      { key: "address", label: "Sender", def: "asc" },
+      { key: "txs", label: "Txs", num: true, def: "desc" },
+      { key: "first", label: "First seen", num: true, def: "asc" },
+    ],
+  },
+};
+
+const WIDGET_DEF: Record<string, string> = {
+  miners: "blocks",
+  senders: "txs",
+  burners: "burned",
+  assets: "txs",
+  contracts: "invokes",
+  blocks: "topo",
+  txs: "block",
+  accounts: "last",
+  "accounts-top": "txs",
+};
+
+// Active sort for a widget's API-sorted table: opts value when valid, else the
+// widget default.
+function widgetSort(src: string, o: WidgetOpts): { key: string; dir: "asc" | "desc" } {
+  const cols = WIDGET_COLS[src];
+  if (!cols) return { key: "", dir: "desc" };
+  const active = cols.cols.find((c) => c.key === o.sort) ?? cols.cols.find((c) => c.key === WIDGET_DEF[src])!;
+  const dir = o.sort === active.key && (o.dir === "asc" || o.dir === "desc") ? o.dir : active.def;
+  return { key: active.key, dir };
+}
+
+// Hideable column keys + labels for a table widget: the sortable spec when
+// one exists, else the fixed LIST_COLS metadata (exchanges, peers).
+function tableCols(item: CatalogItem): Array<{ key: string; label: string }> {
+  const src = item.src ?? "";
+  const sortCols = WIDGET_COLS[src];
+  if (sortCols) return sortCols.cols;
+  if (item.kind === "rank") return [{ key: "address", label: "Address" }];
+  return LIST_COLS[src] ?? [];
+}
+
+function tableHtml(item: CatalogItem, rows: Array<Record<string, unknown>>, o: WidgetOpts): string {
+  const src = item.src ?? "";
+  const hidden = new Set(o.hiddenCols ?? []);
+  const vis = (k: string): boolean => !hidden.has(k);
+  const sortCols = WIDGET_COLS[src];
+  const listCols = LIST_COLS[src] ?? [];
+
+  // Head + row cells must follow the same column order.
+  let head = "";
+  let body = "";
+  if (sortCols) {
+    const { key, dir } = widgetSort(src, o);
+    const shown = sortCols.cols.filter((c) => vis(c.key));
+    head = sortCols.pre + shown.map((c) => {
+      const on = c.key === key;
+      return `<th class="sortable${c.num ? " num" : ""}" tabindex="0" data-col="${c.key}" data-def="${c.def}"${on ? ` data-dir="${dir}" aria-sort="${dir === "asc" ? "ascending" : "descending"}"` : ""} title="Sort by ${c.label}">${c.label}</th>`;
+    }).join("") + sortCols.post;
+    body = rows.map((r, i) => {
+      const m = new Map(item.kind === "rank" ? rankRow(src, r, i) : listRow(src, r));
+      const rank = item.kind === "rank" ? (m.get("__pre") ?? `<td class="num rank"></td>`) : "";
+      const pre = item.kind === "rank" ? "" : sortCols.pre ? (m.get("__pre") ?? "") : "";
+      return `<tr>${rank}${pre}${shown.map((c) => m.get(c.key) ?? "<td></td>").join("")}${sortCols.post ? (m.get("__post") ?? "") : ""}</tr>`;
+    }).join("");
+  } else {
+    const shown = listCols.filter((c) => vis(c.key));
+    head = shown.map((c) => `<th${c.num ? ' class="num"' : ""}>${c.label}</th>`).join("");
+    body = rows.map((r) => {
+      const m = new Map(listRow(src, r));
+      return `<tr>${shown.map((c) => m.get(c.key) ?? "<td></td>").join("")}</tr>`;
+    }).join("");
+  }
+  return `<table${sortCols ? ' data-srvsort="1"' : ""}><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+// Clicking a sortable widget header refetches from the API with the new sort —
+// the ORDER BY runs over the full dataset, not just the fetched rows.
+function wireSortClicks(w: Widget, body: HTMLElement): void {
+  const table = body.querySelector("table");
+  if (!table || !table.dataset.srvsort) return;
+  const apply = (th: HTMLElement): void => {
+    const key = th.dataset.col ?? "";
+    if (!key) return;
+    const same = w.opts?.sort === key && (w.opts?.dir === "asc" || w.opts?.dir === "desc");
+    const dir: "asc" | "desc" = same ? (w.opts?.dir === "asc" ? "desc" : "asc") : ((th.dataset.def as "asc" | "desc") ?? "asc");
+    th.dataset.dir = dir;
+    // only show the spinner if the refetch takes a while
+    setTimeout(() => { th.dataset.loading = "1"; }, 250);
+    setOpt(w, "sort", key);
+    setOpt(w, "dir", dir);
+    persist();
+    void mountTable(w).catch(() => {});
+  };
+  table.addEventListener("click", (ev) => {
+    const th = (ev.target as HTMLElement).closest("th[data-col]") as HTMLElement | null;
+    if (th) apply(th);
+  });
+  table.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    const th = (ev.target as HTMLElement).closest("th[data-col]") as HTMLElement | null;
+    if (th) { ev.preventDefault(); apply(th); }
+  });
 }
 
 async function mountTable(w: Widget): Promise<void> {
@@ -563,25 +808,29 @@ async function mountTable(w: Widget): Promise<void> {
   const o = w.opts ?? {};
   const limit = o.limit ?? item.limit ?? 12;
   const period = o.period ?? item.period ?? "week";
+  const { key: sortKey, dir: sortDir } = widgetSort(item.src ?? "", o);
+  const sp = WIDGET_COLS[item.src ?? ""] ? `&sort=${sortKey}&dir=${sortDir}` : "";
   const url = item.kind === "rank"
-    ? `/api/top/${item.src}?period=${period}&limit=${limit}`
+    ? `/api/top/${item.src}?period=${period}&limit=${limit}${sp}`
     : item.src === "txs"
-      ? `/api/transactions?limit=${limit}`
-      : item.src === "accounts"
-        ? `/api/accounts?sort=active&limit=${limit}`
-        : item.src === "accounts-top"
-          ? `/api/accounts?sort=txs&limit=${limit}`
-          : item.src === "exchanges"
-            ? "/api/market"
+      ? `/api/transactions?limit=${limit}${o.txType ? `&type=${o.txType}` : ""}${sp}`
+      : item.src === "accounts" || item.src === "accounts-top"
+        ? `/api/accounts?limit=${limit}${sp}`
+        : item.src === "exchanges"
+          ? "/api/market"
+          : item.src === "peer-tags"
+            ? "/api/peers"
             : item.src === "peers"
               ? "/api/node-versions"
-              : `/api/blocks?limit=${limit}`;
+              : `/api/blocks?limit=${limit}${o.blockType ? `&type=${o.blockType}` : ""}${sp}`;
   if (!body.querySelector("table")) setLoading(w, true);
   try {
     const j = await fetch(url).then((r) => r.json()) as Record<string, unknown[]>;
-    const rows = (j.rows ?? j.blocks ?? j.transactions ?? j.accounts ?? j.tickers ?? j.versions ?? []) as Record<string, unknown>[];
+    const rows = (j.rows ?? j.blocks ?? j.transactions ?? j.accounts ?? j.tickers ?? j.versions ?? j.tags ?? []) as Record<string, unknown>[];
     setLoading(w, false);
-    body.innerHTML = rows.length ? tableHtml(item, rows) : '<p class="w-empty">No data available yet.</p>';
+    body.innerHTML = rows.length ? tableHtml(item, rows, o) : '<p class="w-empty">No data available yet.</p>';
+    wireSortClicks(w, body);
+    refreshSort(body);
   } catch {
     setLoading(w, false);
     body.innerHTML = '<p class="w-empty">Failed to load data.</p>';
@@ -809,7 +1058,22 @@ function settingsHtml(w: Widget, mode: SetMode): string {
   const item = byKey.get(w.key);
   const o = w.opts ?? {};
   const sel = (cur: string, vals: string[], opt: string): string =>
-    `<select data-opt="${opt}">${vals.map((v) => `<option value="${v}" ${cur === v ? "selected" : ""}>${v}</option>`).join("")}</select>`;
+    `<select data-opt="${opt}">${vals.map((v) => `<option value="${v}" ${cur === v ? "selected" : ""}>${v || "all"}</option>`).join("")}</select>`;
+
+  // Hide/show column checkboxes for table widgets. A hidden col is one
+  // missing from opts.hiddenCols; unchecked means hidden.
+  const colChk = (it: CatalogItem): string => {
+    const cols = tableCols(it);
+    if (!cols.length) return "";
+    const hid = o.hiddenCols ?? [];
+    return `
+      <div class="w-set-row">
+        <span class="w-set-chks">
+          <span class="w-set-lab">Columns</span>
+          ${cols.map((c) => `<label class="w-set-chk" title="Show the ${esc(c.label)} column"><input type="checkbox" data-opt="hiddenCols" data-col="${esc(c.key)}" ${hid.includes(c.key) ? "" : "checked"}/> ${esc(c.label)}</label>`).join("")}
+        </span>
+      </div>`;
+  };
 
   const swatches = Object.entries(ACCENTS).map(([name, hex]) =>
     `<button type="button" class="sw${(o.accent ?? "mint") === name ? " on" : ""}" data-accent="${name}" style="background:${hex}" aria-label="Accent ${name}" title="${name}"></button>`
@@ -825,16 +1089,25 @@ function settingsHtml(w: Widget, mode: SetMode): string {
           <label class="w-set-chk" title="Hide the secondary line under the value"><input type="checkbox" data-opt="hideSub" ${o.hideSub ? "checked" : ""}/> hide subtitle</label>
         </span>
       </div>`
-      : item?.kind === "chart" || item?.kind === "compare"
-        ? `
+: item?.kind === "chart" || item?.kind === "compare"
+          ? o.type === "bar"
+            ? `
       <div class="w-set-row">
+        <label>Type ${sel(o.type, ["line", "bar"], "type")}</label>
+        <label>Bar width ${sel(o.lineWidth ?? "normal", ["thin", "normal", "thick"], "lineWidth")}</label>
+      </div>`
+            : `
+      <div class="w-set-row">
+        <label>Type ${sel(o.type ?? "line", ["line", "bar"], "type")}</label>
         <label>Line width ${sel(o.lineWidth ?? "normal", ["thin", "normal", "thick"], "lineWidth")}</label>
+      </div>
+      <div class="w-set-row">
         <span class="w-set-chks">
           <label class="w-set-chk" title="Fill the area under the line"><input type="checkbox" data-opt="fill" ${o.fill !== false ? "checked" : ""}/> fill</label>
           <label class="w-set-chk" title="Always show data point markers"><input type="checkbox" data-opt="points" ${o.points ? "checked" : ""}/> markers</label>
         </span>
       </div>`
-        : "";
+          : "";
 
   const body = mode === "panel"
     ? `
@@ -855,7 +1128,6 @@ function settingsHtml(w: Widget, mode: SetMode): string {
               <label>To <input type="date" data-opt="to" value="${esc(o.to ?? "")}"/></label>
             </div>
             <div class="w-set-row">
-              <label>Type ${sel(o.type ?? "line", ["line", "bar"], "type")}</label>
               <span class="w-set-chks">
                 <label class="w-set-chk"><input type="checkbox" data-opt="log" ${o.log ? "checked" : ""}/> log</label>
                 <label class="w-set-chk"><input type="checkbox" data-opt="cum" ${o.cum ? "checked" : ""}/> cumulative</label>
@@ -875,7 +1147,6 @@ function settingsHtml(w: Widget, mode: SetMode): string {
               <label>To <input type="date" data-opt="to" value="${esc(o.to ?? "")}"/></label>
             </div>
             <div class="w-set-row">
-              <label>Type ${sel(o.type ?? "line", ["line", "bar"], "type")}</label>
               <span class="w-set-chks">
                 <label class="w-set-chk"><input type="checkbox" data-opt="log" ${(o.log ?? item.log) ? "checked" : ""}/> log</label>
               </span>
@@ -886,10 +1157,23 @@ function settingsHtml(w: Widget, mode: SetMode): string {
             <div class="w-set-row">
               <label>Period ${sel(o.period ?? item.period ?? "week", RANK_PERIODS, "period")}</label>
               <label>Rows ${sel(String(o.limit ?? item.limit ?? 10), LIMITS.map(String), "limit")}</label>
-            </div>`;
+            </div>${colChk(item)}`;
         }
         if (item?.kind === "list") {
-          return `<label>Rows ${sel(String(o.limit ?? item.limit ?? 12), LIMITS.map(String), "limit")}</label>`;
+          const rows = `<div class="w-set-row"><label>Rows ${sel(String(o.limit ?? item.limit ?? 12), LIMITS.map(String), "limit")}</label></div>`;
+          if (item.src === "txs") {
+            const types = ["", ...TX_TYPES];
+            return `
+              ${rows}
+              <div class="w-set-row"><label>Type ${sel(o.txType ?? "", types, "txType")}</label></div>${colChk(item)}`;
+          }
+          if (item.src === "blocks") {
+            const types = ["", ...BLOCK_TYPES];
+            return `
+              ${rows}
+              <div class="w-set-row"><label>Block type ${sel(o.blockType ?? "", types, "blockType")}</label></div>${colChk(item)}`;
+          }
+          return `${rows}${colChk(item)}`;
         }
         return '<p class="w-set-none">No data filters for this widget.</p>';
       })();
@@ -934,6 +1218,25 @@ function wireSettings(w: Widget, el: HTMLElement, panel: HTMLElement, mode: SetM
     const t = ev.target as HTMLInputElement | HTMLSelectElement;
     const opt = t.dataset.opt as keyof WidgetOpts | undefined;
     if (!opt || opt === "title") return;
+    if (opt === "hiddenCols" && t instanceof HTMLInputElement) {
+      const key = t.dataset.col ?? "";
+      const cur = new Set(w.opts?.hiddenCols ?? []);
+      if (t.checked) cur.delete(key);
+      else cur.add(key);
+      if (!w.opts) w.opts = {};
+      if (cur.size) w.opts.hiddenCols = [...cur];
+      else delete w.opts.hiddenCols;
+      apply(true);
+      return;
+    }
+    if (opt === "type" && t instanceof HTMLSelectElement) {
+      setOpt(w, "type", t.value);
+      // re-render so bar/line-specific controls match the new type
+      panel.innerHTML = settingsHtml(w, mode);
+      wireSettings(w, el, panel, mode);
+      apply(true);
+      return;
+    }
     if (opt === "range" && customRow) {
       // switching to custom with empty dates: prefill last 30 days
       if ((t as HTMLSelectElement).value === "custom" && !w.opts?.from && !w.opts?.to) {

@@ -9,6 +9,7 @@ import { handleCron } from "./cron";
 import { top } from "./rankings";
 import { misc2 } from "./misc2";
 import { knownEntity } from "./entities";
+import { parseSort, BLOCK_COLS, TX_COLS, ACCT_COLS } from "./sort";
 
 export interface Env {
   DB: D1Database;
@@ -45,13 +46,27 @@ app.use("/api/*", async (c, next) => {
 app.get("/api/blocks", async (c) => {
   const before = Number(c.req.query("before") ?? 0);
   const limit = Math.min(Number(c.req.query("limit") ?? 25), 100);
+  // optional block type filter, case-insensitive ("Normal"|"Side"|"Sync")
+  const type = (c.req.query("type") ?? "").slice(0, 16);
+  const where = type ? `WHERE UPPER(block_type) = UPPER(?)` : "";
+  const binds = type ? [type] : [];
+  // explicit ?sort= runs over the full dataset (cursor pagination is topo-only)
+  const sorted = c.req.query("sort") !== undefined && BLOCK_COLS[c.req.query("sort")!];
   try {
-    const q = before > 0
-      ? "SELECT * FROM blocks WHERE topoheight < ? ORDER BY topoheight DESC LIMIT ?"
-      : "SELECT * FROM blocks ORDER BY topoheight DESC LIMIT ?";
-    const rows = before > 0
-      ? await c.env.DB.prepare(q).bind(before, limit).all().then((r) => r.results)
-      : await c.env.DB.prepare(q).bind(limit).all().then((r) => r.results);
+    if (sorted) {
+      const { order } = parseSort((n) => c.req.query(n), BLOCK_COLS, "topo", "topoheight DESC");
+      const rows = await c.env.DB.prepare(`SELECT * FROM blocks ${where} ORDER BY ${order} LIMIT ?`)
+        .bind(...binds, limit).all().then((r) => r.results);
+      return c.json({ blocks: (rows as Row[]).map((r) => tagAddress(r, "miner_address")) });
+    }
+    const conds: string[] = [];
+    const cb: (number | string)[] = [];
+    if (before > 0) conds.push("topoheight < ?");
+    if (before > 0) cb.push(before);
+    if (type) { conds.push("UPPER(block_type) = UPPER(?)"); cb.push(type); }
+    const cond = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+    const q = `SELECT * FROM blocks ${cond} ORDER BY topoheight DESC LIMIT ?`;
+    const rows = await c.env.DB.prepare(q).bind(...cb, limit).all().then((r) => r.results);
     return c.json({ blocks: (rows as Row[]).map((r) => tagAddress(r, "miner_address")) });
   } catch {
     return c.json({ blocks: [] });
@@ -83,7 +98,16 @@ app.get("/api/transactions", async (c) => {
   const before = Number(c.req.query("before") ?? 0);
   const limit = Math.min(Number(c.req.query("limit") ?? 25), 100);
   const type = (c.req.query("type") ?? "").slice(0, 32);
+  // explicit ?sort= runs over the full dataset (cursor pagination is topo-only)
+  const sorted = c.req.query("sort") !== undefined && TX_COLS[c.req.query("sort")!];
   try {
+    if (sorted) {
+      const { order } = parseSort((n) => c.req.query(n), TX_COLS, "block", "hash");
+      const rows = await c.env.DB.prepare(
+        `SELECT hash, block_topo, ts, fee, size, tx_type, sender, transfer_count, result FROM tx_index${type ? " WHERE tx_type = ?" : ""} ORDER BY ${order} LIMIT ?`
+      ).bind(...(type ? [type] : []), limit).all().then((r) => r.results);
+      return c.json({ transactions: (rows as Row[]).map((r) => tagAddress(r, "sender")) });
+    }
     const conds: string[] = [];
     const binds: (number | string)[] = [];
     if (before > 0) conds.push("block_topo < ?");
@@ -101,10 +125,12 @@ app.get("/api/transactions", async (c) => {
 
 app.get("/api/accounts", async (c) => {
   const limit = Math.min(Number(c.req.query("limit") ?? 25), 100);
-  const sort = c.req.query("sort") === "txs" ? "tx_count DESC" : "last_active DESC";
   try {
+    const order = ACCT_COLS[c.req.query("sort") ?? ""]
+      ? parseSort((n) => c.req.query(n), ACCT_COLS, "last", "address").order
+      : c.req.query("sort") === "txs" ? "tx_count DESC" : "last_active DESC"; // legacy active|txs
     const rows = await c.env.DB.prepare(
-      "SELECT address, first_seen, last_active, tx_count FROM accounts ORDER BY " + sort + " LIMIT ?"
+      "SELECT address, first_seen, last_active, tx_count FROM accounts ORDER BY " + order + " LIMIT ?"
     ).bind(limit).all().then((r) => r.results);
     return c.json({ accounts: (rows as Row[]).map((r) => tagAddress(r, "address")) });
   } catch {
@@ -115,27 +141,53 @@ app.get("/api/accounts", async (c) => {
 app.get("/api/node-versions", async (c) => {
   try {
     const rows = await c.env.DB.prepare(
-      "SELECT version, peer_count FROM node_versions WHERE date = (SELECT MAX(date) FROM node_versions) ORDER BY peer_count DESC LIMIT 20"
+      "SELECT version, peer_count, pruned_count FROM node_versions WHERE date = (SELECT MAX(date) FROM node_versions) ORDER BY peer_count DESC LIMIT 20"
     ).all().then((r) => r.results);
-    return c.json({ versions: rows });
+    return c.json({ versions: rows, total_peers: (rows as Array<{ peer_count: number }>).reduce((sum, r) => sum + (r.peer_count ?? 0), 0) });
   } catch {
     return c.json({ versions: [] });
   }
 });
 
+app.get("/api/peers", async (c) => {
+  try {
+    const [latest, versions, tags, prefixes] = await Promise.all([
+      c.env.DB.prepare("SELECT * FROM peer_snapshots ORDER BY ts DESC LIMIT 1").first<Row>(),
+      c.env.DB.prepare(
+        "SELECT version, peer_count, pruned_count FROM node_versions WHERE date = (SELECT MAX(date) FROM node_versions) ORDER BY peer_count DESC LIMIT 20"
+      ).all().then((r) => r.results),
+      c.env.DB.prepare(
+        "SELECT tag, peers FROM daily_peer_tags WHERE date = (SELECT MAX(date) FROM daily_peer_tags) ORDER BY peers DESC LIMIT 10"
+      ).all().then((r) => r.results),
+      c.env.DB.prepare(
+        "SELECT prefix, peers FROM daily_peer_prefixes WHERE date = (SELECT MAX(date) FROM daily_peer_prefixes) ORDER BY peers DESC LIMIT 10"
+      ).all().then((r) => r.results),
+    ]);
+    return c.json({
+      snapshot: latest ? { ...latest, ts: Number(latest.ts) } : null,
+      versions,
+      tags,
+      prefixes,
+    });
+  } catch {
+    return c.json({ snapshot: null, versions: [], tags: [], prefixes: [] });
+  }
+});
+
 // ---------- helpers ----------
 
-async function getStatsCached(env: Env): Promise<{ info: ChainInfo; txCount: number; accounts: number; assets: number }> {
+async function getStatsCached(env: Env): Promise<{ info: ChainInfo; txCount: number; accounts: number; assets: number; peers: number }> {
   const cacheKey = "stats:v1";
-  const cached = await env.KV.get<{ info: ChainInfo; txCount: number; accounts: number; assets: number }>(cacheKey, "json");
+  const cached = await env.KV.get<{ info: ChainInfo; txCount: number; accounts: number; assets: number; peers: number }>(cacheKey, "json");
   if (cached) return cached;
-  const [info, txCount, accounts, assets] = await Promise.all([
+  const [info, txCount, accounts, assets, peerRow] = await Promise.all([
     getInfo(env.XELIS_NODE),
     rpc<number>("count_transactions", undefined, env.XELIS_NODE).catch(() => -1),
     rpc<number>("count_accounts", undefined, env.XELIS_NODE).catch(() => -1),
     rpc<number>("count_assets", undefined, env.XELIS_NODE).catch(() => -1),
+    env.DB.prepare("SELECT total FROM peer_snapshots ORDER BY ts DESC LIMIT 1").first<{ total: number }>().catch(() => null),
   ]);
-  const value = { info, txCount, accounts, assets };
+  const value = { info, txCount, accounts, assets, peers: peerRow?.total ?? 0 };
   await env.KV.put(cacheKey, JSON.stringify(value), { expirationTtl: 60 });
   return value;
 }
@@ -214,6 +266,7 @@ app.get("/api/summary", async (c) => {
     block_time_target_s: s.info.block_time_target / 1000,
     block_reward: s.info.miner_reward + s.info.dev_reward,
     mempool: s.info.mempool_size,
+    peers: s.peers,
     counts: { transactions: s.txCount, accounts: s.accounts, assets: s.assets },
     supply: {
       circulating: s.info.circulating_supply,

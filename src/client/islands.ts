@@ -1,4 +1,5 @@
 import { renderChart, renderCompare, cumulativePoints, fmtAuto, type ChartOpts, type SeriesPoint } from "./charts";
+import { refreshSort } from "./sortable";
 
 // ---------- charts hub page ----------
 
@@ -175,14 +176,22 @@ function initMarket(): void {
   async function load(): Promise<void> {
     try {
       const res = await fetch("/api/market");
-      const agg = (await res.json()) as { price?: number; changePct24h?: number | null; totalQuoteVolume?: number; tickers?: Ticker[]; timestamp?: number };
+      const agg = (await res.json()) as {
+        price?: number; changePct24h?: number | null; totalQuoteVolume?: number;
+        bestBid?: { exchange: string; price: number } | null; bestAsk?: { exchange: string; price: number } | null;
+        spreadPct?: number | null; divergencePct?: number; tickers?: Ticker[]; timestamp?: number;
+      };
       const cards = document.getElementById("market-cards");
       if (cards && agg.price) {
         const chg = agg.changePct24h;
+        const bb = agg.bestBid, ba = agg.bestAsk, spread = agg.spreadPct;
+        const div = agg.divergencePct;
         cards.innerHTML = `
           <div class="card"><div class="label">XEL Price</div><div class="value">$${agg.price.toFixed(4)}</div><div class="sub">aggregate across exchanges</div></div>
           <div class="card"><div class="label">24h Change</div><div class="value" style="color:${(chg ?? 0) >= 0 ? "var(--mint)" : "var(--danger)"}">${chg !== null && chg !== undefined ? (chg >= 0 ? "+" : "") + chg.toFixed(2) + "%" : "—"}</div><div class="sub">volume-weighted</div></div>
-          <div class="card"><div class="label">24h Volume</div><div class="value">$${fmtAuto(agg.totalQuoteVolume ?? 0)}</div><div class="sub">all tracked markets</div></div>`;
+          <div class="card"><div class="label">24h Volume</div><div class="value">$${fmtAuto(agg.totalQuoteVolume ?? 0)}</div><div class="sub">all tracked markets</div></div>
+          <div class="card"><div class="label">Best Bid / Ask</div><div class="value small">$${bb ? bb.price.toFixed(4) : "—"} / $${ba ? ba.price.toFixed(4) : "—"}</div><div class="sub">${bb && ba ? `${bb.exchange} → ${ba.exchange} · spread ${spread !== null && spread !== undefined ? spread.toFixed(2) + "%" : "—"}` : "no quotes"}</div></div>
+          <div class="card"><div class="label">Price Divergence</div><div class="value" style="color:${(div ?? 0) > 5 ? "var(--danger)" : "var(--mint)"}">${div != null && Number.isFinite(div) ? div.toFixed(2) + "%" : "—"}</div><div class="sub">max-min across exchanges</div></div>`;
       }
       if (!agg.tickers) return;
       table!.innerHTML = agg.tickers.map((t) => `<tr>
@@ -197,6 +206,31 @@ function initMarket(): void {
         <td class="num">${fmtAuto(t.quoteVolume)}</td>
         <td>${new Date(t.timestamp).toISOString().slice(11, 19)} UTC</td>
       </tr>`).join("");
+      const tbl = table!.closest("table");
+      if (tbl) refreshSort(tbl);
+
+      // volume share bar across exchanges (by quote volume)
+      const share = document.getElementById("market-volshare");
+      const legend = document.getElementById("market-volshare-legend");
+      if (share && legend) {
+        const COLORS = ["#02ffcf", "#f5d95f", "#7fa7ff", "#ff9d76", "#c78fff", "#ff6b81"];
+        const byEx = new Map<string, number>();
+        for (const t of agg.tickers) byEx.set(t.exchange, (byEx.get(t.exchange) ?? 0) + t.quoteVolume);
+        const rows = [...byEx.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
+        const total = rows.reduce((s, [, v]) => s + v, 0);
+        if (total > 0) {
+          share.innerHTML = rows.map(([ex, v], i) => {
+            const pct = (v / total) * 100;
+            return `<div class="volshare-seg" style="width:${pct}%;background:${COLORS[i % COLORS.length]}" title="${ex}: ${pct.toFixed(1)}%"></div>`;
+          }).join("");
+          legend.innerHTML = rows.map(([ex, v], i) =>
+            `<span class="volshare-item"><span class="volshare-dot" style="background:${COLORS[i % COLORS.length]}"></span>${ex} <span class="volshare-pct">${((v / total) * 100).toFixed(1)}%</span> · $${fmtAuto(v)}</span>`,
+          ).join("");
+        } else {
+          share.innerHTML = "";
+          legend.innerHTML = '<span class="volshare-item">no volume data</span>';
+        }
+      }
 
       // price history chart
       const hist = await fetch("/api/history/price?range=30d&interval=day").then((r) => r.json()) as { points: SeriesPoint[] };
@@ -226,6 +260,8 @@ function initRecentBlocks(): void {
         <td class="num">${b.tx_count}</td>
         <td class="num">${fmtAuto(b.miner_reward / 1e8)}</td>
       </tr>`).join("");
+      const tbl = tbody!.closest("table");
+      if (tbl) refreshSort(tbl);
     } catch { /* keep loading state */ }
   }
   load();
