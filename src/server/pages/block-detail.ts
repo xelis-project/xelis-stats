@@ -191,6 +191,37 @@ blockDetail.get("/block/:id", async (c) => {
   } catch { /* db unavailable */ }
 
   const hasTxHashes = view.txHashes.length > 0;
+
+  // contract executions scheduled to run at this topoheight (live from node)
+  type Sched = { hash: string; contract: string; chunk_id: number; max_gas: number; kind: Record<string, unknown> };
+  let scheduled: Sched[] = [];
+  let registered = 0;
+  try {
+    scheduled = await rpc<Sched[]>("get_contract_scheduled_executions_at_topoheight", { topoheight: view.topo });
+    const reg = await rpc<unknown[]>("get_contract_registered_executions_at_topoheight", { topoheight: view.topo });
+    registered = Array.isArray(reg) ? reg.length : 0;
+  } catch { /* none / node unreachable */ }
+
+  const schedRows = scheduled.map((s) => {
+    const kind = s.kind ?? {};
+    const kindLabel = Object.keys(kind).includes("topoheight")
+      ? `topoheight ${fmtInt(num((kind as { topoheight?: number }).topoheight))}`
+      : "block end";
+    return `<tr>
+      <td><span class="mono">${shortHash(String(s.hash ?? ""), 10)}</span></td>
+      <td><a class="mono" href="/contracts/${esc(String(s.contract ?? ""))}">${shortHash(String(s.contract ?? ""), 10)}</a></td>
+      <td class="num">${fmtInt(num(s.chunk_id))}</td>
+      <td class="num">${fmtInt(num(s.max_gas))}</td>
+      <td><span class="badge">${kindLabel}</span></td>
+    </tr>`;
+  }).join("");
+  const schedPanel = scheduled.length
+    ? `<div class="panel"><h2>Scheduled Contract Executions <span style="color:var(--text-dim)">${fmtInt(scheduled.length)} queued${registered ? ` · ${fmtInt(registered)} registered` : ""}</span></h2>
+       <div class="tablewrap"><table>
+         <thead><tr><th>Execution Hash</th><th>Contract</th><th class="num">Chunk</th><th class="num">Max Gas</th><th>Trigger</th></tr></thead>
+         <tbody>${schedRows}</tbody>
+       </table></div></div>`
+    : "";
   const txRows = hasTxHashes
     ? view.txHashes.map((h) => {
         const t = known.get(h);
@@ -216,6 +247,7 @@ blockDetail.get("/block/:id", async (c) => {
   const content = `${hero}
     <div class="grid-2">${overview}${rewards}</div>
     ${tipsHtml}
+    ${schedPanel}
     ${txs}
     <script>${blkCopyScript}</script>`;
   return c.html(layout(`Block ${fmtInt(view.topo)}`, content, "/blocks"));

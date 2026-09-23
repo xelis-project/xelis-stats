@@ -86,13 +86,15 @@ contracts.get("/contracts/:id", async (c) => {
   // live on-chain enrichment (best effort)
   let moduleTopo: number | null = null;
   let codeSize: number | null = null;
+  let moduleRaw: unknown = null;
   let entries: { key: unknown; value: unknown }[] = [];
   type Bal = { asset: string; balance: number | null; topo: number | null };
   let balances: Bal[] = [];
   try {
     const mod = await rpc<{ topoheight: number; version: { data?: { module?: unknown } } }>("get_contract_module", { contract: id });
     moduleTopo = num(mod.topoheight) || null;
-    const raw = JSON.stringify(mod.version?.data?.module ?? {});
+    moduleRaw = mod.version?.data?.module ?? null;
+    const raw = JSON.stringify(moduleRaw);
     codeSize = raw.length;
   } catch { /* no module / node unreachable */ }
   try {
@@ -109,9 +111,33 @@ contracts.get("/contracts/:id", async (c) => {
   } catch { /* none */ }
   const xel = "0000000000000000000000000000000000000000000000000000000000000000";
 
+  // contract hash == deploy tx hash: resolve the deployer on-chain when the
+  // index missed the deploy tx, then backfill the DB
+  let liveDeployer = "";
+  let liveDeployTopo: number | null = null;
+  let deployFee: number | null = null;
+  if (!deployer) {
+    try {
+      const dt = await rpc<Record<string, unknown>>("get_transaction", { hash: id });
+      const data = (dt.data ?? {}) as Record<string, unknown>;
+      if (data.deploy_contract) {
+        liveDeployer = String(dt.source ?? "");
+        liveDeployTopo = num(dt.executed_in_topoheight) || null;
+        deployFee = num(dt.fee_paid ?? dt.fee) || null;
+        if (liveDeployer) {
+          try {
+            await db.prepare("UPDATE contracts SET deployer = ?, deploy_topo = ? WHERE contract_id = ? AND (deployer = '' OR deployer IS NULL)")
+              .bind(liveDeployer, liveDeployTopo ?? 0, id).run();
+          } catch { /* db not writable */ }
+        }
+      }
+    } catch { /* node unreachable */ }
+  }
+
   const invokeCount = num(ct.invoke_count);
   const gasTotal = num(ct.gas_total);
-  const deployTopo = num(ct.deploy_topo);
+  const shownDeployer = deployer || liveDeployer;
+  const deployTopo = num(ct.deploy_topo) || liveDeployTopo || 0;
   const deployer = String(ct.deployer ?? "");
   const deployHash = String(ct.contract_id ?? id);
   const lastTs = invokes.length ? num(invokes[0].ts) : null;
@@ -134,7 +160,7 @@ contracts.get("/contracts/:id", async (c) => {
     <div class="cards blk-cards">
       ${statCard("Invokes", invokeCount > 0 ? fmtInt(invokeCount) : "—", "indexed contract calls")}
       ${statCard("Gas Total", gasTotal > 0 ? fmtInt(gasTotal) : "—", "sum of max_gas across invokes")}
-      ${statCard("Deployer", deployer ? `<a class="mono" href="/account/${esc(deployer)}">${shortHash(deployer, 8)}</a>` : "—", "account that deployed")}
+      ${statCard("Deployer", shownDeployer ? `<a class="mono" href="/account/${esc(shownDeployer)}">${shortHash(shownDeployer, 8)}</a>` : "—", shownDeployer && !deployer ? "resolved on-chain" : "account that deployed")}
       ${statCard("Deployed", deployTopo > 0 ? `<a href="/block/${deployTopo}">#${fmtInt(deployTopo)}</a>` : "—", "deploy tx block")}
       ${statCard("Last Invoke", lastTs ? ago(lastTs) : "—", lastTs ? fmtTime(lastTs) : "not observed")}
     </div>
@@ -142,9 +168,10 @@ contracts.get("/contracts/:id", async (c) => {
 
   const overview = `<div class="panel"><h2>Overview</h2><table class="kv">
     <tr><td>Contract ID</td><td><span class="mono">${esc(deployHash)}</span> <button class="copybtn" type="button" onclick="blkCopy('${esc(deployHash)}', this)">copy</button></td></tr>
-    <tr><td>Deployer</td><td>${deployer ? `<a class="mono" href="/account/${esc(deployer)}">${shortHash(deployer, 10)}</a>${entityTag(deployer)} <button class="copybtn" type="button" onclick="blkCopy('${esc(deployer)}', this)">copy</button>` : "—"}</td></tr>
+    <tr><td>Deployer</td><td>${shownDeployer ? `<a class="mono" href="/account/${esc(shownDeployer)}">${shortHash(shownDeployer, 10)}</a>${entityTag(shownDeployer)} <button class="copybtn" type="button" onclick="blkCopy('${esc(shownDeployer)}', this)">copy</button>${!deployer ? ' <span style="color:var(--text-dim)">(resolved on-chain)</span>' : ""}` : "—"}</td></tr>
     ${deployTopo > 0 || moduleTopo ? `<tr><td>Deployed at</td><td>${deployTopo > 0 ? `<a href="/block/${deployTopo}"><span class="mint">#${fmtInt(deployTopo)}</span></a> <span style="color:var(--text-dim)">(indexed)</span>` : ""}${moduleTopo ? ` <a href="/block/${moduleTopo}"><span class="mint">#${fmtInt(moduleTopo)}</span></a> <span style="color:var(--text-dim)">(on-chain)</span>` : ""}</td></tr>` : ""}
     ${codeSize ? `<tr><td>Module code</td><td><span class="mono">~${fmtInt(codeSize)} bytes (serialized)</span></td></tr>` : ""}
+    ${deployFee ? `<tr><td>Deploy fee</td><td>${atomic(deployFee, 6)} XEL</td></tr>` : ""}
     <tr><td>Invokes seen</td><td>${invokeCount > 0 ? fmtInt(invokeCount) : "—"}</td></tr>
     <tr><td>Gas total</td><td>${gasTotal > 0 ? fmtInt(gasTotal) : "—"}</td></tr>
     ${num(ct.events_count) ? `<tr><td>Events seen</td><td>${fmtInt(ct.events_count as number)}</td></tr>` : ""}
@@ -181,6 +208,22 @@ contracts.get("/contracts/:id", async (c) => {
     </table></div>
   </div>` : "";
 
+  // bytecode viewer: collapsible dump of the compiled module chunks
+  let bytecodePanel = "";
+  if (moduleRaw) {
+    let chunks = 0;
+    try { chunks = ((moduleRaw as { chunks?: unknown[] }).chunks ?? []).length; } catch { /* malformed */ }
+    let dump = "";
+    try { dump = JSON.stringify(moduleRaw, null, 2); } catch { /* malformed */ }
+    const truncated = dump.length > 40000;
+    if (truncated) dump = dump.slice(0, 40000) + "\n… truncated";
+    bytecodePanel = `<div class="panel"><h2>Bytecode <span style="color:var(--text-dim)">${chunks} chunks · serialized ~${fmtInt(codeSize ?? 0)} bytes</span></h2>
+      <details><summary style="cursor:pointer">Show compiled module</summary>
+        <pre class="json-pre">${esc(dump)}</pre>
+      </details>
+    </div>`;
+  }
+
   const invokeRows = invokes.length
     ? invokes.map((t) => {
         const h = String(t.hash ?? "");
@@ -207,6 +250,7 @@ contracts.get("/contracts/:id", async (c) => {
     ${overview}
     ${balancesPanel}
     ${storagePanel}
+    ${bytecodePanel}
     ${invokesPanel}
     <script>${blkCopyScript}</script>`;
   return c.html(layout(`Contract ${shortHash(deployHash, 8)}`, content, "/contracts"));
