@@ -425,9 +425,13 @@ function persist(): void {
 
 function measure(): void {
   if (!canvas) return;
+  // Widget text and paddings are rem-based and the large-screen media query
+  // raises the root font size, so the pixel geometry of the grid must scale
+  // by the same factor or widgets get vertically cramped at 1x row heights.
+  const k = Math.max(1, parseFloat(getComputedStyle(document.documentElement).fontSize) / 10);
   cols = colsFor(window.innerWidth);
-  gap = window.innerWidth <= 620 ? 8 : 12;
-  rowH = 44;
+  gap = window.innerWidth <= 620 ? 8 : Math.round(12 * k);
+  rowH = Math.round(44 * k);
   const inner = canvas.clientWidth - gap * 2;
   colW = Math.max(24, Math.floor((inner - (cols - 1) * gap) / cols));
   canvas.style.gridTemplateColumns = `repeat(${cols}, ${colW}px)`;
