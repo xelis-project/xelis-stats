@@ -75,9 +75,17 @@ interface Slot {
   h: number;
 }
 
-interface Persisted {
-  version: 3;
+// A named dashboard page with its own widget layout.
+interface Tab {
+  id: string;
+  name: string;
   widgets: Widget[];
+}
+
+interface Persisted {
+  version: 4;
+  tabs: Tab[];
+  active: string;
 }
 
 interface Summary {
@@ -97,8 +105,9 @@ interface Summary {
   market?: { price?: number; change_pct_24h?: number | null; quote_volume_24h?: number; exchanges?: number } | null;
 }
 
-const STORAGE_KEY = "xelis-dashboard";
-const LEGACY_KEY = "xelis-stats-layout";
+const STORAGE_KEY = "xelis-dashboard-v4";
+const LEGACY_KEY = "xelis-dashboard"; // pre-tabs single-layout storage
+const OLDEST_KEY = "xelis-stats-layout";
 const CANON_COLS = 12;
 
 const CATALOG: CatalogItem[] = [
@@ -179,23 +188,71 @@ const CATALOG: CatalogItem[] = [
 
 const byKey = new Map(CATALOG.map((c) => [c.key, c]));
 
-const DEFAULT_LAYOUT: Widget[] = [
-  { id: "d1", key: "stat-topoheight", x: 0, y: 0, w: 3, h: 2 },
-  { id: "d2", key: "stat-price", x: 3, y: 0, w: 3, h: 2 },
-  { id: "d3", key: "stat-hashrate", x: 6, y: 0, w: 3, h: 2 },
-  { id: "d4", key: "stat-mempool", x: 9, y: 0, w: 3, h: 2 },
-  { id: "d5", key: "chart-txs", x: 0, y: 2, w: 6, h: 5 },
-  { id: "d6", key: "chart-price", x: 6, y: 2, w: 6, h: 5 },
-  { id: "d7", key: "chart-hashrate", x: 0, y: 7, w: 6, h: 5 },
-  { id: "d8", key: "chart-miners", x: 6, y: 7, w: 6, h: 5 },
-  { id: "d9", key: "list-blocks", x: 0, y: 12, w: 6, h: 5 },
-  { id: "d10", key: "list-txs", x: 6, y: 12, w: 6, h: 5 },
-  { id: "d11", key: "chart-supply", x: 0, y: 17, w: 6, h: 5 },
-  { id: "d12", key: "chart-market-cap", x: 6, y: 17, w: 6, h: 5 },
-  { id: "d13", key: "chart-nakamoto", x: 0, y: 22, w: 6, h: 5 },
-  { id: "d14", key: "chart-gini", x: 6, y: 22, w: 6, h: 5 },
+// Default tabs: overview (network + chain), mining, and market. Each groups
+// widgets that read naturally together.
+const DEFAULT_TABS: Array<{ name: string; widgets: Array<[string, number, number, number, number]> }> = [
+  {
+    name: "Overview",
+    widgets: [
+      ["stat-topoheight", 0, 0, 3, 2],
+      ["stat-price", 3, 0, 3, 2],
+      ["stat-hashrate", 6, 0, 3, 2],
+      ["stat-mempool", 9, 0, 3, 2],
+      ["chart-txs", 0, 2, 6, 5],
+      ["chart-price", 6, 2, 6, 5],
+      ["list-blocks", 0, 7, 6, 5],
+      ["list-txs", 6, 7, 6, 5],
+      ["chart-supply", 0, 12, 6, 5],
+      ["chart-market-cap", 6, 12, 6, 5],
+      ["chart-nakamoto", 0, 17, 6, 5],
+      ["chart-gini", 6, 17, 6, 5],
+    ],
+  },
+  {
+    name: "Mining",
+    widgets: [
+      ["chart-hashrate", 0, 0, 6, 5],
+      ["chart-miners", 6, 0, 6, 5],
+      ["compare-hashrate-miners", 0, 5, 6, 5],
+      ["chart-miner-revenue", 6, 5, 6, 5],
+      ["rank-miners", 0, 10, 6, 5],
+      ["rank-miners-month", 6, 10, 6, 5],
+    ],
+  },
+  {
+    name: "Market",
+    widgets: [
+      ["stat-marketcap", 0, 0, 3, 2],
+      ["stat-quote-vol", 3, 0, 3, 2],
+      ["stat-exchanges", 6, 0, 3, 2],
+      ["chart-quote-volume", 0, 2, 6, 5],
+      ["compare-price-volume", 6, 2, 6, 5],
+      ["list-exchanges", 0, 7, 6, 5],
+    ],
+  },
+  {
+    name: "Network",
+    widgets: [
+      ["stat-peers", 0, 0, 3, 2],
+      ["stat-node", 3, 0, 3, 2],
+      ["chart-peers", 0, 2, 6, 5],
+      ["chart-peer-lag", 6, 2, 6, 5],
+      ["list-peers", 0, 7, 6, 5],
+      ["list-peer-tags", 6, 7, 6, 5],
+    ],
+  },
 ];
 
+function defaultTabs(): Tab[] {
+  return DEFAULT_TABS.map((t) => ({
+    id: nid(),
+    name: t.name,
+    widgets: t.widgets.map(([key, x, y, w, h]) => ({ id: nid(), key, x, y, w, h })),
+  }));
+}
+
+let tabs: Tab[] = [];
+let activeTab = "";
 let widgets: Widget[] = [];
 let view: Slot[] = [];
 let canvas: HTMLElement | null = null;
@@ -268,38 +325,83 @@ function sanitizeOpts(raw: unknown, item?: CatalogItem): WidgetOpts {
   return out;
 }
 
-// Validates a serialized layout (v2 or v3) and returns clean widgets, or null
-// when the payload is not a usable layout. An empty widget list is valid.
+// Validates a serialized widget list (v2 or v3 layout files) and returns clean
+// widgets, or null when the payload is not a usable layout. An empty list is
+// valid.
+function parseWidgets(list: unknown[]): Widget[] | null {
+  const clean: Widget[] = [];
+  for (const raw of list) {
+    const w = raw as Widget;
+    if (!w || typeof w.key !== "string" || !byKey.has(w.key)) continue;
+    if (![w.x, w.y, w.w, w.h].every((n) => Number.isFinite(n))) continue;
+    clean.push({ id: nid(), key: w.key, x: w.x, y: w.y, w: w.w, h: w.h, opts: sanitizeOpts(w.opts, byKey.get(w.key)) });
+  }
+  return clean;
+}
+
 function parseLayout(text: string): Widget[] | null {
   let parsed: { version?: number; widgets?: unknown[] } | null = null;
   try {
     parsed = JSON.parse(text) as { version?: number; widgets?: unknown[] };
   } catch { /* not JSON */ }
   if (!parsed || (parsed.version !== 2 && parsed.version !== 3) || !Array.isArray(parsed.widgets)) return null;
-  const clean: Widget[] = [];
-  for (const raw of parsed.widgets) {
-    const w = raw as Widget;
-    if (!w || typeof w.key !== "string" || !byKey.has(w.key)) continue;
-    if (![w.x, w.y, w.w, w.h].every((n) => Number.isFinite(n))) continue;
-    clean.push({ id: nid(), key: w.key, x: w.x, y: w.y, w: w.w, h: w.h, opts: sanitizeOpts(w.opts, byKey.get(w.key)) });
-  }
-  if (clean.length || !parsed.widgets.length) return clean;
+  const clean = parseWidgets(parsed.widgets);
+  if (clean && (clean.length || !parsed.widgets.length)) return clean;
   return null;
 }
 
-function loadLayout(): Widget[] {
+// Validate a full multi-tab payload. Accepts v4 (tabs) plus v2/v3 (single
+// layout, wrapped into one tab). Returns null when unusable.
+function parsePersisted(text: string): { tabs: Tab[]; active: string } | null {
+  interface ParsedState { version?: number; tabs?: unknown[]; active?: unknown; widgets?: unknown[] }
+  let parsed: ParsedState | null = null;
   try {
-    const clean = parseLayout(localStorage.getItem(STORAGE_KEY) ?? "");
+    parsed = JSON.parse(text) as ParsedState | null;
+  } catch { /* not JSON */ }
+  if (!parsed || typeof parsed !== "object") return null;
+  if (!parsed) return null;
+
+  if (parsed.version === 4 && Array.isArray(parsed.tabs)) {
+    const clean: Tab[] = [];
+    for (const raw of parsed.tabs) {
+      const t = raw as Tab;
+      if (!t || typeof t.name !== "string" || !Array.isArray(t.widgets)) continue;
+      clean.push({ id: nid(), name: t.name.slice(0, 40) || "Tab", widgets: parseWidgets(t.widgets) ?? [] });
+    }
+    if (clean.length) {
+      const ids = new Set(clean.map((t) => t.id));
+      const active = typeof parsed.active === "string" && ids.has(parsed.active) ? parsed.active : clean[0].id;
+      return { tabs: clean, active };
+    }
+    return null;
+  }
+
+  const single = parseLayout(text);
+  if (single) return { tabs: [{ id: nid(), name: "Overview", widgets: single }], active: "" };
+  return null;
+}
+
+function loadState(): { tabs: Tab[]; active: string } {
+  try {
+    const clean = parsePersisted(localStorage.getItem(STORAGE_KEY) ?? "");
     if (clean) return clean;
   } catch { /* blocked storage — fall through to default */ }
 
   try {
-    const legacy = JSON.parse(localStorage.getItem(LEGACY_KEY) ?? "[]") as Array<{ id: string; metric?: string; range?: string; interval?: string }>;
-    if (Array.isArray(legacy) && legacy.length) {
+    const legacy = JSON.parse(localStorage.getItem(LEGACY_KEY) ?? "") as { version?: number; widgets?: unknown[] } | null;
+    if (legacy && (legacy.version === 3 || legacy.version === 2) && Array.isArray(legacy.widgets)) {
+      const clean = parseWidgets(legacy.widgets);
+      if (clean) return { tabs: [{ id: nid(), name: "Overview", widgets: clean }], active: "" };
+    }
+  } catch { /* ignore legacy */ }
+
+  try {
+    const oldest = JSON.parse(localStorage.getItem(OLDEST_KEY) ?? "[]") as Array<{ id: string; metric?: string; range?: string; interval?: string }>;
+    if (Array.isArray(oldest) && oldest.length) {
       const migrated: Widget[] = [];
       let x = 0;
       let y = 0;
-      for (const old of legacy) {
+      for (const old of oldest) {
         const key = `chart-${old.metric}`;
         if (!byKey.has(key)) continue;
         const item = byKey.get(key)!;
@@ -307,16 +409,17 @@ function loadLayout(): Widget[] {
         migrated.push({ id: nid(), key, x, y, w: item.w, h: item.h });
         x += item.w;
       }
-      if (migrated.length) return migrated;
+      if (migrated.length) return { tabs: [{ id: nid(), name: "Overview", widgets: migrated }], active: "" };
     }
   } catch { /* ignore legacy */ }
 
-  return DEFAULT_LAYOUT.map((w) => ({ ...w, id: nid() }));
+  const defs = defaultTabs();
+  return { tabs: defs, active: defs[0].id };
 }
 
 function persist(): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 3, widgets } satisfies Persisted));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 4, tabs, active: activeTab } satisfies Persisted));
   } catch { /* storage full or blocked */ }
 }
 
@@ -1454,13 +1557,16 @@ function autoArrange(): void {
 function resetLayout(): void {
   for (const chart of charts.values()) chart.destroy();
   charts.clear();
-  widgets = DEFAULT_LAYOUT.map((w) => ({ ...w, id: nid() }));
+  tabs = defaultTabs();
+  activeTab = tabs[0].id;
+  widgets = tabs[0].widgets;
   persist();
+  renderTabs();
   render();
 }
 
 function exportLayout(): void {
-  const blob = new Blob([JSON.stringify({ version: 3, widgets } satisfies Persisted, null, 2)], { type: "application/json" });
+  const blob = new Blob([JSON.stringify({ version: 4, tabs, active: activeTab } satisfies Persisted, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -1471,16 +1577,19 @@ function exportLayout(): void {
 
 function importLayoutFile(file: File): void {
   void file.text().then((text) => {
-    const clean = parseLayout(text);
-    if (!clean) {
+    const state = parsePersisted(text);
+    if (!state) {
       alert("Import failed: not a valid dashboard layout file (expected a dashboard export).");
       return;
     }
     for (const chart of charts.values()) chart.destroy();
     charts.clear();
-    widgets = clean;
+    tabs = state.tabs;
+    activeTab = state.active || state.tabs[0].id;
+    widgets = tabs.find((t) => t.id === activeTab)!.widgets;
     persist();
     canonicalize();
+    renderTabs();
     render();
   });
 }
@@ -1562,7 +1671,7 @@ function render(): void {
   for (const chart of charts.values()) chart.destroy();
   charts.clear();
   // drop stale settings popovers from the previous render pass
-  document.querySelectorAll<HTMLElement>(".w-settings.w-pop").forEach((p) => p.remove());
+  removeOpenPopovers();
   canvas.innerHTML = "";
   view = projectLayout();
   const slots = new Map(view.map((s) => [s.id, s]));
@@ -1573,7 +1682,7 @@ function render(): void {
   if (!widgets.length) {
     const empty = document.createElement("p");
     empty.className = "w-empty dash-empty";
-    empty.textContent = "Your dashboard is empty — add a widget to get started.";
+    empty.textContent = "This tab is empty — add a widget to get started.";
     canvas.appendChild(empty);
   }
   applyView();
@@ -1584,6 +1693,98 @@ function render(): void {
     else if (kind === "compare") void mountCompare(w);
     else if (kind === "rank" || kind === "list") void mountTable(w);
   }
+}
+
+// ---------- tabs ----------
+
+function tabStrip(): HTMLElement | null {
+  return document.getElementById("dash-tabs");
+}
+
+function renderTabs(): void {
+  const strip = tabStrip();
+  if (!strip) return;
+  strip.innerHTML = tabs.map((t) => `
+    <div class="dash-tab${t.id === activeTab ? " active" : ""}" data-tab="${t.id}" role="tab" tabindex="0" aria-selected="${t.id === activeTab}">
+      <span class="dash-tab-name">${esc(t.name)}</span>
+      <button class="dash-tab-btn" data-act="rename" aria-label="Rename tab" title="Rename">✎</button>
+      ${tabs.length > 1 ? `<button class="dash-tab-btn" data-act="close" aria-label="Close tab" title="Close tab">×</button>` : ""}
+    </div>`).join("") + `<button class="dash-tab-add" id="btn-add-tab" aria-label="New tab" title="New tab">+</button>`;
+}
+
+function switchTab(id: string): void {
+  if (id === activeTab) return;
+  const next = tabs.find((t) => t.id === id);
+  if (!next) return;
+  for (const chart of charts.values()) chart.destroy();
+  charts.clear();
+  removeOpenPopovers();
+  activeTab = id;
+  widgets = next.widgets;
+  persist();
+  renderTabs();
+  render();
+}
+
+function removeOpenPopovers(): void {
+  document.querySelectorAll<HTMLElement>(".w-settings.w-pop").forEach((p) => p.remove());
+}
+
+function addTab(): void {
+  const name = prompt("Tab name:", "New tab");
+  if (name === null) return;
+  const tab: Tab = { id: nid(), name: name.trim().slice(0, 40) || "New tab", widgets: [] };
+  tabs.push(tab);
+  persist();
+  switchTab(tab.id);
+}
+
+function closeTab(id: string): void {
+  if (tabs.length <= 1) return;
+  const idx = tabs.findIndex((t) => t.id === id);
+  if (idx < 0) return;
+  if (!confirm(`Close tab "${tabs[idx].name}"? Its widgets will be removed.`)) return;
+  tabs.splice(idx, 1);
+  if (activeTab === id) {
+    const next = tabs[Math.min(idx, tabs.length - 1)];
+    activeTab = "";
+    switchTab(next.id);
+  } else {
+    persist();
+    renderTabs();
+  }
+}
+
+function renameTab(id: string): void {
+  const tab = tabs.find((t) => t.id === id);
+  if (!tab) return;
+  const name = prompt("Tab name:", tab.name);
+  if (name === null) return;
+  tab.name = name.trim().slice(0, 40) || tab.name;
+  persist();
+  renderTabs();
+}
+
+function wireTabs(): void {
+  const strip = tabStrip();
+  if (!strip) return;
+  strip.addEventListener("click", (ev) => {
+    const t = ev.target as HTMLElement;
+    const tabEl = t.closest<HTMLElement>("[data-tab]");
+    if (!tabEl) {
+      if (t.closest("#btn-add-tab")) addTab();
+      return;
+    }
+    const id = tabEl.dataset.tab ?? "";
+    if (t.closest('[data-act="close"]')) closeTab(id);
+    else if (t.closest('[data-act="rename"]')) renameTab(id);
+    else switchTab(id);
+  });
+  strip.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Enter" && ev.key !== " ") return;
+    const tabEl = (ev.target as HTMLElement).closest<HTMLElement>("[data-tab]");
+    if (tabEl) { ev.preventDefault(); switchTab(tabEl.dataset.tab ?? ""); }
+  });
 }
 
 function renderPalette(query: string): void {
@@ -1633,9 +1834,14 @@ export function initDashboard(): void {
   canvas = document.getElementById("custom-grid");
   if (!canvas) return;
 
-  widgets = loadLayout();
+  const state = loadState();
+  tabs = state.tabs;
+  activeTab = state.active || (tabs[0]?.id ?? "");
+  widgets = tabs.find((t) => t.id === activeTab)?.widgets ?? tabs[0].widgets;
   measure();
   canonicalize();
+  renderTabs();
+  wireTabs();
   render();
 
   const addBtn = document.getElementById("btn-add-widget");

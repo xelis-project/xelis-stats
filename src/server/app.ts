@@ -226,6 +226,7 @@ app.get("/", (c) => {
         </div>
       </div>
     </div>
+    <div id="dash-tabs" class="dash-tabs" role="tablist" aria-label="Dashboard tabs"></div>
     <div id="custom-grid" class="dash-canvas" aria-label="Dashboard canvas"></div>
     <div class="palette-overlay" id="palette" hidden>
       <div class="palette-sheet" role="dialog" aria-modal="true" aria-label="Add widget">
