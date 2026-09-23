@@ -3,7 +3,9 @@ import type { Env } from "../app";
 import { layout, statCard } from "../../client/layout";
 import { fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/format";
 import { knownEntity } from "../entities";
-import { esc, blkCopyScript, num } from "./shared";
+import { srvSort, TX_COLS } from "../sort";
+import { filterButton, filterPop, filterField, selectOpts } from "../filters";
+import { PAGE_SIZE, pager, esc, blkCopyScript, num } from "./shared";
 
 export const account = new Hono<{ Bindings: Env }>();
 
@@ -11,8 +13,25 @@ account.get("/account/:address", async (c) => {
   const address = c.req.param("address");
   const db = c.env.DB;
 
+  // history section: full sent-tx list with pagination, sorting and filters
+  const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
+  const TX_TYPES = ["transfer", "burn", "invoke_contract", "deploy_contract", "multisig"];
+  const rawType = c.req.query("type") ?? "";
+  const type = TX_TYPES.includes(rawType) ? rawType : "";
+  const result = c.req.query("result") === "ok" || c.req.query("result") === "fail" ? c.req.query("result")! : "";
+  const srt = srvSort((nm) => c.req.query(nm), TX_COLS, "block", "hash", (s) => {
+    const p = new URLSearchParams();
+    if (type) p.set("type", type);
+    if (result) p.set("result", result);
+    if (s) for (const [k, v] of new URLSearchParams(s)) p.set(k, v);
+    const q = p.toString();
+    return q ? `/account/${address}?${q}` : `/account/${address}`;
+  });
+
   let acct: Record<string, unknown> | undefined;
   let txs: Record<string, unknown>[] = [];
+  let histTotal = 0;
+  let lastSendTopo = 0;
   let agg: Record<string, unknown> | null = null;
   let types: Record<string, unknown>[] = [];
   let mined = 0;
@@ -20,8 +39,18 @@ account.get("/account/:address", async (c) => {
   let maxTopo: number | null = null;
   try {
     acct = (await db.prepare("SELECT * FROM accounts WHERE address = ?").bind(address).first()) ?? undefined;
-    txs = await db.prepare("SELECT * FROM tx_index WHERE sender = ? ORDER BY block_topo DESC LIMIT 25")
-      .bind(address).all<Record<string, unknown>>().then((r) => r.results ?? []);
+    const conds: string[] = ["sender = ?"];
+    const binds: unknown[] = [address];
+    if (type) { conds.push("tx_type = ?"); binds.push(type); }
+    if (result === "ok") { conds.push("result = ?"); binds.push("ok"); }
+    if (result === "fail") { conds.push("result IS NOT NULL AND result <> ?"); binds.push("ok"); }
+    const histWhere = `WHERE ${conds.join(" AND ")}`;
+    histTotal = await db.prepare(`SELECT COUNT(*) AS n FROM tx_index ${histWhere}`).bind(...binds).first<{ n: number }>().then((r) => r?.n ?? 0);
+    lastSendTopo = await db.prepare("SELECT MAX(block_topo) AS m FROM tx_index WHERE sender = ?").bind(address)
+      .first<{ m: number | null }>().then((r) => r?.m ?? 0);
+    txs = await db.prepare(`SELECT * FROM tx_index ${histWhere} ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
+      .bind(...binds, PAGE_SIZE + 1, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>().then((r) => r.results ?? []);
+    txs = txs.slice(0, PAGE_SIZE);
     agg = await db.prepare(
       `SELECT COUNT(*) c, SUM(fee) fees, AVG(fee) avg_fee, MIN(ts) first_tx, MAX(ts) last_tx,
               SUM(encrypted) enc, SUM(CASE WHEN result = 'ok' THEN 1 ELSE 0 END) ok
@@ -36,6 +65,7 @@ account.get("/account/:address", async (c) => {
       .first<{ c: number | null }>().then((r) => Number(r?.c) || 0);
     maxTopo = (await db.prepare("SELECT MAX(topoheight) AS m FROM blocks").first<{ m: number | null }>())?.m ?? null;
   } catch { /* db not ready */ }
+  const histPages = Math.max(1, Math.ceil(histTotal / PAGE_SIZE));
 
   const txCount = num(acct?.tx_count) || num(agg?.c);
   const fees = num(agg?.fees);
@@ -116,7 +146,7 @@ account.get("/account/:address", async (c) => {
     <table class="kv" style="margin-top:1rem">
       ${okPct !== null ? `<tr><td>Executed ok</td><td>${fmtInt(okCount)} of ${fmtInt(txCount)} (${okPct.toFixed(1)}%)</td></tr>` : ""}
       ${txCount > 0 ? `<tr><td>Encrypted payloads</td><td>${fmtInt(encCount)} of ${fmtInt(txCount)}</td></tr>` : ""}
-      ${maxTopo !== null && lastTx ? `<tr><td>Confirmations</td><td>${fmtInt(Math.max(0, maxTopo - num(txs[0]?.block_topo)))} <span style="color:var(--text-dim)">since last send</span></td></tr>` : ""}
+      ${maxTopo !== null && lastSendTopo > 0 ? `<tr><td>Confirmations</td><td>${fmtInt(Math.max(0, maxTopo - lastSendTopo))} <span style="color:var(--text-dim)">since last send</span></td></tr>` : ""}
     </table>
   </div>`;
 
@@ -133,13 +163,29 @@ account.get("/account/:address", async (c) => {
           <td class="num">${atomic(num(t.fee), 6)}</td>
         </tr>`;
       }).join("")
-    : `<tr><td colspan="6" style="color:var(--text-dim)">No indexed transactions from this address (backfill pending or address inactive).</td></tr>`;
+    : `<tr><td colspan="6" style="color:var(--text-dim)">${histTotal > 0 ? "No transactions match the current filters." : "No indexed transactions from this address (backfill pending or address inactive)."}</td></tr>`;
 
-  const history = `<div class="panel"><h2>History ${txs.length ? `<span style="color:var(--text-dim)">latest ${fmtInt(txs.length)}</span>` : ""}</h2>
-    <div class="tablewrap"><table>
-      <thead><tr><th>Hash</th><th>Block</th><th>Time</th><th>Type</th><th>Result</th><th class="num">Fee (XEL)</th></tr></thead>
+  const fActive = !!type || !!result;
+  const fFields = `
+    ${filterField("Transaction type", `<select name="type">${selectOpts(TX_TYPES, type, "all types")}</select>`)}
+    ${filterField("Result", `<select name="result"><option value=""${result === "" ? " selected" : ""}>any result</option><option value="ok"${result === "ok" ? " selected" : ""}>executed ok</option><option value="fail"${result === "fail" ? " selected" : ""}>failed</option></select>`)}
+  `;
+  const fPop = filterPop("f-acct-txs", `/account/${esc(address)}`, fFields, {
+    hidden: srt.qs ? { sort: srt.key, dir: srt.dir } : {},
+    reset: `/account/${esc(address)}${srt.qs ? `?${srt.qs}` : ""}`,
+  });
+
+  const history = `<div class="panel">
+    <div class="panel-head">
+      <h2>History <span style="color:var(--text-dim)">${fmtInt(histTotal)} sent txs</span></h2>
+      ${filterButton("f-acct-txs", fActive)}
+      ${fPop}
+    </div>
+    <div class="tablewrap"><table data-srvsort="1">
+      <thead><tr><th>Hash</th>${srt.th("block", "Block")}${srt.th("time", "Time")}${srt.th("type", "Type")}${srt.th("result", "Result")}${srt.th("fee", "Fee (XEL)", true)}</tr></thead>
       <tbody>${txRows}</tbody>
     </table></div>
+    ${pager(srt.link(srt.key, srt.dir), page, histPages)}
   </div>`;
 
   const content = `${hero}
