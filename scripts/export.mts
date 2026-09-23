@@ -1,19 +1,19 @@
 /**
  * Export local backfill SQLite → D1 SQL + R2-ready archives.
  *
- * D1 (browsable, ≤ recommended budget):
+ * D1:
  *   - daily_stats, daily_miners, daily_block_types (aggregates, full history)
  *   - accounts (full)
- *   - blocks: RECENT_BLOCKS most recent (keyset-paginated browsing)
- *   - tx_index: TX_RECENT same for transactions
+ *   - blocks: full history (keyset-paginated browsing)
+ *   - tx_index: full history
  * R2 (full raw history):
  *   - blocks-full.jsonl / txs-full.jsonl chunks (100k rows each)
  *
  * Restartable: each output file is rewritten independently; use --only to
- * regenerate specific files (comma-separated, e.g. --only tx_recent,daily_stats).
+ * regenerate specific files (comma-separated, e.g. --only tx,daily_stats).
  *
  * Usage: node --experimental-strip-types scripts/export.mts [--full] [--only=a,b]
- * Env:   BACKFILL_DB, EXPORT_DIR, RECENT_BLOCKS (default 200000), TX_RECENT (default 500000)
+ * Env:   BACKFILL_DB, EXPORT_DIR
  */
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, writeFileSync, existsSync, statSync, rmSync, unlinkSync } from "node:fs";
@@ -21,8 +21,6 @@ import { join } from "node:path";
 
 const DB_PATH = process.env.BACKFILL_DB ?? "data/backfill.db";
 const OUT_DIR = process.env.EXPORT_DIR ?? "export";
-const RECENT_BLOCKS = Number(process.env.RECENT_BLOCKS ?? 200_000);
-const TX_RECENT = Number(process.env.TX_RECENT ?? 500_000);
 const FULL = process.argv.includes("--full");
 const onlyRaw: string = (process.argv.find((a: string) => a.startsWith("--only=")) ?? "").split("=")[1] ?? "";
 const ONLY: string[] = onlyRaw.split(",").filter((x) => x.length > 0);
@@ -52,25 +50,32 @@ function esc(v: any): string {
 
 /** Keyset-paginated dump by integer key column (fast, no OFFSET). desc=true walks from the top. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit?: number; outFile?: string; chunkRows?: number; desc?: boolean }): number {
+function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit?: number; outFile?: string; chunkRows?: number; desc?: boolean; tieCol?: string }): number {
   const limit = opts.limit ?? Infinity;
   const file = opts.outFile ?? join(OUT_DIR, `${table}.sql`);
   fresh(file);
   const chunkRows = opts.chunkRows ?? 100_000;
   const desc = opts.desc ?? false;
   const dir = desc ? "DESC" : "ASC";
-  const cmp = desc ? "<" : ">";
+  const op = desc ? "<" : ">";
+  // non-unique key columns (e.g. tx_index.block_topo) need a unique tie-breaker,
+  // otherwise rows sharing the boundary key are skipped between pages
+  const where = opts.tieCol
+    ? `(${keyCol} ${op} ? OR (${keyCol} = ? AND ${opts.tieCol} ${op} ?))`
+    : `${keyCol} ${op} ?`;
+  const order = opts.tieCol ? `${keyCol} ${dir}, ${opts.tieCol} ${dir}` : `${keyCol} ${dir}`;
   let count = 0;
-  let lastKey = desc ? Number.MAX_SAFE_INTEGER : 0;
+  let lastKey = desc ? Number.MAX_SAFE_INTEGER : -1;
+  let lastTie = desc ? "\uffff" : "";
   let buffer: string[] = [];
 
   for (;;) {
     if (count >= limit) break;
     const pageSize = Math.min(chunkRows, limit - count);
-    const stmt = db.prepare(`SELECT ${cols.join(", ")} FROM ${table} WHERE ${keyCol} ${dir === "DESC" ? "<" : ">"} ? ORDER BY ${keyCol} ${dir} LIMIT ?`);
+    const stmt = db.prepare(`SELECT ${cols.join(", ")} FROM ${table} WHERE ${where} ORDER BY ${order} LIMIT ?`);
     stmt.setReadBigInts(true);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows: any[] = stmt.all(lastKey, pageSize);
+    const rows: any[] = opts.tieCol ? stmt.all(lastKey, lastKey, lastTie, pageSize) : stmt.all(lastKey, pageSize);
     if (!rows.length) break;
     for (const row of rows) {
       const vals = cols.map((c) => esc(row[c]));
@@ -82,7 +87,9 @@ function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit
       writeFileSync(file, `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${buffer.slice(i, i + 100).join(",\n")};\n`, { flag: "a" });
     }
     buffer = [];
-    lastKey = Number(rows[rows.length - 1][keyCol]);
+    const last = rows[rows.length - 1];
+    lastKey = Number(last[keyCol]);
+    if (opts.tieCol) lastTie = String(last[opts.tieCol]);
   }
 return count;
 }
@@ -91,7 +98,7 @@ return count;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function dumpJsonl(table: string, keyCol: string, chunkRows: number, dir: string): number {
   let count = 0;
-  let lastKey = 0;
+  let lastKey = -1;
   let chunkIndex = 0;
   let buffer: string[] = [];
   const cols = (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map((c) => c.name);
@@ -205,26 +212,25 @@ for (const [file, table, cols, sql] of AGG_JOBS) {
   console.log(`  ${table}: ${rows.length.toLocaleString()} rows${existsSync(outFile) ? ` (${(statSync(outFile).size / 1e6).toFixed(1)} MB)` : " (empty — file not written)"}`);
 }
 
-// ---------- recent chain data (D1) ----------
+// ---------- chain data (D1) ----------
 
-console.log(`Exporting recent chain data (D1): last ${RECENT_BLOCKS.toLocaleString()} blocks, ${TX_RECENT.toLocaleString()} txs…`);
-if (wanted("blocks_recent")) {
+console.log("Exporting chain data (D1): all blocks, all txs…");
+if (wanted("blocks")) {
   const nBlocks = dumpKeyset("blocks", "topoheight",
     ["topoheight", "height", "hash", "ts", "version", "nonce", "difficulty", "size", "tx_count", "block_type", "miner_address", "miner_reward", "dev_reward", "burned", "fee_total", "cum_difficulty", "tips"],
-    { outFile: join(OUT_DIR, "blocks_recent.sql"), limit: RECENT_BLOCKS, desc: true });
-  console.log(`  blocks_recent: ${nBlocks.toLocaleString()} rows (${(statSync(join(OUT_DIR, "blocks_recent.sql")).size / 1e6).toFixed(1)} MB)`);
+    { outFile: join(OUT_DIR, "blocks.sql"), desc: true });
+  console.log(`  blocks: ${nBlocks.toLocaleString()} rows (${(statSync(join(OUT_DIR, "blocks.sql")).size / 1e6).toFixed(1)} MB)`);
 } else {
-  console.log("  blocks_recent: skipped (--only)");
+  console.log("  blocks: skipped (--only)");
 }
 
-const minTopo = Number((db.prepare("SELECT MIN(topoheight) m FROM (SELECT topoheight FROM blocks ORDER BY topoheight DESC LIMIT ?)").get(RECENT_BLOCKS) as { m: number }).m);
-if (wanted("tx_recent")) {
+if (wanted("tx")) {
   const nTxs = dumpKeyset("tx_index", "block_topo",
     ["hash", "block_topo", "ts", "fee", "size", "tx_type", "sender", "transfer_count", "version", "multisig", "contract_id", "gas", "executed", "encrypted"],
-    { outFile: join(OUT_DIR, "tx_recent.sql"), limit: TX_RECENT, chunkRows: 100_000 });
-  console.log(`  tx_recent: ${nTxs.toLocaleString()} rows (from topo ${minTopo})`);
+    { outFile: join(OUT_DIR, "tx.sql"), chunkRows: 100_000, tieCol: "hash" });
+  console.log(`  tx: ${nTxs.toLocaleString()} rows`);
 } else {
-  console.log("  tx_recent: skipped (--only)");
+  console.log("  tx: skipped (--only)");
 }
 
 // ---------- full raw archives (R2) ----------
@@ -250,8 +256,8 @@ npx wrangler d1 execute xelis-stats --file export/daily_stats.sql --remote
   npx wrangler d1 execute xelis-stats --file export/assets.sql --remote
   npx wrangler d1 execute xelis-stats --file export/contracts.sql --remote
   npx wrangler d1 execute xelis-stats --file export/daily_contracts.sql --remote
-  npx wrangler d1 execute xelis-stats --file export/blocks_recent.sql --remote
-  npx wrangler d1 execute xelis-stats --file export/tx_recent.sql --remote
+  npx wrangler d1 execute xelis-stats --file export/blocks.sql --remote
+  npx wrangler d1 execute xelis-stats --file export/tx.sql --remote
 Then seed cursor: sync_state.last_backfill_topoheight = (max stable at export time).
 ${FULL ? "R2: upload export/r2/*.jsonl with wrangler r2 object put." : "(re-run with --full for R2 raw archives)"}`);
 
