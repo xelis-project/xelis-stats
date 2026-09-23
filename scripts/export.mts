@@ -220,7 +220,7 @@ if (wanted("blocks_recent")) {
 const minTopo = Number((db.prepare("SELECT MIN(topoheight) m FROM (SELECT topoheight FROM blocks ORDER BY topoheight DESC LIMIT ?)").get(RECENT_BLOCKS) as { m: number }).m);
 if (wanted("tx_recent")) {
   const nTxs = dumpKeyset("tx_index", "block_topo",
-    ["hash", "block_topo", "ts", "fee", "size", "tx_type", "sender", "transfer_count", "version", "multisig", "contract_id", "gas", "result", "encrypted"],
+    ["hash", "block_topo", "ts", "fee", "size", "tx_type", "sender", "transfer_count", "version", "multisig", "contract_id", "gas", "executed", "encrypted"],
     { outFile: join(OUT_DIR, "tx_recent.sql"), limit: TX_RECENT, chunkRows: 100_000 });
   console.log(`  tx_recent: ${nTxs.toLocaleString()} rows (from topo ${minTopo})`);
 } else {

@@ -18,11 +18,11 @@ account.get("/account/:address", async (c) => {
   const TX_TYPES = ["transfer", "burn", "invoke_contract", "deploy_contract", "multisig"];
   const rawType = c.req.query("type") ?? "";
   const type = TX_TYPES.includes(rawType) ? rawType : "";
-  const result = c.req.query("result") === "ok" || c.req.query("result") === "fail" ? c.req.query("result")! : "";
+  const executed = c.req.query("executed") === "1" || c.req.query("executed") === "0" ? c.req.query("executed")! : "";
   const srt = srvSort((nm) => c.req.query(nm), TX_COLS, "block", "hash", (s) => {
     const p = new URLSearchParams();
     if (type) p.set("type", type);
-    if (result) p.set("result", result);
+    if (executed) p.set("executed", executed);
     if (s) for (const [k, v] of new URLSearchParams(s)) p.set(k, v);
     const q = p.toString();
     return q ? `/account/${address}?${q}` : `/account/${address}`;
@@ -42,8 +42,8 @@ account.get("/account/:address", async (c) => {
     const conds: string[] = ["sender = ?"];
     const binds: unknown[] = [address];
     if (type) { conds.push("tx_type = ?"); binds.push(type); }
-    if (result === "ok") { conds.push("result = ?"); binds.push("ok"); }
-    if (result === "fail") { conds.push("result IS NOT NULL AND result <> ?"); binds.push("ok"); }
+    if (executed === "1") { conds.push("executed = 1"); }
+    if (executed === "0") { conds.push("executed = 0"); }
     const histWhere = `WHERE ${conds.join(" AND ")}`;
     histTotal = await db.prepare(`SELECT COUNT(*) AS n FROM tx_index ${histWhere}`).bind(...binds).first<{ n: number }>().then((r) => r?.n ?? 0);
     lastSendTopo = await db.prepare("SELECT MAX(block_topo) AS m FROM tx_index WHERE sender = ?").bind(address)
@@ -53,7 +53,7 @@ account.get("/account/:address", async (c) => {
     txs = txs.slice(0, PAGE_SIZE);
     agg = await db.prepare(
       `SELECT COUNT(*) c, SUM(fee) fees, AVG(fee) avg_fee, MIN(ts) first_tx, MAX(ts) last_tx,
-              SUM(encrypted) enc, SUM(CASE WHEN result = 'ok' THEN 1 ELSE 0 END) ok
+              SUM(encrypted) enc, SUM(CASE WHEN executed = 1 THEN 1 ELSE 0 END) ok
        FROM tx_index WHERE sender = ?`
     ).bind(address).first();
     types = await db.prepare(
@@ -153,22 +153,22 @@ account.get("/account/:address", async (c) => {
   const txRows = txs.length
     ? txs.map((t) => {
         const hash = String(t.hash ?? "");
-        const result = t.result ? String(t.result) : "";
+        const result = t.executed === 1 ? "executed" : t.executed === 0 ? "unexecuted" : "";
         return `<tr>
           <td><a class="mono" href="/tx/${esc(hash)}">${shortHash(hash, 10)}</a></td>
           <td><a href="/block/${num(t.block_topo)}"><span class="mint">${fmtInt(num(t.block_topo))}</span></a></td>
           <td>${fmtTime(num(t.ts))}</td>
           <td><span class="badge ${esc(t.tx_type ?? "other")}">${esc(t.tx_type ?? "other")}</span></td>
-          ${result ? `<td><span class="badge ${result === "ok" ? "ok" : "fail"}">${esc(result)}</span></td>` : '<td><span style="color:var(--text-dim)">—</span></td>'}
+          ${result ? `<td><span class="badge ${result === "executed" ? "ok" : "fail"}">${result}</span></td>` : '<td><span style="color:var(--text-dim)">—</span></td>'}
           <td class="num">${atomic(num(t.fee), 6)}</td>
         </tr>`;
       }).join("")
     : `<tr><td colspan="6" style="color:var(--text-dim)">${histTotal > 0 ? "No transactions match the current filters." : "No indexed transactions from this address (backfill pending or address inactive)."}</td></tr>`;
 
-  const fActive = !!type || !!result;
+  const fActive = !!type || !!executed;
   const fFields = `
     ${filterField("Transaction type", `<select name="type">${selectOpts(TX_TYPES, type, "all types")}</select>`)}
-    ${filterField("Result", `<select name="result"><option value=""${result === "" ? " selected" : ""}>any result</option><option value="ok"${result === "ok" ? " selected" : ""}>executed ok</option><option value="fail"${result === "fail" ? " selected" : ""}>failed</option></select>`)}
+    ${filterField("Execution", `<select name="executed"><option value=""${executed === "" ? " selected" : ""}>any status</option><option value="1"${executed === "1" ? " selected" : ""}>executed</option><option value="0"${executed === "0" ? " selected" : ""}>unexecuted</option></select>`)}
   `;
   const fPop = filterPop("f-acct-txs", `/account/${esc(address)}`, fFields, {
     hidden: srt.qs ? { sort: srt.key, dir: srt.dir } : {},
@@ -182,7 +182,7 @@ account.get("/account/:address", async (c) => {
       ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
-      <thead><tr><th>Hash</th>${srt.th("block", "Block")}${srt.th("time", "Time")}${srt.th("type", "Type")}${srt.th("result", "Result")}${srt.th("fee", "Fee (XEL)", true)}</tr></thead>
+      <thead><tr><th>Hash</th>${srt.th("block", "Block")}${srt.th("time", "Time")}${srt.th("type", "Type")}${srt.th("executed", "Execution")}${srt.th("fee", "Fee (XEL)", true)}</tr></thead>
       <tbody>${txRows}</tbody>
     </table></div>
     ${pager(srt.link(srt.key, srt.dir), page, histPages)}

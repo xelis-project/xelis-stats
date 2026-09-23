@@ -34,9 +34,9 @@ export const entityTag = (address: string): string => {
   return e ? ` <span class="badge entity ${esc(e.kind)}">${esc(e.label)}</span>` : "";
 };
 
-// result is NULL for rows backfilled before the column existed
-export const resultBadge = (result: unknown): string =>
-  `<span class="badge ${result === "ok" ? "ok" : result ? "fail" : ""}">${esc(result ?? "unknown")}</span>`;
+// executed is 1 (executed ok), 0 (not executed) or NULL (not recorded, legacy rows)
+export const resultBadge = (executed: unknown): string =>
+  `<span class="badge ${executed === 1 ? "ok" : executed === 0 ? "fail" : ""}">${executed === 1 ? "executed" : executed === 0 ? "unexecuted" : "unknown"}</span>`;
 
 export const blkCopyScript = `function blkCopy(txt,btn){var flip=function(){var t=btn.textContent;btn.textContent="copied";btn.classList.add("done");setTimeout(function(){btn.textContent=t;btn.classList.remove("done");},1200);};if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(flip);}else{var i=document.createElement("textarea");i.value=txt;document.body.appendChild(i);i.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(i);flip();}}`;
 

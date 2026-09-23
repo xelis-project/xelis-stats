@@ -115,7 +115,7 @@ txDetail.get("/tx/:hash", async (c) => {
     } catch { /* keep stored values */ }
   }
   const sender = esc(tx.sender ?? "");
-  const result = esc(tx.result ?? "unknown");
+  const result = tx.executed === 1 ? "executed" : tx.executed === 0 ? "unexecuted" : "";
   const contractId = String(tx.contract_id ?? "");
   const gas = num(tx.gas);
   const feeRate = fee > 0 && size > 0 ? `${atomic((fee * 1024) / size, 5)} XEL / kB` : "";
@@ -134,7 +134,7 @@ txDetail.get("/tx/:hash", async (c) => {
       const b = await db.prepare("SELECT hash, tx_count FROM blocks WHERE topoheight = ?").bind(topo).first<{ hash: string; tx_count: number }>();
       blockHash = String(b?.hash ?? "");
       blockTxCount = num(b?.tx_count);
-      siblings = await db.prepare("SELECT hash, tx_type, fee, size, result, sender FROM tx_index WHERE block_topo = ? AND hash != ? ORDER BY ts, hash LIMIT 10")
+      siblings = await db.prepare("SELECT hash, tx_type, fee, size, executed, sender FROM tx_index WHERE block_topo = ? AND hash != ? ORDER BY ts, hash LIMIT 10")
         .bind(topo, hash).all<Record<string, unknown>>().then((r) => r.results ?? []);
     }
     maxTopo = (await db.prepare("SELECT MAX(topoheight) AS m FROM blocks").first<{ m: number }>())?.m ?? null;
@@ -161,7 +161,7 @@ txDetail.get("/tx/:hash", async (c) => {
 
   const conf = maxTopo !== null && topo > 0 ? fmtInt(Math.max(0, maxTopo - topo)) : "—";
   const otherInBlock = blockTxCount !== null ? Math.max(0, blockTxCount - 1) : null;
-  const hasResult = tx.result !== null && tx.result !== undefined && tx.result !== "";
+  const hasResult = tx.executed !== null && tx.executed !== undefined;
   const blockSub = otherInBlock === null ? ""
     : otherInBlock === 0 ? "only tx in block"
     : `${fmtInt(otherInBlock)} other tx${otherInBlock === 1 ? "" : "s"} in block`;
@@ -182,7 +182,7 @@ txDetail.get("/tx/:hash", async (c) => {
         <h2 class="blk-title">Transaction <span class="mint mono">${shortHash(hash, 12)}</span></h2>
         <div class="blk-meta">
           <span class="badge ${txType}">${txType}</span>
-          ${hasResult ? `<span class="badge ${result === "ok" ? "ok" : "fail"}">${result}</span>` : ""}
+          ${hasResult ? `<span class="badge ${result === "executed" ? "ok" : "fail"}">${result}</span>` : ""}
           ${tx.encrypted ? '<span class="badge priv">encrypted</span>' : ""}
           ${tx.multisig ? '<span class="badge">multisig</span>' : ""}
           <span class="blk-when">${fmtTime(ts)} · ${ago(ts)}</span>
@@ -217,7 +217,7 @@ txDetail.get("/tx/:hash", async (c) => {
   </table></div>`;
 
   const statusPanel = `<div class="panel"><h2>Status &amp; Cost</h2><table class="kv">
-    <tr><td>Result</td><td>${hasResult ? `<span class="badge ${result === "ok" ? "ok" : "fail"}">${result}</span>` : '<span class="badge">not recorded</span>'}</td></tr>
+    <tr><td>Execution</td><td>${hasResult ? `<span class="badge ${result === "executed" ? "ok" : "fail"}">${result}</span>` : '<span class="badge">not recorded</span>'}</td></tr>
     <tr><td>Block</td><td><a href="/block/${topo}"><span class="mint">#${fmtInt(topo)}</span></a>${blockHash ? ` <span class="hash">${shortHash(blockHash, 6)}</span>` : ""}</td></tr>
     <tr><td>Confirmations</td><td>${conf}</td></tr>
     <tr><td>Fee</td><td>${atomic(fee, 6)} XEL${feeRate ? ` <span style="color:var(--text-dim)">· ${feeRate}</span>` : ""}</td></tr>
@@ -251,7 +251,7 @@ txDetail.get("/tx/:hash", async (c) => {
   const siblingsPanel = siblings.length
     ? `<div class="panel"><h2>More in Block #${fmtInt(topo)}${blockTxCount ? ` <span style="color:var(--text-dim)">${fmtInt(blockTxCount)} txs total</span>` : ""}</h2>
        <div class="tablewrap"><table>
-         <thead><tr><th>Hash</th><th>Type</th><th>Sender</th><th class="num">Fee (XEL)</th><th class="num">Size</th><th>Result</th></tr></thead>
+         <thead><tr><th>Hash</th><th>Type</th><th>Sender</th><th class="num">Fee (XEL)</th><th class="num">Size</th><th>Execution</th></tr></thead>
          <tbody>${siblings.map((s) => {
            const h = String(s.hash ?? "");
            return `<tr>
@@ -260,7 +260,7 @@ txDetail.get("/tx/:hash", async (c) => {
              <td><a class="mono" href="/account/${esc(s.sender as string)}">${shortHash(s.sender as string, 8)}</a>${entityTag(s.sender as string)}</td>
              <td class="num">${atomic(num(s.fee), 6)}</td>
              <td class="num">${fmtInt(num(s.size))} B</td>
-             <td>${s.result ? `<span class="badge ${s.result === "ok" ? "ok" : "fail"}">${esc(s.result)}</span>` : '<span style="color:var(--text-dim)">—</span>'}</td>
+             <td>${s.executed === 1 ? '<span class="badge ok">executed</span>' : s.executed === 0 ? '<span class="badge fail">unexecuted</span>' : '<span style="color:var(--text-dim)">—</span>'}</td>
            </tr>`; }).join("")}
          </tbody></table></div>
        ${otherInBlock && otherInBlock > siblings.length ? `<p class="tx-more"><a href="/block/${topo}">View block #${fmtInt(topo)} for all ${fmtInt(otherInBlock + 1)} transactions →</a></p>` : ""}

@@ -13,12 +13,12 @@ transactions.get("/transactions", async (c) => {
   const TX_TYPES = ["transfer", "burn", "invoke_contract", "deploy_contract", "multisig"];
   const rawType = c.req.query("type") ?? "";
   const type = TX_TYPES.includes(rawType) ? rawType : "";
-  const result = c.req.query("result") === "ok" || c.req.query("result") === "fail" ? c.req.query("result")! : "";
+  const executed = c.req.query("executed") === "1" || c.req.query("executed") === "0" ? c.req.query("executed")! : "";
   const db = c.env.DB;
   const srt = srvSort((n) => c.req.query(n), TX_COLS, "block", "hash", (s) => {
     const p = new URLSearchParams();
     if (type) p.set("type", type);
-    if (result) p.set("result", result);
+    if (executed) p.set("executed", executed);
     if (s) for (const [k, v] of new URLSearchParams(s)) p.set(k, v);
     const q = p.toString();
     return q ? `/transactions?${q}` : "/transactions";
@@ -30,8 +30,8 @@ transactions.get("/transactions", async (c) => {
     const conds: string[] = [];
     const binds: unknown[] = [];
     if (type) { conds.push("tx_type = ?"); binds.push(type); }
-    if (result === "ok") { conds.push("result = ?"); binds.push("ok"); }
-    if (result === "fail") { conds.push("result IS NOT NULL AND result <> ?"); binds.push("ok"); }
+    if (executed === "1") { conds.push("executed = 1"); }
+    if (executed === "0") { conds.push("executed = 0"); }
     const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
     total = await db.prepare(`SELECT COUNT(*) AS n FROM tx_index ${where}`).bind(...binds).first<{ n: number }>().then((r) => r?.n ?? 0);
     rows = await db.prepare(`SELECT * FROM tx_index ${where} ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
@@ -41,10 +41,10 @@ transactions.get("/transactions", async (c) => {
   rows = rows.slice(0, PAGE_SIZE);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  const fActive = !!type || !!result;
+  const fActive = !!type || !!executed;
   const fFields = `
     ${filterField("Transaction type", `<select name="type">${selectOpts(TX_TYPES, type, "all types")}</select>`)}
-    ${filterField("Result", `<select name="result"><option value=""${result === "" ? " selected" : ""}>any result</option><option value="ok"${result === "ok" ? " selected" : ""}>executed ok</option><option value="fail"${result === "fail" ? " selected" : ""}>failed</option></select>`)}
+    ${filterField("Execution", `<select name="executed"><option value=""${executed === "" ? " selected" : ""}>any status</option><option value="1"${executed === "1" ? " selected" : ""}>executed</option><option value="0"${executed === "0" ? " selected" : ""}>unexecuted</option></select>`)}
   `;
   const fPop = filterPop("f-txs", "/transactions", fFields, {
     hidden: srt.qs ? { sort: srt.key, dir: srt.dir } : {},
@@ -59,7 +59,7 @@ transactions.get("/transactions", async (c) => {
         <td><span class="badge ${t.tx_type}">${t.tx_type as string}</span></td>
         <td><a class="mono" href="/account/${t.sender}">${shortHash(t.sender as string, 8)}</a>${entityTag(t.sender as string)}</td>
         <td class="num">${atomic(t.fee as number, 6)}</td>
-        <td>${resultBadge(t.result)}</td>
+        <td>${resultBadge(t.executed)}</td>
       </tr>`).join("")
     : `<tr><td colspan="7" style="color:var(--text-dim)">No indexed transactions yet — backfill pending.</td></tr>`;
 
@@ -70,7 +70,7 @@ transactions.get("/transactions", async (c) => {
       ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
-      <thead><tr><th>Hash</th>${srt.th("block", "Block")}${srt.th("time", "Time")}${srt.th("type", "Type")}${srt.th("sender", "Sender")}${srt.th("fee", "Fee (XEL)", true)}${srt.th("result", "Result")}</tr></thead>
+      <thead><tr><th>Hash</th>${srt.th("block", "Block")}${srt.th("time", "Time")}${srt.th("type", "Type")}${srt.th("sender", "Sender")}${srt.th("fee", "Fee (XEL)", true)}${srt.th("executed", "Execution")}</tr></thead>
       <tbody>${body}</tbody>
     </table></div>
     ${pager(srt.link(srt.key, srt.dir), page, totalPages)}

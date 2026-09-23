@@ -4,6 +4,7 @@ import { layout, notFound, statCard } from "../../client/layout";
 import { fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/format";
 import { srvSort } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
+import { rpc } from "../xelis";
 import { esc, entityTag, blkCopyScript, num } from "./shared";
 
 export const contracts = new Hono<{ Bindings: Env }>();
@@ -31,6 +32,11 @@ contracts.get("/contracts", async (c) => {
     rows = await c.env.DB.prepare(`SELECT * FROM contracts ${where} ORDER BY ${srt.order} LIMIT 100`)
       .bind(...binds).all<Record<string, unknown>>().then((r) => r.results ?? []);
   } catch { /* not ready */ }
+  let onChainCount: number | null = null;
+  try {
+    onChainCount = await rpc<number>("count_contracts");
+  } catch { /* node unreachable */ }
+  const showing = onChainCount !== null ? `showing ${fmtInt(rows.length)} of ${fmtInt(onChainCount)} on-chain` : `showing ${fmtInt(rows.length)} of indexed`;
 
   const fFields = `
     ${filterField("Min invokes", `<input type="number" name="min_invokes" min="0" step="1" placeholder="e.g. 5" value="${minInv || ""}" />`)}
@@ -52,7 +58,7 @@ contracts.get("/contracts", async (c) => {
 
   const content = `<div class="panel">
     <div class="panel-head">
-      <h2>Contracts <span style="color:var(--text-dim)">showing ${fmtInt(rows.length)} of indexed</span></h2>
+      <h2>Contracts <span style="color:var(--text-dim)">${showing}</span></h2>
       ${filterButton("f-contracts", minInv > 0)}
       ${fPop}
     </div>
@@ -71,11 +77,37 @@ contracts.get("/contracts/:id", async (c) => {
   try {
     ct = (await db.prepare("SELECT * FROM contracts WHERE contract_id = ?").bind(id).first()) ?? undefined;
     invokes = await db.prepare(
-      `SELECT hash, block_topo, ts, fee, result, sender FROM tx_index WHERE contract_id = ? ORDER BY block_topo DESC LIMIT 25`
+      `SELECT hash, block_topo, ts, fee, executed, sender FROM tx_index WHERE contract_id = ? ORDER BY block_topo DESC LIMIT 25`
     ).bind(id).all<Record<string, unknown>>().then((r) => r.results ?? []);
   } catch { /* db not ready */ }
 
   if (!ct) return c.html(layout("Not found", notFound("Contract"), "/contracts"));
+
+  // live on-chain enrichment (best effort)
+  let moduleTopo: number | null = null;
+  let codeSize: number | null = null;
+  let entries: { key: unknown; value: unknown }[] = [];
+  type Bal = { asset: string; balance: number | null; topo: number | null };
+  let balances: Bal[] = [];
+  try {
+    const mod = await rpc<{ topoheight: number; version: { data?: { module?: unknown } } }>("get_contract_module", { contract: id });
+    moduleTopo = num(mod.topoheight) || null;
+    const raw = JSON.stringify(mod.version?.data?.module ?? {});
+    codeSize = raw.length;
+  } catch { /* no module / node unreachable */ }
+  try {
+    entries = await rpc<{ key: unknown; value: unknown }[]>("get_contract_data_entries", { contract: id, skip: 0, maximum: 20 });
+  } catch { /* none */ }
+  try {
+    const assets = await rpc<string[]>("get_contract_assets", { contract: id, skip: 0, maximum: 10 });
+    balances = await Promise.all(assets.map(async (asset): Promise<Bal> => {
+      try {
+        const b = await rpc<{ data: number; topoheight: number }>("get_contract_balance", { contract: id, asset });
+        return { asset, balance: num(b.data), topo: num(b.topoheight) };
+      } catch { return { asset, balance: null, topo: null }; }
+    }));
+  } catch { /* none */ }
+  const xel = "0000000000000000000000000000000000000000000000000000000000000000";
 
   const invokeCount = num(ct.invoke_count);
   const gasTotal = num(ct.gas_total);
@@ -111,36 +143,70 @@ contracts.get("/contracts/:id", async (c) => {
   const overview = `<div class="panel"><h2>Overview</h2><table class="kv">
     <tr><td>Contract ID</td><td><span class="mono">${esc(deployHash)}</span> <button class="copybtn" type="button" onclick="blkCopy('${esc(deployHash)}', this)">copy</button></td></tr>
     <tr><td>Deployer</td><td>${deployer ? `<a class="mono" href="/account/${esc(deployer)}">${shortHash(deployer, 10)}</a>${entityTag(deployer)} <button class="copybtn" type="button" onclick="blkCopy('${esc(deployer)}', this)">copy</button>` : "—"}</td></tr>
-    ${deployTopo > 0 ? `<tr><td>Deployed at</td><td><a href="/block/${deployTopo}"><span class="mint">#${fmtInt(deployTopo)}</span></a></td></tr>` : ""}
+    ${deployTopo > 0 || moduleTopo ? `<tr><td>Deployed at</td><td>${deployTopo > 0 ? `<a href="/block/${deployTopo}"><span class="mint">#${fmtInt(deployTopo)}</span></a> <span style="color:var(--text-dim)">(indexed)</span>` : ""}${moduleTopo ? ` <a href="/block/${moduleTopo}"><span class="mint">#${fmtInt(moduleTopo)}</span></a> <span style="color:var(--text-dim)">(on-chain)</span>` : ""}</td></tr>` : ""}
+    ${codeSize ? `<tr><td>Module code</td><td><span class="mono">~${fmtInt(codeSize)} bytes (serialized)</span></td></tr>` : ""}
     <tr><td>Invokes seen</td><td>${invokeCount > 0 ? fmtInt(invokeCount) : "—"}</td></tr>
     <tr><td>Gas total</td><td>${gasTotal > 0 ? fmtInt(gasTotal) : "—"}</td></tr>
     ${num(ct.events_count) ? `<tr><td>Events seen</td><td>${fmtInt(ct.events_count as number)}</td></tr>` : ""}
+    ${balances.length ? `<tr><td>Assets held</td><td>${fmtInt(balances.length)}</td></tr>` : ""}
+    ${entries.length ? `<tr><td>Storage keys (latest 20)</td><td>${fmtInt(entries.length)}</td></tr>` : ""}
   </table></div>`;
+
+  const balRows = balances.length
+    ? balances.map((b) => {
+        const amount = b.balance !== null ? `<td class="num">${b.asset === xel ? atomic(b.balance, 6) : fmtInt(b.balance)}</td>` : `<td class="num" style="color:var(--text-dim)">—</td>`;
+        const assetCell = b.asset === xel
+          ? `<span class="badge">XEL</span>`
+          : `<a class="mono" href="/asset/${esc(b.asset)}">${shortHash(b.asset, 10)}</a>`;
+        return `<tr><td>${assetCell}</td>${amount}<td class="num">${b.topo ? `<a href="/block/${b.topo}">${fmtInt(b.topo)}</a>` : "—"}</td></tr>`;
+      }).join("")
+    : "";
+  const balancesPanel = balances.length ? `<div class="panel"><h2>Balances</h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Asset</th><th class="num">Amount</th><th class="num">Updated (topo)</th></tr></thead>
+      <tbody>${balRows}</tbody>
+    </table></div>
+  </div>` : "";
+
+  const entryRows = entries.length
+    ? entries.map((e) => `<tr>
+        <td><pre class="mono" style="margin:0;white-space:pre-wrap;word-break:break-all">${esc(JSON.stringify(e.key))}</pre></td>
+        <td><pre class="mono" style="margin:0;white-space:pre-wrap;word-break:break-all">${esc(JSON.stringify(e.value))}</pre></td>
+      </tr>`).join("")
+    : "";
+  const storagePanel = entries.length ? `<div class="panel"><h2>Contract Storage <span style="color:var(--text-dim)">latest ${fmtInt(entries.length)} entries</span></h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Key</th><th>Value</th></tr></thead>
+      <tbody>${entryRows}</tbody>
+    </table></div>
+  </div>` : "";
 
   const invokeRows = invokes.length
     ? invokes.map((t) => {
         const h = String(t.hash ?? "");
-        const result = t.result ? String(t.result) : "";
+        const result = t.executed === 1 ? "executed" : t.executed === 0 ? "unexecuted" : "";
         return `<tr>
           <td><a class="mono" href="/tx/${esc(h)}">${shortHash(h, 12)}</a></td>
           <td><a href="/block/${num(t.block_topo)}"><span class="mint">${fmtInt(num(t.block_topo))}</span></a></td>
           <td>${fmtTime(num(t.ts))}</td>
           <td><a class="mono" href="/account/${esc(t.sender as string)}">${shortHash(t.sender as string, 8)}</a>${entityTag(t.sender as string)}</td>
           <td class="num">${atomic(num(t.fee), 6)}</td>
-          <td>${result ? `<span class="badge ${result === "ok" ? "ok" : "fail"}">${esc(result)}</span>` : '<span style="color:var(--text-dim)">—</span>'}</td>
+          <td>${result ? `<span class="badge ${result === "executed" ? "ok" : "fail"}">${result}</span>` : '<span style="color:var(--text-dim)">—</span>'}</td>
         </tr>`;
       }).join("")
     : `<tr><td colspan="6" style="color:var(--text-dim)">No indexed invocations for this contract yet.</td></tr>`;
 
   const invokesPanel = `<div class="panel"><h2>Recent Invocations ${invokes.length ? `<span style="color:var(--text-dim)">latest ${fmtInt(invokes.length)}</span>` : ""}</h2>
     <div class="tablewrap"><table>
-      <thead><tr><th>Hash</th><th>Block</th><th>Time</th><th>Sender</th><th class="num">Fee (XEL)</th><th>Result</th></tr></thead>
+      <thead><tr><th>Hash</th><th>Block</th><th>Time</th><th>Sender</th><th class="num">Fee (XEL)</th><th>Execution</th></tr></thead>
       <tbody>${invokeRows}</tbody>
     </table></div>
   </div>`;
 
   const content = `${hero}
     ${overview}
+    ${balancesPanel}
+    ${storagePanel}
     ${invokesPanel}
     <script>${blkCopyScript}</script>`;
   return c.html(layout(`Contract ${shortHash(deployHash, 8)}`, content, "/contracts"));

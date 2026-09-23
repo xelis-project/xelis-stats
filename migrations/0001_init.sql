@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS tx_index (
   hash TEXT PRIMARY KEY, block_topo INTEGER, ts INTEGER,
   fee INTEGER, size INTEGER, tx_type TEXT, sender TEXT,
   transfer_count INTEGER, version INTEGER, multisig INTEGER, contract_id TEXT,
-  gas INTEGER, result TEXT, encrypted INTEGER DEFAULT 0
+  gas INTEGER, executed INTEGER, encrypted INTEGER DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_tx_block ON tx_index(block_topo);
 CREATE INDEX IF NOT EXISTS idx_tx_sender ON tx_index(sender);

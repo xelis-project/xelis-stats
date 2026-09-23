@@ -208,7 +208,7 @@ export class StatsCollector {
     const burnAsset = burn && typeof burn.asset === "string" ? burn.asset : (burn ? "" : null);
     const stmts: D1PreparedStatement[] = [
       this.env.DB.prepare(
-        `INSERT OR REPLACE INTO tx_index (hash, block_topo, ts, fee, size, tx_type, sender, transfer_count, version, multisig, contract_id, gas, result, encrypted, burn_amount, burn_asset)
+        `INSERT OR REPLACE INTO tx_index (hash, block_topo, ts, fee, size, tx_type, sender, transfer_count, version, multisig, contract_id, gas, executed, encrypted, burn_amount, burn_asset)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         hash, blockTopo, ts,
@@ -216,7 +216,7 @@ export class StatsCollector {
         String(t.source ?? ""), transfers.length, Number(t.version ?? 0),
         t.multisig ? 1 : 0, contractId,
         Number((data.invoke_contract as Record<string, unknown> | undefined)?.max_gas ?? 0),
-        t.executed_in_block ? "ok" : "unexecuted", transfers.length > 0 ? 1 : 0,
+        t.executed_in_block ? 1 : 0, transfers.length > 0 ? 1 : 0,
         burnAmount, burnAsset
       ),
     ];

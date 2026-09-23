@@ -74,7 +74,7 @@ api.get("/api/transactions", async (c) => {
     let binds: (number | string)[];
     if (sorted) {
       const { order } = parseSort((n) => c.req.query(n), TX_COLS, "block", "hash");
-      sql = `SELECT hash, block_topo, ts, fee, size, tx_type, sender, transfer_count, result FROM tx_index${type ? " WHERE tx_type = ?" : ""} ORDER BY ${order} LIMIT ?`;
+      sql = `SELECT hash, block_topo, ts, fee, size, tx_type, sender, transfer_count, executed FROM tx_index${type ? " WHERE tx_type = ?" : ""} ORDER BY ${order} LIMIT ?`;
       binds = [...(type ? [type] : []), limit];
     } else {
       const conds: string[] = [];
@@ -82,7 +82,7 @@ api.get("/api/transactions", async (c) => {
       if (before > 0) { conds.push("block_topo < ?"); b.push(before); }
       if (type) { conds.push("tx_type = ?"); b.push(type); }
       const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
-      sql = `SELECT hash, block_topo, ts, fee, size, tx_type, sender, transfer_count, result FROM tx_index ${where} ORDER BY block_topo DESC LIMIT ?`;
+      sql = `SELECT hash, block_topo, ts, fee, size, tx_type, sender, transfer_count, executed FROM tx_index ${where} ORDER BY block_topo DESC LIMIT ?`;
       binds = [...b, limit];
     }
     const rows = await c.env.DB.prepare(sql).bind(...binds).all().then((r) => r.results);

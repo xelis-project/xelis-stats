@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS tx_index (
   hash TEXT PRIMARY KEY, block_topo INTEGER, ts INTEGER,
   fee INTEGER, size INTEGER, tx_type TEXT, sender TEXT,
   transfer_count INTEGER, version INTEGER, multisig INTEGER, contract_id TEXT,
-  gas INTEGER, result TEXT, encrypted INTEGER DEFAULT 0,
+  gas INTEGER, executed INTEGER, encrypted INTEGER DEFAULT 0,
   burn_amount INTEGER DEFAULT 0, burn_asset TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tx_block ON tx_index(block_topo);
@@ -113,13 +113,19 @@ function migrate(): void {
   const tcols = (db.prepare("PRAGMA table_info(tx_index)").all() as Array<{ name: string }>).map((c) => c.name);
   if (!tcols.includes("contract_id")) db.exec("ALTER TABLE tx_index ADD COLUMN contract_id TEXT");
   if (!tcols.includes("gas")) db.exec("ALTER TABLE tx_index ADD COLUMN gas INTEGER");
-  if (!tcols.includes("result")) db.exec("ALTER TABLE tx_index ADD COLUMN result TEXT");
+  if (!tcols.includes("executed")) {
+    if (tcols.includes("result")) {
+      // legacy TEXT 'ok'/'unexecuted' column -> INTEGER 0/1
+      db.exec("ALTER TABLE tx_index RENAME COLUMN result TO executed");
+      db.exec("UPDATE tx_index SET executed = CASE executed WHEN 'ok' THEN 1 WHEN 'unexecuted' THEN 0 ELSE NULL END");
+    } else db.exec("ALTER TABLE tx_index ADD COLUMN executed INTEGER");
+  }
   if (!tcols.includes("encrypted")) db.exec("ALTER TABLE tx_index ADD COLUMN encrypted INTEGER DEFAULT 0");
   if (!tcols.includes("burn_amount")) db.exec("ALTER TABLE tx_index ADD COLUMN burn_amount INTEGER DEFAULT 0");
   if (!tcols.includes("burn_asset")) db.exec("ALTER TABLE tx_index ADD COLUMN burn_asset TEXT");
-  // one-time repair for rows written before `result` existed: block_topo was
+  // one-time repair for rows written before `executed` existed: block_topo was
   // only resolved from executed_in_block, so a non-NULL topo means executed.
-  db.exec("UPDATE tx_index SET result = 'ok' WHERE result IS NULL AND block_topo IS NOT NULL");
+  db.exec("UPDATE tx_index SET executed = 1 WHERE executed IS NULL AND block_topo IS NOT NULL");
   try { db.exec("CREATE TABLE IF NOT EXISTS tx_assets (tx_hash TEXT, asset TEXT); CREATE INDEX IF NOT EXISTS idx_tx_assets_asset ON tx_assets(asset);"); } catch { /* exists */ }
   try { db.exec("CREATE TABLE IF NOT EXISTS tx_contracts (tx_hash TEXT PRIMARY KEY, contract_id TEXT, max_gas INTEGER); CREATE INDEX IF NOT EXISTS idx_tx_contracts_cid ON tx_contracts(contract_id);"); } catch { /* exists */ }
   try { db.exec("CREATE TABLE IF NOT EXISTS contracts (contract_id TEXT PRIMARY KEY, deployer TEXT, deploy_topo INTEGER, invoke_count INTEGER, gas_total INTEGER, events_count INTEGER);"); } catch { /* exists */ }
@@ -196,7 +202,7 @@ const insertBlock = db.prepare(`
 `);
 const insertTx = db.prepare(`
   INSERT OR REPLACE INTO tx_index
-  (hash, block_topo, ts, fee, size, tx_type, sender, transfer_count, version, multisig, contract_id, gas, result, encrypted, burn_amount, burn_asset)
+  (hash, block_topo, ts, fee, size, tx_type, sender, transfer_count, version, multisig, contract_id, gas, executed, encrypted, burn_amount, burn_asset)
   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const upsertAccount = db.prepare(`
@@ -359,7 +365,7 @@ async function processTx(t: any, tsMs: number): Promise<boolean> {
     transferCount, Number(t.version ?? 0), t.multisig ? 1 : 0,
     contractId,
     Number(t.data?.invoke_contract?.max_gas ?? 0),
-    exec ? "ok" : "unexecuted",
+    exec ? 1 : 0,
     transferCount > 0 ? 1 : 0,
     burnAmount, burnAsset,
   );
@@ -480,21 +486,36 @@ async function backfillTxs(): Promise<void> {
   let txDone = state?.tx_done ?? 0;
   console.log(`[txs] indexing from topo > ${txCursor} (tx_done: ${txDone})`);
 
+  // bounded pool: unbounded Promise.all per batch overwhelmed the daemon and
+  // dropped txs as "fetch failed" gaps
+  const TX_POOL = Math.max(CONCURRENCY, 8);
+  let running = 0;
+  const pending: Array<() => void> = [];
+  const acquire = (): Promise<void> => running < TX_POOL ? (running++, Promise.resolve()) : new Promise((r) => pending.push(r));
+  const release = (): void => {
+    running--;
+    const next = pending.shift();
+    if (next) { running++; next(); }
+  };
+
   const fetchTx = async (hash: string, ts: number): Promise<void> => {
-    for (let attempt = 0; ; attempt++) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const t = await rpc<any>("get_transaction", { hash });
-        await processTx(t, ts);
-        return;
-      } catch (err) {
-        const msg = (err as Error).message;
-        // pruned/orphaned txs: daemon wording varies ("not found", "Couldn't find", NON_EXISTENT)
-        if (/not found|couldn'?t find|doesn'?t exist|non.?existent|no transaction/i.test(msg)) return;
-        if (attempt >= 3) { console.error(`[txs] ${hash.slice(0, 10)} giving up: ${msg}`); return; }
-        await new Promise((r) => setTimeout(r, Math.pow(2, Math.min(attempt, 3)) * 1000));
+    await acquire();
+    try {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const t = await rpc<any>("get_transaction", { hash });
+          await processTx(t, ts);
+          return;
+        } catch (err) {
+          const msg = (err as Error).message;
+          // pruned/orphaned txs: daemon wording varies ("not found", "Couldn't find", NON_EXISTENT)
+          if (/not found|couldn'?t find|doesn'?t exist|non.?existent|no transaction/i.test(msg)) return;
+          if (attempt >= 15) { console.error(`[txs] ${hash.slice(0, 10)} giving up: ${msg}`); return; }
+          await new Promise((r) => setTimeout(r, Math.min(Math.pow(2, Math.min(attempt, 6)) * 1000, 60_000)));
+        }
       }
-    }
+    } finally { release(); }
   };
 
   const startedAt = Date.now();
