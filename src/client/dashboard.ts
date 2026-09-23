@@ -1856,6 +1856,19 @@ export function initDashboard(): void {
     }).observe(sentinel);
   }
 
+  const header = document.querySelector<HTMLElement>("header.site");
+  const syncToolbarOffset = (): void => {
+    if (!header) return;
+    const top = parseFloat(getComputedStyle(header).top) || 0;
+    const height = header.getBoundingClientRect().height;
+    document.documentElement.style.setProperty("--site-header-offset", `${Math.round(top + height + 8)}px`);
+  };
+  syncToolbarOffset();
+  window.addEventListener("resize", syncToolbarOffset, { passive: true });
+  if (typeof ResizeObserver !== "undefined" && header) {
+    new ResizeObserver(syncToolbarOffset).observe(header);
+  }
+
   const addBtn = document.getElementById("btn-add-widget");
   const arrangeBtn = document.getElementById("btn-auto-arrange");
   const resetBtn = document.getElementById("btn-reset");
