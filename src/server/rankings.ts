@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "./app";
 import { knownEntity } from "./entities";
+import { parseSort, TOP_COLS, TOP_DEFAULT, TOP_TIEBREAK } from "./sort";
 
 export const top = new Hono<{ Bindings: Env }>();
 
@@ -33,12 +34,14 @@ function whereFor(period: Period, date: string | null): { dim: string; binds: un
   return { dim: "WHERE date LIKE ? || '%'", binds: [date || thisMonth] };
 }
 
+// ORDER BY is injected from the ?sort whitelist in TOP_COLS so every column
+// sorts over the full period dataset before the limit applies
 const QUERIES: Record<string, (dim: string) => string> = {
-  miners: (dim) => `SELECT address, SUM(blocks_found) blocks, SUM(rewards_earned) rewards FROM daily_miners ${dim} GROUP BY address ORDER BY blocks DESC`,
-  senders: (dim) => `SELECT address, SUM(tx_count) tx_count, SUM(transfer_outputs) transfer_outputs FROM daily_address_stats ${dim} GROUP BY address ORDER BY tx_count DESC`,
-  burners: (dim) => `SELECT address, SUM(burned) burned FROM daily_address_stats ${dim} GROUP BY address ORDER BY burned DESC`,
-  assets: (dim) => `SELECT da.asset_id, a.symbol, SUM(da.tx_count) tx_count, SUM(da.transfer_count) transfers FROM daily_assets da LEFT JOIN assets a ON a.asset_id = da.asset_id ${dim ? dim.replace("WHERE", "WHERE da.") : ""} GROUP BY da.asset_id ORDER BY tx_count DESC`,
-  contracts: (dim) => `SELECT contract_id, SUM(invoke_count) invokes, SUM(gas_burned) gas FROM daily_contracts ${dim} GROUP BY contract_id ORDER BY invokes DESC`,
+  miners: (dim) => `SELECT address, SUM(blocks_found) blocks, SUM(rewards_earned) rewards FROM daily_miners ${dim} GROUP BY address`,
+  senders: (dim) => `SELECT address, SUM(tx_count) tx_count, SUM(transfer_outputs) transfer_outputs FROM daily_address_stats ${dim} GROUP BY address`,
+  burners: (dim) => `SELECT address, SUM(burned) burned FROM daily_address_stats ${dim} GROUP BY address`,
+  assets: (dim) => `SELECT da.asset_id, a.symbol, SUM(da.tx_count) tx_count, SUM(da.transfer_count) transfers FROM daily_assets da LEFT JOIN assets a ON a.asset_id = da.asset_id ${dim ? dim.replace("WHERE", "WHERE da.") : ""} GROUP BY da.asset_id`,
+  contracts: (dim) => `SELECT contract_id, SUM(invoke_count) invokes, SUM(gas_burned) gas FROM daily_contracts ${dim} GROUP BY contract_id`,
 };
 
 top.get("/api/top/:kind", async (c) => {
@@ -53,10 +56,12 @@ top.get("/api/top/:kind", async (c) => {
   const date = requested ?? (period === "all" ? null : await latestDataDay(c.env, kind));
   const { dim, binds } = whereFor(period, date);
   const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
+  const cols = TOP_COLS[kind];
+  const { order } = parseSort((n) => c.req.query(n), cols, TOP_DEFAULT[kind], TOP_TIEBREAK[kind]);
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows = await c.env.DB.prepare(`${builder(dim)} LIMIT ?`).bind(...binds, limit).all().then((r) => r.results);
+    const rows = await c.env.DB.prepare(`${builder(dim)} ORDER BY ${order} LIMIT ?`).bind(...binds, limit).all().then((r) => r.results);
     const tagged = rows.map((row) => {
       const addr = (row as Record<string, unknown>).address;
       const e = typeof addr === "string" ? knownEntity(addr) : undefined;
