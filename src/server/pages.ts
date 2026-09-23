@@ -501,6 +501,11 @@ pages.get("/tx/:hash", async (c) => {
       const t = await rpc<Record<string, unknown>>("get_transaction", { hash }, c.env.XELIS_NODE);
       if (t) {
         const data = (t.data ?? {}) as Record<string, unknown>;
+        // burn payloads are public on-chain: amount + asset are plaintext
+        const burnData = (data.burn ?? null) as Record<string, unknown> | null;
+        const burnAmt = burnData ? num(burnData.amount) : 0;
+        const burnAssetId = burnData && typeof burnData.asset === "string" ? burnData.asset : "";
+        const burnLabel = burnAssetId ? `${atomic(burnAmt)} ${shortHash(burnAssetId, 4)}` : `${atomic(burnAmt)} XEL`;
         const type = esc(Object.keys(data)[0] ?? "unknown");
         const fee = num(t.fee_paid ?? t.fee);
         const size = num(t.size);
@@ -533,6 +538,7 @@ pages.get("/tx/:hash", async (c) => {
             ${statCard("Fee", atomic(fee, 6) + " XEL", size ? `${atomic((fee * 1024) / size, 5)} XEL / kB fee rate` : "network fee")}
             ${statCard("Size", fmtInt(size) + " bytes", size ? `${fmt(size / 1024)} KB on-chain` : "unknown")}
             ${blockCard}
+            ${burnData ? statCard("Burned", burnLabel, "public burn amount") : ""}
           </div>
         </div>`;
 
@@ -540,6 +546,7 @@ pages.get("/tx/:hash", async (c) => {
           <tr><td>Type</td><td><span class="badge ${type.toLowerCase()}">${type}</span></td></tr>
           <tr><td>Sender</td><td>${source ? `<a class="mono" href="/account/${esc(source)}">${shortHash(source, 10)}</a>${entityTag(source)} <button class="copybtn" type="button" onclick="blkCopy('${esc(source)}', this)">copy</button>` : "—"}</td></tr>
           <tr><td>Block</td><td>${blockTopo > 0 ? `<a href="/block/${blockTopo}"><span class="mint">#${fmtInt(blockTopo)}</span></a>` : blockHash ? `<a class="mono" href="/block/${esc(blockHash)}">${shortHash(blockHash, 10)}</a>` : '<span class="badge">unconfirmed</span>'}</td></tr>
+          ${burnData ? `<tr><td>Burned</td><td><span class="mint">${esc(burnLabel)}</span> <span style="color:var(--text-dim)">public burn amount</span></td></tr>` : ""}
           <tr><td>Version</td><td>v${num(t.version)}</td></tr>
           <tr><td>Source</td><td><span class="badge livesrc">queried from node just now</span></td></tr>
         </table></div>`;
@@ -567,6 +574,22 @@ pages.get("/tx/:hash", async (c) => {
   const fee = num(tx.fee);
   const size = num(tx.size);
   const txType = esc(tx.tx_type ?? "other");
+  // Burn payloads are public on-chain (amount + asset in plaintext), unlike
+  // transfer amounts. Legacy rows predate per-tx burn storage (NULL burn_asset);
+  // top them up from the node so the page always shows the amount.
+  let burnAmount = num(tx.burn_amount);
+  let burnAsset = String(tx.burn_asset ?? "");
+  if (txType === "burn" && tx.burn_asset === null) {
+    try {
+      const { rpc } = await import("./xelis");
+      const t = await rpc<Record<string, unknown>>("get_transaction", { hash });
+      const burn = ((t.data ?? {}) as Record<string, unknown>).burn as Record<string, unknown> | undefined;
+      if (burn) {
+        burnAmount = num(burn.amount);
+        burnAsset = typeof burn.asset === "string" ? burn.asset : "";
+      }
+    } catch { /* keep stored values */ }
+  }
   const sender = esc(tx.sender ?? "");
   const result = esc(tx.result ?? "unknown");
   const contractId = String(tx.contract_id ?? "");
@@ -605,6 +628,13 @@ pages.get("/tx/:hash", async (c) => {
     }
   } catch { /* db not ready */ }
 
+  // format the public burn amount with the asset's decimals (defaults to XEL)
+  const burnRow = burnAsset ? assetRows.find((a) => a.asset_id === burnAsset) : undefined;
+  const burnDecimals = burnRow?.decimals !== null && burnRow?.decimals !== undefined ? Number(burnRow.decimals) : 8;
+  const burnSymbol = burnRow?.symbol || "XEL";
+  const burnLabel = `${fmt(burnAmount / 10 ** burnDecimals, 2)} ${esc(burnSymbol)}`;
+  const isBurn = txType === "burn";
+
   const conf = maxTopo !== null && topo > 0 ? fmtInt(Math.max(0, maxTopo - topo)) : "—";
   const otherInBlock = blockTxCount !== null ? Math.max(0, blockTxCount - 1) : null;
   const hasResult = tx.result !== null && tx.result !== undefined && tx.result !== "";
@@ -614,11 +644,13 @@ pages.get("/tx/:hash", async (c) => {
 
   const fifthCard = contractId
     ? statCard("Gas", gas || maxGas ? fmtInt(gas || maxGas) : "—", "contract execution")
-    : tx.multisig
-      ? statCard("Multisig", "yes", "threshold in payload")
-      : txType === "transfer"
-        ? statCard("Transfers", fmtInt(tx.transfer_count as number), "receivers encrypted")
-        : statCard("Version", `v${num(tx.version)}`, "payload format");
+    : isBurn
+      ? statCard("Burned", burnLabel, "public burn amount")
+      : tx.multisig
+        ? statCard("Multisig", "yes", "threshold in payload")
+        : txType === "transfer"
+          ? statCard("Transfers", fmtInt(tx.transfer_count as number), "receivers encrypted")
+          : statCard("Version", `v${num(tx.version)}`, "payload format");
 
   const hero = `<div class="panel blk-hero">
     <div class="blk-head">
@@ -651,10 +683,13 @@ pages.get("/tx/:hash", async (c) => {
     <tr><td>Type</td><td><span class="badge ${txType}">${txType}</span>${tx.multisig ? ' <span class="badge">multisig</span>' : ""}</td></tr>
     <tr><td>Sender</td><td>${sender ? `<a class="mono" href="/account/${sender}">${shortHash(sender, 10)}</a>${entityTag(sender)} <button class="copybtn" type="button" onclick="blkCopy('${sender}', this)">copy</button>` : "—"}</td></tr>
     ${acct && num(acct.tx_count) > 0 ? `<tr><td>Sender history</td><td><a href="/account/${sender}">${fmtInt(acct.tx_count as number)} observed sent txs</a> · last active ${ago(num(acct.last_active))}</td></tr>` : ""}
+    ${isBurn ? `<tr><td>Burned</td><td><span class="mint">${burnLabel}</span> <span style="color:var(--text-dim)">public burn amount</span></td></tr>` : ""}
     <tr><td>Timestamp</td><td>${fmtTime(ts)}</td></tr>
     <tr><td>Age</td><td>${ago(ts)}</td></tr>
     <tr><td>Version</td><td>v${num(tx.version)}</td></tr>
-    <tr><td>Privacy</td><td><span class="badge priv">encrypted</span> <span style="color:var(--text-dim)">amounts &amp; receivers hidden</span></td></tr>
+    <tr><td>Privacy</td><td>${isBurn
+      ? '<span class="badge burn">public burn</span> <span style="color:var(--text-dim)">burn amount &amp; asset are public; balances stay encrypted</span>'
+      : '<span class="badge priv">encrypted</span> <span style="color:var(--text-dim)">amounts &amp; receivers hidden</span>'}</td></tr>
   </table></div>`;
 
   const statusPanel = `<div class="panel"><h2>Status &amp; Cost</h2><table class="kv">
@@ -715,7 +750,9 @@ pages.get("/tx/:hash", async (c) => {
     ${siblingsPanel}
     <div class="tx-note">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-      <span>Xelis is private by design: transfer amounts, receivers and balances are encrypted for everyone — including this explorer. This page shows only the public metadata indexed from the chain.</span>
+      <span>${isBurn
+        ? "Burn transactions are public on Xelis: the burned amount and asset are visible to everyone. Wallet balances and transfer amounts stay encrypted."
+        : "Xelis is private by design: transfer amounts, receivers and balances are encrypted for everyone — including this explorer. This page shows only the public metadata indexed from the chain."}</span>
     </div>
     <script>${blkCopyScript}</script>`;
   return c.html(layout(`TX ${shortHash(hash, 8)}`, content, "/transactions"));

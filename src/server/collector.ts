@@ -111,6 +111,9 @@ export class StatsCollector {
     this.indexing = true;
     try {
       const stable = await this.rpc<{ stable_topoheight: number }>("get_info").then((r) => r.stable_topoheight);
+      // legacy burn rows predate per-tx burn storage; top them up first so
+      // /tx pages show public burn amounts even for old transactions
+      await this.backfillBurnAmounts();
       if (!stable) return;
       // find cursor (per-stage checkpoint)
       const row = await this.env.DB.prepare("SELECT cursor FROM sync_state WHERE stage = 'live_blocks'").first<{ cursor: number }>();
@@ -200,17 +203,21 @@ export class StatsCollector {
     else if (t.multisig) txType = "multisig";
     else if (data.transfers) txType = "transfer";
     const transfers = Array.isArray(data.transfers) ? (data.transfers as Array<{ asset?: string }>) : [];
+    const burn = data.burn as Record<string, unknown> | undefined;
+    const burnAmount = burn ? Number(burn.amount ?? 0) : 0;
+    const burnAsset = burn && typeof burn.asset === "string" ? burn.asset : (burn ? "" : null);
     const stmts: D1PreparedStatement[] = [
       this.env.DB.prepare(
-        `INSERT OR REPLACE INTO tx_index (hash, block_topo, ts, fee, size, tx_type, sender, transfer_count, version, multisig, contract_id, gas, result, encrypted)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT OR REPLACE INTO tx_index (hash, block_topo, ts, fee, size, tx_type, sender, transfer_count, version, multisig, contract_id, gas, result, encrypted, burn_amount, burn_asset)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       ).bind(
         hash, blockTopo, ts,
         Number(t.fee_paid ?? t.fee ?? 0), Number(t.size ?? 0), txType,
         String(t.source ?? ""), transfers.length, Number(t.version ?? 0),
         t.multisig ? 1 : 0, contractId,
         Number((data.invoke_contract as Record<string, unknown> | undefined)?.max_gas ?? 0),
-        t.executed_in_block ? "ok" : "unexecuted", transfers.length > 0 ? 1 : 0
+        t.executed_in_block ? "ok" : "unexecuted", transfers.length > 0 ? 1 : 0,
+        burnAmount, burnAsset
       ),
     ];
     for (const tr of transfers) {
@@ -248,15 +255,23 @@ export class StatsCollector {
          ON CONFLICT(date, contract_id) DO UPDATE SET invoke_count = invoke_count + 1, gas_burned = gas_burned + ?`)
         .bind(new Date(ts).toISOString().slice(0, 10), contractId, gas, gas));
     }
+    // burn payload is public: register the burned asset (ids only) so /tx and
+    // /account pages can show it alongside the public burn amount
+    if (burn && typeof burn.asset === "string" && burn.asset) {
+      stmts.push(this.env.DB.prepare("INSERT OR IGNORE INTO tx_assets (tx_hash, asset) VALUES (?, ?)").bind(hash, burn.asset));
+      if (!(await this.env.DB.prepare("SELECT 1 FROM assets WHERE asset_id = ?").bind(burn.asset).first())) {
+        const meta = await this.getAssetMeta(burn.asset);
+        stmts.push(this.env.DB.prepare("INSERT OR IGNORE INTO assets (asset_id, name, symbol, decimals, first_seen_topo) VALUES (?, ?, ?, ?, ?)")
+          .bind(burn.asset, meta.name, meta.symbol, meta.decimals, blockTopo));
+      }
+    }
     if (t.source) {
       const sender = String(t.source);
       stmts.push(this.env.DB.prepare(
         `INSERT INTO accounts (address, first_seen, last_active, tx_count) VALUES (?, ?, ?, 1)
          ON CONFLICT(address) DO UPDATE SET last_active = MAX(last_active, excluded.last_active), tx_count = tx_count + 1`
       ).bind(sender, ts, ts));
-      // daily sender rollup: counts only, amounts stay encrypted
-      const burn = data.burn as Record<string, unknown> | undefined;
-      const burnAmount = burn ? Number(burn.amount ?? 0) : 0;
+      // daily sender rollup: counts + public burn amounts
       stmts.push(this.env.DB.prepare(
         `INSERT INTO daily_address_stats (date, address, tx_count, transfer_outputs, burned) VALUES (?, ?, 1, ?, ?)
          ON CONFLICT(date, address) DO UPDATE SET tx_count = tx_count + 1, transfer_outputs = transfer_outputs + excluded.transfer_outputs, burned = burned + excluded.burned`
@@ -271,6 +286,44 @@ export class StatsCollector {
       return { name: String(a.name ?? ""), symbol: String(a.ticker ?? ""), decimals: Number(a.decimals ?? 8) };
     } catch {
       return { name: "", symbol: "", decimals: 8 };
+    }
+  }
+
+  // One-time style top-up: legacy burn rows stored no amount (burn payloads are
+  // public, but pre-0003 ingest only kept daily rollups). Capped per tick;
+  // burns are rare so the queue drains within a few blocks.
+  private burnBackfill = false;
+  private async backfillBurnAmounts(): Promise<void> {
+    if (this.burnBackfill) return;
+    this.burnBackfill = true;
+    try {
+      const rows = await this.env.DB.prepare(
+        "SELECT hash FROM tx_index WHERE tx_type = 'burn' AND burn_asset IS NULL LIMIT 10"
+      ).all<{ hash: string }>();
+      for (const r of rows.results ?? []) {
+        try {
+          const t = await this.rpc<Record<string, unknown>>("get_transaction", { hash: r.hash });
+          const data = (t.data ?? {}) as Record<string, unknown>;
+          const burn = data.burn as Record<string, unknown> | undefined;
+          if (!burn) continue;
+          const amount = Number(burn.amount ?? 0);
+          const asset = typeof burn.asset === "string" ? burn.asset : "";
+          const stmts: D1PreparedStatement[] = [
+            this.env.DB.prepare("UPDATE tx_index SET burn_amount = ?, burn_asset = ? WHERE hash = ?").bind(amount, asset, r.hash),
+            this.env.DB.prepare("INSERT OR IGNORE INTO tx_assets (tx_hash, asset) VALUES (?, ?)").bind(r.hash, asset),
+          ];
+          if (asset && !(await this.env.DB.prepare("SELECT 1 FROM assets WHERE asset_id = ?").bind(asset).first())) {
+            const meta = await this.getAssetMeta(asset);
+            stmts.push(this.env.DB.prepare("INSERT OR IGNORE INTO assets (asset_id, name, symbol, decimals) VALUES (?, ?, ?, ?)")
+              .bind(asset, meta.name, meta.symbol, meta.decimals));
+          }
+          await this.env.DB.batch(stmts);
+        } catch { /* skip this tx; retried on next tick */ }
+      }
+    } catch (err) {
+      console.error("backfillBurnAmounts:", (err as Error).message);
+    } finally {
+      this.burnBackfill = false;
     }
   }
 

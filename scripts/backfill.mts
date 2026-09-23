@@ -57,7 +57,8 @@ CREATE TABLE IF NOT EXISTS tx_index (
   hash TEXT PRIMARY KEY, block_topo INTEGER, ts INTEGER,
   fee INTEGER, size INTEGER, tx_type TEXT, sender TEXT,
   transfer_count INTEGER, version INTEGER, multisig INTEGER, contract_id TEXT,
-  gas INTEGER, result TEXT, encrypted INTEGER DEFAULT 0
+  gas INTEGER, result TEXT, encrypted INTEGER DEFAULT 0,
+  burn_amount INTEGER DEFAULT 0, burn_asset TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_tx_block ON tx_index(block_topo);
 CREATE INDEX IF NOT EXISTS idx_tx_sender ON tx_index(sender);
@@ -114,6 +115,8 @@ function migrate(): void {
   if (!tcols.includes("gas")) db.exec("ALTER TABLE tx_index ADD COLUMN gas INTEGER");
   if (!tcols.includes("result")) db.exec("ALTER TABLE tx_index ADD COLUMN result TEXT");
   if (!tcols.includes("encrypted")) db.exec("ALTER TABLE tx_index ADD COLUMN encrypted INTEGER DEFAULT 0");
+  if (!tcols.includes("burn_amount")) db.exec("ALTER TABLE tx_index ADD COLUMN burn_amount INTEGER DEFAULT 0");
+  if (!tcols.includes("burn_asset")) db.exec("ALTER TABLE tx_index ADD COLUMN burn_asset TEXT");
   // one-time repair for rows written before `result` existed: block_topo was
   // only resolved from executed_in_block, so a non-NULL topo means executed.
   db.exec("UPDATE tx_index SET result = 'ok' WHERE result IS NULL AND block_topo IS NOT NULL");
@@ -193,8 +196,8 @@ const insertBlock = db.prepare(`
 `);
 const insertTx = db.prepare(`
   INSERT OR REPLACE INTO tx_index
-  (hash, block_topo, ts, fee, size, tx_type, sender, transfer_count, version, multisig, contract_id, gas, result, encrypted)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  (hash, block_topo, ts, fee, size, tx_type, sender, transfer_count, version, multisig, contract_id, gas, result, encrypted, burn_amount, burn_asset)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const upsertAccount = db.prepare(`
   INSERT INTO accounts (address, first_seen, last_active, tx_count)
@@ -344,8 +347,12 @@ async function processTx(t: any, tsMs: number): Promise<boolean> {
   const { type: txType, contractId } = classifyTx(t);
   const transfers = Array.isArray(t.data?.transfers) ? t.data.transfers : [];
   const transferCount = transfers.length;
+  // burn payloads are public on-chain: amount + asset in plaintext
+  const burn = t.data?.burn;
+  const burnAmount = burn ? Number(burn.amount ?? 0) : 0;
+  const burnAsset = burn && typeof burn.asset === "string" ? burn.asset : (burn ? "" : null);
 
-insertTx.run(
+  insertTx.run(
     hash, blockTopo, tsMs,
     Number(t.fee_paid ?? t.fee ?? 0), Number(t.size ?? 0),
     txType, String(t.source ?? ''),
@@ -354,6 +361,7 @@ insertTx.run(
     Number(t.data?.invoke_contract?.max_gas ?? 0),
     exec ? "ok" : "unexecuted",
     transferCount > 0 ? 1 : 0,
+    burnAmount, burnAsset,
   );
 
   // gas burned for contract ops (deploy max_gas lives under deploy_contract.invoke)
@@ -372,6 +380,12 @@ insertTx.run(
       insertTxAsset.run(hash, assetId);
       await ensureAsset(assetId, blockTopo);
     }
+  }
+
+  // register the publicly burned asset alongside transfer assets
+  if (burn && typeof burn.asset === "string" && burn.asset) {
+    insertTxAsset.run(hash, String(burn.asset));
+    await ensureAsset(String(burn.asset), blockTopo);
   }
 
   if (t.source) {
