@@ -538,7 +538,13 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
 
 /* ---------- Custom dashboard ---------- */
 
-.dash-toolbar { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.2rem; }
+.dash-toolbar {
+  position: sticky; top: 0; z-index: 55;
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  margin-bottom: 1.2rem; padding: 0.8rem 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
 .dash-toolbar h2 { font-size: 1.6rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-dim); font-weight: 700; margin: 0; }
 .dash-toolbar .dash-hint { font-size: 1.15rem; color: var(--text-dim); }
 .dash-toolbar .dash-spacer { flex: 1; }
