@@ -159,8 +159,6 @@ export async function fetchStorage(id: string, skip: number): Promise<StorageBat
   }
 }
 
-const copyAttr = (v: unknown): string => esc(JSON.stringify(v ?? null));
-
 export function storageCard(key: unknown, value: unknown): string {
   const k = dv(key);
   const v = dv(value);
@@ -173,13 +171,11 @@ export function storageCard(key: unknown, value: unknown): string {
       <span class="stg-lab">Key</span>
       <span class="stg-chip mono">${k.html}</span>
       <span class="badge stg-type">${esc(k.kind)}</span>
-      <button class="copybtn stg-copy" type="button" data-copy="${copyAttr(key)}" title="Copy raw key JSON">copy</button>
     </div>
     <div class="stg-row">
       <span class="stg-lab">Value</span>
       <div class="stg-val">${valHtml}</div>
       <span class="badge stg-type">${esc(v.kind)}</span>
-      <button class="copybtn stg-copy" type="button" data-copy="${copyAttr(value)}" title="Copy raw value JSON">copy</button>
     </div>
   </div>`;
 }
@@ -194,7 +190,7 @@ export function storageHeadText(count: number, more: boolean): string {
   return more ? `${fmtInt(count)} loaded` : `all ${fmtInt(count)} entries`;
 }
 
-// inline script for the storage panel: load-more fetch + copy delegation
+// inline script for the storage panel: load-more fetch
 export const storageScript = (contractId: string, initialCount: number): string => `<script>
 (function(){
   var list = document.getElementById("stg-list");
@@ -202,12 +198,6 @@ export const storageScript = (contractId: string, initialCount: number): string 
   if (!list || !btn) return;
   var id = ${JSON.stringify(contractId)};
   var skip = ${initialCount};
-  document.addEventListener("click", function(e){
-    var t = e.target;
-    if (t && t.closest && t.closest("[data-copy]") && typeof blkCopy === "function") {
-      blkCopy(t.closest("[data-copy]").getAttribute("data-copy"), t.closest("[data-copy]"));
-    }
-  });
   btn.addEventListener("click", function(){
     if (btn.disabled) return;
     btn.disabled = true;

@@ -477,7 +477,6 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
 }
 .stg-chip { min-width: 0; word-break: break-all; font-size: 1.25rem; color: var(--text); }
 .stg-val { flex: 1; min-width: 0; word-break: break-all; font-size: 1.25rem; }
-.stg-copy { flex: 0 0 auto; margin-left: auto; }
 .stg-str { color: var(--text-dim2); }
 .stg-num { color: var(--gold); font-variant-numeric: tabular-nums; }
 .stg-bool { color: var(--mint); }
@@ -507,7 +506,6 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
 @media (max-width: 620px) {
   .stg-row { flex-wrap: wrap; gap: 0.5rem 0.7rem; }
   .stg-lab { width: auto; margin-top: 0.2rem; }
-  .stg-copy { margin-left: 0; }
 }
 
 /* Miner profile */
