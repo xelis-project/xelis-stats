@@ -4,11 +4,11 @@ import { layout } from "../client/layout";
 import { XEL_LOGO } from "../client/format";
 import appCss from "../client/style.css?inline";
 
-export const misc2 = new Hono<{ Bindings: Env }>();
+export const seo = new Hono<{ Bindings: Env }>();
 
 // ---------- embeddable mini-charts ----------
 
-misc2.get("/embed/:metric", async (c) => {
+seo.get("/embed/:metric", async (c) => {
   const metric = c.req.param("metric");
   const range = c.req.query("range") ?? "30d";
   const interval = c.req.query("interval") ?? "day";
@@ -36,11 +36,11 @@ misc2.get("/embed/:metric", async (c) => {
 
 // ---------- SEO ----------
 
-misc2.get("/favicon.ico", (c) => c.redirect("/favicon.svg", 301));
+seo.get("/favicon.ico", (c) => c.redirect("/favicon.svg", 301));
 
-misc2.get("/robots.txt", (c) => c.body("User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: /sitemap.xml", 200, { "Content-Type": "text/plain" }));
+seo.get("/robots.txt", (c) => c.body("User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: /sitemap.xml", 200, { "Content-Type": "text/plain" }));
 
-misc2.get("/sitemap.xml", (c) => {
+seo.get("/sitemap.xml", (c) => {
   const pages = ["", "/blocks", "/transactions", "/market", "/miners", "/charts", "/api/docs", "/status"];
   const today = new Date().toISOString().slice(0, 10);
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
@@ -50,4 +50,5 @@ ${pages.map((p) => `  <url><loc>/${p}</loc><lastmod>${today}</lastmod></url>`).j
   return c.body(xml, 200, { "Content-Type": "application/xml" });
 });
 
+// re-exports kept for backwards compatibility with existing importers
 export { layout, XEL_LOGO };

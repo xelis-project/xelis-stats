@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "./app";
 import { layout } from "../client/layout";
 
-export const misc = new Hono<{ Bindings: Env }>();
+export const docs = new Hono<{ Bindings: Env }>();
 
 const ENDPOINTS: Array<[string, string, string]> = [
   ["GET", "/api/stats", "Aggregated chain overview (KV-cached 60s)"],
@@ -19,7 +19,7 @@ const ENDPOINTS: Array<[string, string, string]> = [
   ["GET", "/ws", "Live WebSocket: new_block events + 30s ticks"],
 ];
 
-misc.get("/api/docs", (c) => {
+docs.get("/api/docs", (c) => {
   const rows = ENDPOINTS.map(([m, path, desc]) =>
     `<tr><td><span class="badge">${m}</span></td><td><span class="mono">${path}</span></td><td style="white-space:normal">${desc}</td></tr>`).join("");
   const content = `<div class="panel"><h2>Public API</h2>
@@ -31,7 +31,7 @@ misc.get("/api/docs", (c) => {
   return c.html(layout("API", content, ""));
 });
 
-misc.get("/status", async (c) => {
+docs.get("/status", async (c) => {
   let stats: Record<string, unknown> | null = null;
   try {
     const res = await fetch(new URL("/api/summary", c.req.url));
@@ -54,7 +54,7 @@ misc.get("/status", async (c) => {
   return c.html(layout("Status", content, ""));
 });
 
-misc.get("/favicon.svg", (c) => c.body(
+docs.get("/favicon.svg", (c) => c.body(
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><circle cx="500" cy="500" r="500" fill="#02ffcf"/><g fill="#000" transform="translate(111 128.5)"><path fill-rule="evenodd" clip-rule="evenodd" d="M388.909 742.872L777.817 353.964L424.056 0.202599L478.809 132.737L700.036 353.964L388.909 665.091L77.7817 353.964L299.507 129.121L353.964 0L0 353.964L388.909 742.872Z"/><path d="M388.909 665.091L353.964 0L299.507 129.121L388.909 665.091Z"/><path d="M424.056 0.202599L388.909 665.091L478.809 132.737L424.056 0.202599Z"/></g></svg>`,
   200, { "Content-Type": "image/svg+xml", "Cache-Control": "public, max-age=3600" }
 ));
