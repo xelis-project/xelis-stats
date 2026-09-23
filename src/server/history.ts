@@ -31,6 +31,18 @@ const METRICS: Record<string, { table: string; col: string; agg?: "sum" | "avg" 
   "price": { table: "market_snapshots", col: "last", agg: "avg" },
   "quote-volume": { table: "market_snapshots", col: "quote_volume", agg: "sum" },
   "mempool": { table: "mempool_snapshots", col: "size", agg: "avg" },
+  "peers": { table: "peer_snapshots", col: "total", agg: "avg" },
+  "peers-hidden": { table: "peer_snapshots", col: "hidden", agg: "avg" },
+  "peers-pruned": { table: "peer_snapshots", col: "pruned", agg: "avg" },
+  "peers-lagging": { table: "peer_snapshots", col: "lagging", agg: "avg" },
+  "peers-stale": { table: "peer_snapshots", col: "stale", agg: "avg" },
+  "peers-divergent": { table: "peer_snapshots", col: "divergent", agg: "avg" },
+  "peers-new": { table: "peer_snapshots", col: "new_conns", agg: "avg" },
+  "peer-lag": { table: "peer_snapshots", col: "avg_lag", agg: "avg" },
+  "peer-view": { table: "peer_snapshots", col: "avg_peer_view", agg: "avg" },
+  "peer-age": { table: "peer_snapshots", col: "avg_conn_age", agg: "avg" },
+  "peer-traffic-in": { table: "peer_snapshots", col: "bytes_recv", agg: "avg" },
+  "peer-traffic-out": { table: "peer_snapshots", col: "bytes_sent", agg: "avg" },
 };
 
 function rangeToDays(range: string): number {
@@ -71,7 +83,7 @@ history.get("/api/history/:metric", async (c) => {
 
   let rows: { bucket: string; value: number }[] = [];
   try {
-    if (spec.table === "market_snapshots" || spec.table === "mempool_snapshots") {
+    if (spec.table === "market_snapshots" || spec.table === "mempool_snapshots" || spec.table === "peer_snapshots") {
       const conds: string[] = [];
       const binds: (string | number)[] = [];
       if (from) {
