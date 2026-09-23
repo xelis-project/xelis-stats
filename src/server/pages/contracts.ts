@@ -6,6 +6,7 @@ import { srvSort } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
 import { rpc } from "../xelis";
 import { esc, entityTag, blkCopyScript, num } from "./shared";
+import { fetchStorage, storageBatchHtml, storageCard, storageHeadText, storageScript } from "./storage";
 
 export const contracts = new Hono<{ Bindings: Env }>();
 
@@ -88,6 +89,7 @@ contracts.get("/contracts/:id", async (c) => {
   let codeSize: number | null = null;
   let moduleRaw: unknown = null;
   let entries: { key: unknown; value: unknown }[] = [];
+  let storageMore = false;
   type Bal = { asset: string; balance: number | null; topo: number | null };
   let balances: Bal[] = [];
   try {
@@ -98,7 +100,7 @@ contracts.get("/contracts/:id", async (c) => {
     codeSize = raw.length;
   } catch { /* no module / node unreachable */ }
   try {
-    entries = await rpc<{ key: unknown; value: unknown }[]>("get_contract_data_entries", { contract: id, skip: 0, maximum: 20 });
+    ({ entries, more: storageMore } = await fetchStorage(id, 0));
   } catch { /* none */ }
   try {
     const assets = await rpc<string[]>("get_contract_assets", { contract: id, skip: 0, maximum: 10 });
@@ -176,7 +178,7 @@ contracts.get("/contracts/:id", async (c) => {
     <tr><td>Gas total</td><td>${gasTotal > 0 ? fmtInt(gasTotal) : "—"}</td></tr>
     ${num(ct.events_count) ? `<tr><td>Events seen</td><td>${fmtInt(ct.events_count as number)}</td></tr>` : ""}
     ${balances.length ? `<tr><td>Assets held</td><td>${fmtInt(balances.length)}</td></tr>` : ""}
-    ${entries.length ? `<tr><td>Storage keys (latest 20)</td><td>${fmtInt(entries.length)}</td></tr>` : ""}
+    ${entries.length ? `<tr><td>Storage entries</td><td><a href="#storage">${storageMore ? `${fmtInt(entries.length)}+` : fmtInt(entries.length)}</a></td></tr>` : ""}
   </table></div>`;
 
   const balRows = balances.length
@@ -195,17 +197,10 @@ contracts.get("/contracts/:id", async (c) => {
     </table></div>
   </div>` : "";
 
-  const entryRows = entries.length
-    ? entries.map((e) => `<tr>
-        <td><pre class="mono" style="margin:0;white-space:pre-wrap;word-break:break-all">${esc(JSON.stringify(e.key))}</pre></td>
-        <td><pre class="mono" style="margin:0;white-space:pre-wrap;word-break:break-all">${esc(JSON.stringify(e.value))}</pre></td>
-      </tr>`).join("")
-    : "";
-  const storagePanel = entries.length ? `<div class="panel"><h2>Contract Storage <span style="color:var(--text-dim)">latest ${fmtInt(entries.length)} entries</span></h2>
-    <div class="tablewrap"><table>
-      <thead><tr><th>Key</th><th>Value</th></tr></thead>
-      <tbody>${entryRows}</tbody>
-    </table></div>
+  const storagePanel = entries.length ? `<div class="panel" id="storage">
+    <h2>Contract Storage <span style="color:var(--text-dim)">${storageHeadText(entries.length, storageMore)}</span></h2>
+    <div class="stg-list" id="stg-list" data-contract="${esc(deployHash)}">${entries.map((e) => storageCard(e.key, e.value)).join("")}</div>
+    ${storageMore ? `<div class="stg-more-row"><button class="btn ghost" type="button" id="stg-more">Load more entries</button></div>` : ""}
   </div>` : "";
 
   // bytecode viewer: collapsible dump of the compiled module chunks
@@ -252,6 +247,16 @@ contracts.get("/contracts/:id", async (c) => {
     ${storagePanel}
     ${bytecodePanel}
     ${invokesPanel}
+    ${entries.length ? storageScript(deployHash, entries.length) : ""}
     <script>${blkCopyScript}</script>`;
   return c.html(layout(`Contract ${shortHash(deployHash, 8)}`, content, "/contracts"));
+});
+
+// HTML fragment of the next storage batch, appended by the load-more script
+contracts.get("/contracts/:id/storage", async (c) => {
+  const id = c.req.param("id");
+  const skipRaw = Number(c.req.query("skip") ?? 0);
+  const skip = Number.isFinite(skipRaw) && skipRaw > 0 ? Math.floor(skipRaw) : 0;
+  const { entries, more } = await fetchStorage(id, skip);
+  return c.html(storageBatchHtml(entries, more));
 });
