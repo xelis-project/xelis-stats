@@ -2,7 +2,9 @@ import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout, statCard } from "../../client/layout";
 import { fmt, fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/format";
-import { esc, entityTag, blkCopyScript, num } from "./shared";
+import { srvSort, BLOCK_COLS } from "../sort";
+import { filterButton, filterPop, filterField, selectOpts } from "../filters";
+import { esc, entityTag, blkCopyScript, num, PAGE_SIZE, pager } from "./shared";
 
 interface MinerTotals {
   blocks: number;
@@ -26,6 +28,22 @@ minerDetail.get("/miner/:address", async (c) => {
   const today = new Date().toISOString().slice(0, 10);
   const anchorDay = (d: string | null | undefined): string => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : today);
 
+  // blocks table: pagination + filters (block type, min txs) + SQL sorting
+  const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
+  const typeRaw = (c.req.query("type") ?? "").toLowerCase();
+  const bType = ["normal", "side", "sync"].includes(typeRaw) ? typeRaw[0].toUpperCase() + typeRaw.slice(1) : "";
+  const minTxsRaw = Number(c.req.query("min_txs") ?? "");
+  const minTxs = Number.isFinite(minTxsRaw) && minTxsRaw > 0 ? Math.floor(minTxsRaw) : 0;
+  const basePath = `/miner/${addr}`;
+  const srt = srvSort((nm) => c.req.query(nm), BLOCK_COLS, "topo", "topoheight DESC", (s) => {
+    const p = new URLSearchParams();
+    if (bType) p.set("type", bType);
+    if (minTxs) p.set("min_txs", String(minTxs));
+    if (s) for (const [k, v] of new URLSearchParams(s)) p.set(k, v);
+    const q = p.toString();
+    return q ? `${basePath}?${q}` : basePath;
+  });
+
   let acct: Record<string, unknown> | undefined;
   let anchor = today;
   let dailyMiner: Record<string, unknown> | null = null;
@@ -35,7 +53,9 @@ minerDetail.get("/miner/:address", async (c) => {
   let allTime: Record<string, unknown> | null = null;
   let hash24: Record<string, unknown> | null = null;
   let seriesRows: Record<string, unknown>[] = [];
-  let recent: Record<string, unknown>[] = [];
+  let lastBlock: Record<string, unknown> | null = null;
+  let pageRows: Record<string, unknown>[] = [];
+  let filteredTotal: number | null = null;
   let rank: number | null = null;
   let totalMiners: number | null = null;
 
@@ -82,10 +102,22 @@ minerDetail.get("/miner/:address", async (c) => {
     hash24 = await db.prepare(
       "SELECT AVG(difficulty) ad, COUNT(*) c FROM blocks WHERE miner_address = ? AND ts > ?"
     ).bind(address, now - DAY).first();
-    recent = await db.prepare(
+    lastBlock = await db.prepare(
+      "SELECT topoheight, ts FROM blocks WHERE miner_address = ? ORDER BY topoheight DESC LIMIT 1"
+    ).bind(address).first<Record<string, unknown>>();
+    const bconds = ["miner_address = ?"];
+    const cbinds: unknown[] = [address];
+    if (bType) { bconds.push("UPPER(block_type) = UPPER(?)"); cbinds.push(bType); }
+    if (minTxs) { bconds.push("tx_count >= ?"); cbinds.push(minTxs); }
+    const bwhere = `WHERE ${bconds.join(" AND ")}`;
+    // unfiltered total reuses the all-time count fetched above
+    filteredTotal = bconds.length === 1 ? num(allTime?.c) : await db.prepare(
+      `SELECT COUNT(*) c FROM blocks ${bwhere}`
+    ).bind(...cbinds).first<{ c: number }>().then((r) => r?.c ?? 0);
+    pageRows = await db.prepare(
       `SELECT topoheight, hash, ts, tx_count, difficulty, miner_reward, block_type
-       FROM blocks WHERE miner_address = ? ORDER BY topoheight DESC LIMIT 25`
-    ).bind(address).all<Record<string, unknown>>().then((r) => r.results ?? []);
+       FROM blocks ${bwhere} ORDER BY ${srt.order} LIMIT ? OFFSET ?`
+    ).bind(...cbinds, PAGE_SIZE + 1, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>().then((r) => r.results ?? []);
     seriesRows = await db.prepare(
       `SELECT date, blocks_found, rewards_earned FROM daily_miners
        WHERE address = ? AND date > date(?, '-90 days') ORDER BY date DESC LIMIT 90`
@@ -200,7 +232,6 @@ minerDetail.get("/miner/:address", async (c) => {
   const hasSeries = seriesBlocks.some((p) => p.value > 0) || seriesRewards.some((p) => p.value > 0);
 
   const hashRate = num(hash24?.ad) > 0 && num(hash24?.c) > 0 ? (num(hash24?.ad) * num(hash24?.c)) / 86400 : null;
-  const lastBlock = recent[0];
   const lastTopo = lastBlock ? num(lastBlock.topoheight) : null;
   const lastTs = lastBlock ? num(lastBlock.ts) : (dailyMiner?.d1 ? Date.parse(String(dailyMiner.d1) + "T00:00:00Z") : null);
   const sinceLabel = useDaily
@@ -284,8 +315,11 @@ minerDetail.get("/miner/:address", async (c) => {
     <p style="margin-top:1rem"><a href="/account/${addr}">Full account page →</a></p>
   </div>`;
 
-  const blockRows = recent.length
-    ? recent.map((b) => {
+  pageRows = pageRows.slice(0, PAGE_SIZE);
+  const bTotal = filteredTotal ?? 0;
+  const totalPages = Math.max(1, Math.ceil(bTotal / PAGE_SIZE));
+  const blockRows = pageRows.length
+    ? pageRows.map((b) => {
         const topo = num(b.topoheight);
         const type = esc(b.block_type ?? "normal");
         const hash = String(b.hash ?? "");
@@ -299,12 +333,27 @@ minerDetail.get("/miner/:address", async (c) => {
           <td><span class="badge ${type.toLowerCase()}">${type}</span></td>
         </tr>`;
       }).join("")
-    : `<tr><td colspan="7" style="color:var(--text-dim)">No blocks mined by this address inside the indexed window.</td></tr>`;
-  const blocksPanel = `<div class="panel"><h2>Recent Blocks Mined ${recent.length ? `<span style="color:var(--text-dim)">latest ${fmtInt(recent.length)}</span>` : ""}</h2>
-    <div class="tablewrap"><table>
-      <thead><tr><th>Block</th><th>Hash</th><th>Time</th><th class="num">Txs</th><th class="num">Difficulty</th><th class="num">Reward (XEL)</th><th>Type</th></tr></thead>
+    : `<tr><td colspan="7" style="color:var(--text-dim)">${bType || minTxs ? "No blocks match the applied filters for this address." : "No blocks mined by this address inside the indexed window."}</td></tr>`;
+  const fActive = !!bType || minTxs > 0;
+  const fFields = `
+    ${filterField("Block type", `<select name="type">${selectOpts(["Normal", "Side", "Sync"], bType, "all types")}</select>`)}
+    ${filterField("Min transactions", `<input type="number" name="min_txs" min="0" step="1" placeholder="e.g. 2" value="${minTxs || ""}" />`)}
+  `;
+  const fPop = filterPop("f-miner-blocks", basePath, fFields, {
+    hidden: srt.qs ? { sort: srt.key, dir: srt.dir } : {},
+    reset: `${basePath}${srt.qs ? `?${srt.qs}` : ""}`,
+  });
+  const blocksPanel = `<div class="panel">
+    <div class="panel-head">
+      <h2>Blocks Mined <span style="color:var(--text-dim)">${fmtInt(bTotal)} total</span></h2>
+      ${filterButton("f-miner-blocks", fActive)}
+      ${fPop}
+    </div>
+    <div class="tablewrap"><table data-srvsort="1">
+      <thead><tr>${srt.th("topo", "Block")}${srt.th("hash", "Hash")}${srt.th("time", "Time")}${srt.th("txs", "Txs", true)}${srt.th("difficulty", "Difficulty", true)}${srt.th("reward", "Reward (XEL)", true)}${srt.th("type", "Type")}</tr></thead>
       <tbody>${blockRows}</tbody>
     </table></div>
+    ${pager(srt.link(srt.key, srt.dir), page, totalPages)}
   </div>`;
 
   const seriesJson = JSON.stringify({ blocks: seriesBlocks, rewards: seriesRewards }).replace(/</g, "\\u003c");
