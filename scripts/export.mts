@@ -50,7 +50,7 @@ function esc(v: any): string {
 
 /** Keyset-paginated dump by integer key column (fast, no OFFSET). desc=true walks from the top. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit?: number; outFile?: string; chunkRows?: number; desc?: boolean; tieCol?: string }): number {
+function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit?: number; outFile?: string; chunkRows?: number; desc?: boolean; tieCol?: string; includeNull?: boolean }): number {
   const limit = opts.limit ?? Infinity;
   const file = opts.outFile ?? join(OUT_DIR, `${table}.sql`);
   fresh(file);
@@ -90,6 +90,20 @@ function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit
     const last = rows[rows.length - 1];
     lastKey = Number(last[keyCol]);
     if (opts.tieCol) lastTie = String(last[opts.tieCol]);
+  }
+
+  // rows whose key is NULL (e.g. txs whose executed block was pruned/orphaned)
+  // can't be reached by the integer keyset; append them after the main pass
+  if (opts.includeNull) {
+    const stmt = db.prepare(`SELECT ${cols.join(", ")} FROM ${table} WHERE ${keyCol} IS NULL ORDER BY ${cols[0]} ${dir}`);
+    stmt.setReadBigInts(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows: any[] = stmt.all();
+    const nullBuf = rows.map((row) => `(${cols.map((c) => esc(row[c])).join(",")})`);
+    for (let i = 0; i < nullBuf.length; i += 100) {
+      writeFileSync(file, `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${nullBuf.slice(i, i + 100).join(",\n")};\n`, { flag: "a" });
+    }
+    count += rows.length;
   }
 return count;
 }
@@ -227,7 +241,7 @@ if (wanted("blocks")) {
 if (wanted("tx")) {
   const nTxs = dumpKeyset("tx_index", "block_topo",
     ["hash", "block_topo", "ts", "fee", "size", "tx_type", "sender", "transfer_count", "version", "multisig", "contract_id", "gas", "executed", "encrypted"],
-    { outFile: join(OUT_DIR, "tx.sql"), chunkRows: 100_000, tieCol: "hash" });
+    { outFile: join(OUT_DIR, "tx.sql"), chunkRows: 100_000, tieCol: "hash", includeNull: true });
   console.log(`  tx: ${nTxs.toLocaleString()} rows`);
 } else {
   console.log("  tx: skipped (--only)");
