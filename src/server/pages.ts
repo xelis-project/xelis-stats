@@ -4,6 +4,7 @@ import { layout, notFound, statCard } from "../client/layout";
 import { fmt, fmtInt, fmtPct, shortHash, fmtTime, ago, atomic, atomicPrecise } from "../client/format";
 import { knownEntity } from "./entities";
 import { srvSort, BLOCK_COLS, TX_COLS, ACCT_COLS, TOP_COLS } from "./sort";
+import { filterButton, filterPop, filterField, selectOpts } from "./filters";
 
 export const pages = new Hono<{ Bindings: Env }>();
 
@@ -36,14 +37,31 @@ function pager(base: string, page: number, totalPages: number): string {
 
 pages.get("/blocks", async (c) => {
   const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
+  // table filters: block type (case-insensitive, like /api/blocks) + min txs
+  const typeRaw = (c.req.query("type") ?? "").toLowerCase();
+  const type = ["normal", "side", "sync"].includes(typeRaw) ? typeRaw[0].toUpperCase() + typeRaw.slice(1) : "";
+  const minTxsRaw = Number(c.req.query("min_txs") ?? "");
+  const minTxs = Number.isFinite(minTxsRaw) && minTxsRaw > 0 ? Math.floor(minTxsRaw) : 0;
   const db = c.env.DB;
-  const srt = srvSort((n) => c.req.query(n), BLOCK_COLS, "topo", "topoheight DESC", (s) => `/blocks${s ? `?${s}` : ""}`);
+  const srt = srvSort((n) => c.req.query(n), BLOCK_COLS, "topo", "topoheight DESC", (s) => {
+    const p = new URLSearchParams();
+    if (type) p.set("type", type);
+    if (minTxs) p.set("min_txs", String(minTxs));
+    if (s) for (const [k, v] of new URLSearchParams(s)) p.set(k, v);
+    const q = p.toString();
+    return q ? `/blocks?${q}` : "/blocks";
+  });
+  const conds: string[] = [];
+  const binds: unknown[] = [];
+  if (type) { conds.push("UPPER(block_type) = UPPER(?)"); binds.push(type); }
+  if (minTxs) { conds.push("tx_count >= ?"); binds.push(minTxs); }
+  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
   let rows: Record<string, unknown>[];
   let total = 0;
   try {
-    total = await db.prepare("SELECT COUNT(*) AS n FROM blocks").first<{ n: number }>().then((r) => r?.n ?? 0);
-    rows = await db.prepare(`SELECT * FROM blocks ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
-      .bind(PAGE_SIZE + 1, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>().then((r) => r.results ?? []);
+    total = await db.prepare(`SELECT COUNT(*) AS n FROM blocks ${where}`).bind(...binds).first<{ n: number }>().then((r) => r?.n ?? 0);
+    rows = await db.prepare(`SELECT * FROM blocks ${where} ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
+      .bind(...binds, PAGE_SIZE + 1, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>().then((r) => r.results ?? []);
   } catch {
     rows = [];
   }
@@ -69,7 +87,22 @@ pages.get("/blocks", async (c) => {
       }).join("")
     : `<tr><td colspan="7" style="color:var(--text-dim)">No indexed blocks yet — historical backfill pending. Live data unavailable until D1 import.</td></tr>`;
 
-  const content = `<div class="panel"><h2>Blocks <span style="color:var(--text-dim)">${fmtInt(total)} total</span></h2>
+  const fActive = !!type || minTxs > 0;
+  const fFields = `
+    ${filterField("Block type", `<select name="type">${selectOpts(["Normal", "Side", "Sync"], type, "all types")}</select>`)}
+    ${filterField("Min transactions", `<input type="number" name="min_txs" min="0" step="1" placeholder="e.g. 2" value="${minTxs || ""}" />`)}
+  `;
+  const fPop = filterPop("f-blocks", "/blocks", fFields, {
+    hidden: srt.qs ? { sort: srt.key, dir: srt.dir } : {},
+    reset: `/blocks${srt.qs ? `?${srt.qs}` : ""}`,
+  });
+
+  const content = `<div class="panel">
+    <div class="panel-head">
+      <h2>Blocks <span style="color:var(--text-dim)">${fmtInt(total)} total</span></h2>
+      ${filterButton("f-blocks", fActive)}
+      ${fPop}
+    </div>
     <div class="tablewrap"><table data-srvsort="1">
       <thead><tr>${srt.th("topo", "Topo")}${srt.th("hash", "Hash")}${srt.th("time", "Time")}${srt.th("txs", "Txs", true)}${srt.th("difficulty", "Difficulty", true)}${srt.th("reward", "Reward (XEL)", true)}${srt.th("type", "Type")}</tr></thead>
       <tbody>${body}</tbody>
@@ -84,18 +117,36 @@ pages.get("/blocks", async (c) => {
 pages.get("/accounts", async (c) => {
   const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
   // legacy ?sort=active|txs|first URLs map onto the same columns and defaults
-  const srt = srvSort((n) => c.req.query(n), ACCT_COLS, "last", "address", (s) => `/accounts${s ? `?${s}` : ""}`);
+  const minTxsRaw = Number(c.req.query("min_txs") ?? "");
+  const minTxs = Number.isFinite(minTxsRaw) && minTxsRaw > 0 ? Math.floor(minTxsRaw) : 0;
+  const srt = srvSort((n) => c.req.query(n), ACCT_COLS, "last", "address", (s) => {
+    const p = new URLSearchParams();
+    if (minTxs) p.set("min_txs", String(minTxs));
+    if (s) for (const [k, v] of new URLSearchParams(s)) p.set(k, v);
+    const q = p.toString();
+    return q ? `/accounts?${q}` : "/accounts";
+  });
   const db = c.env.DB;
   let rows: Record<string, unknown>[];
   let total = 0;
   try {
-    total = await db.prepare("SELECT COUNT(*) AS n FROM accounts").first<{ n: number }>().then((r) => r?.n ?? 0);
-    rows = await db.prepare(`SELECT address, first_seen, last_active, tx_count FROM accounts ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
-      .bind(PAGE_SIZE, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>().then((r) => r.results ?? []);
+    const where = minTxs ? "WHERE tx_count >= ?" : "";
+    const binds = minTxs ? [minTxs] : [];
+    total = await db.prepare(`SELECT COUNT(*) AS n FROM accounts ${where}`).bind(...binds).first<{ n: number }>().then((r) => r?.n ?? 0);
+    rows = await db.prepare(`SELECT address, first_seen, last_active, tx_count FROM accounts ${where} ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
+      .bind(...binds, PAGE_SIZE, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>().then((r) => r.results ?? []);
   } catch {
     rows = [];
   }
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const fFields = `
+    ${filterField("Min sent txs", `<input type="number" name="min_txs" min="0" step="1" placeholder="e.g. 10" value="${minTxs || ""}" />`)}
+  `;
+  const fPop = filterPop("f-accounts", "/accounts", fFields, {
+    hidden: srt.qs ? { sort: srt.key, dir: srt.dir } : {},
+    reset: `/accounts${srt.qs ? `?${srt.qs}` : ""}`,
+  });
 
   const body = rows.length
     ? rows.map((a) => {
@@ -110,7 +161,12 @@ pages.get("/accounts", async (c) => {
       }).join("")
     : `<tr><td colspan="4" style="color:var(--text-dim)">No observed accounts yet.</td></tr>`;
 
-  const content = `<div class="panel"><h2>Accounts <span style="color:var(--text-dim)">${fmtInt(total)} observed</span></h2>
+  const content = `<div class="panel">
+    <div class="panel-head">
+      <h2>Accounts <span style="color:var(--text-dim)">${fmtInt(total)} observed</span></h2>
+      ${filterButton("f-accounts", minTxs > 0)}
+      ${fPop}
+    </div>
     <div class="tablewrap"><table data-srvsort="1">
       <thead><tr>${srt.th("address", "Address")}${srt.th("first", "First seen")}${srt.th("last", "Last active")}${srt.th("txs", "Txs", true)}</tr></thead>
       <tbody>${body}</tbody>
@@ -356,11 +412,15 @@ pages.get("/block/:id", async (c) => {
 
 pages.get("/transactions", async (c) => {
   const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
-  const type = c.req.query("type") ?? "";
+  const TX_TYPES = ["transfer", "burn", "invoke_contract", "deploy_contract", "multisig"];
+  const rawType = c.req.query("type") ?? "";
+  const type = TX_TYPES.includes(rawType) ? rawType : "";
+  const result = c.req.query("result") === "ok" || c.req.query("result") === "fail" ? c.req.query("result")! : "";
   const db = c.env.DB;
   const srt = srvSort((n) => c.req.query(n), TX_COLS, "block", "hash", (s) => {
     const p = new URLSearchParams();
     if (type) p.set("type", type);
+    if (result) p.set("result", result);
     if (s) for (const [k, v] of new URLSearchParams(s)) p.set(k, v);
     const q = p.toString();
     return q ? `/transactions?${q}` : "/transactions";
@@ -372,6 +432,8 @@ pages.get("/transactions", async (c) => {
     const conds: string[] = [];
     const binds: unknown[] = [];
     if (type) { conds.push("tx_type = ?"); binds.push(type); }
+    if (result === "ok") { conds.push("result = ?"); binds.push("ok"); }
+    if (result === "fail") { conds.push("result IS NOT NULL AND result <> ?"); binds.push("ok"); }
     const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
     total = await db.prepare(`SELECT COUNT(*) AS n FROM tx_index ${where}`).bind(...binds).first<{ n: number }>().then((r) => r?.n ?? 0);
     rows = await db.prepare(`SELECT * FROM tx_index ${where} ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
@@ -381,8 +443,15 @@ pages.get("/transactions", async (c) => {
   rows = rows.slice(0, PAGE_SIZE);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  const typeOpts = ["", "transfer", "burn", "invoke_contract", "deploy_contract", "multisig"]
-    .map((t) => `<option value="${t}" ${type === t ? "selected" : ""}>${t || "all types"}</option>`).join("");
+  const fActive = !!type || !!result;
+  const fFields = `
+    ${filterField("Transaction type", `<select name="type">${selectOpts(TX_TYPES, type, "all types")}</select>`)}
+    ${filterField("Result", `<select name="result"><option value=""${result === "" ? " selected" : ""}>any result</option><option value="ok"${result === "ok" ? " selected" : ""}>executed ok</option><option value="fail"${result === "fail" ? " selected" : ""}>failed</option></select>`)}
+  `;
+  const fPop = filterPop("f-txs", "/transactions", fFields, {
+    hidden: srt.qs ? { sort: srt.key, dir: srt.dir } : {},
+    reset: `/transactions${srt.qs ? `?${srt.qs}` : ""}`,
+  });
 
   const body = rows.length
     ? rows.map((t) => `<tr>
@@ -396,9 +465,11 @@ pages.get("/transactions", async (c) => {
       </tr>`).join("")
     : `<tr><td colspan="7" style="color:var(--text-dim)">No indexed transactions yet — backfill pending.</td></tr>`;
 
-  const content = `<div class="panel"><h2>Transactions <span style="color:var(--text-dim)">${fmtInt(total)} total</span></h2>
-    <div style="margin-bottom:1rem">
-      <select onchange="location.href='/transactions?type='+this.value${srt.qs ? `+'&${srt.qs}'` : ""}">${typeOpts}</select>
+  const content = `<div class="panel">
+    <div class="panel-head">
+      <h2>Transactions <span style="color:var(--text-dim)">${fmtInt(total)} total</span></h2>
+      ${filterButton("f-txs", fActive)}
+      ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
       <thead><tr><th>Hash</th>${srt.th("block", "Block")}${srt.th("time", "Time")}${srt.th("type", "Type")}${srt.th("sender", "Sender")}${srt.th("fee", "Fee (XEL)", true)}${srt.th("result", "Result")}</tr></thead>
@@ -894,10 +965,21 @@ pages.get("/miners", async (c) => {
       </tr>`).join("")
     : `<tr><td colspan="4" style="color:var(--text-dim)">No indexed miners yet — backfill pending.</td></tr>`;
 
-const content = `<div class="panel"><h2>Miner leaderboard</h2>
-    <div style="margin-bottom:1rem;display:flex;gap:0.8rem;align-items:center">
-      <select onchange="location.href='/miners?period='+this.value${srt.qs ? `+'&${srt.qs}'` : ""}">${periodOpts}</select>
-      ${dateHint ? `<input type="text" class="period" placeholder="${dateHint}" value="${date || (period === "day" ? resolvedDay : "")}" onchange="location.href='/miners?period=${period}&date='+this.value${srt.qs ? `+'&${srt.qs}'` : ""}" />` : ""}
+  const fActive = period !== "day" || !!date;
+  const fFields = `
+    ${filterField("Period", `<select name="period">${periodOpts}</select>`)}
+    ${dateHint ? filterField(`Anchor date <span class="f-hint">(${dateHint})</span>`, `<input type="text" name="date" data-datepicker placeholder="${dateHint}" value="${date || (period === "day" ? resolvedDay : "")}" />`) : ""}
+  `;
+  const fPop = filterPop("f-miners", "/miners", fFields, {
+    hidden: srt.qs ? { sort: srt.key, dir: srt.dir } : {},
+    reset: `/miners${srt.qs ? `?${srt.qs}` : ""}`,
+  });
+
+const content = `<div class="panel">
+    <div class="panel-head">
+      <h2>Miner leaderboard</h2>
+      ${filterButton("f-miners", fActive)}
+      ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
       <thead><tr><th class="num">#</th>${srt.th("address", "Miner")}${srt.th("blocks", "Blocks", true)}${srt.th("rewards", "Rewards (XEL)", true)}</tr></thead>
@@ -1307,18 +1389,35 @@ pages.get("/charts", async (c) => {
 // ---------- assets & contracts ----------
 
 pages.get("/assets", async (c) => {
+  const q = (c.req.query("q") ?? "").trim().slice(0, 64);
   const srt = srvSort((n) => c.req.query(n), {
     asset: { sql: "asset_id", def: "asc" },
     name: { sql: "name", def: "asc" },
     symbol: { sql: "symbol", def: "asc" },
     decimals: { sql: "decimals", def: "asc" },
     first: { sql: "first_seen_topo", def: "desc" },
-  }, "first", "asset_id", (s) => `/assets${s ? `?${s}` : ""}`);
+  }, "first", "asset_id", (s) => {
+    const p = new URLSearchParams();
+    if (q) p.set("q", q);
+    if (s) for (const [k, v] of new URLSearchParams(s)) p.set(k, v);
+    const qs = p.toString();
+    return qs ? `/assets?${qs}` : "/assets";
+  });
   let rows: Record<string, unknown>[] = [];
   try {
-    rows = await c.env.DB.prepare(`SELECT * FROM assets ORDER BY ${srt.order} LIMIT 100`)
-      .all<Record<string, unknown>>().then((r) => r.results ?? []);
+    const where = q ? "WHERE (name LIKE ? OR symbol LIKE ? OR asset_id LIKE ?)" : "";
+    const binds = q ? [`%${q}%`, `%${q}%`, `%${q}%`] : [];
+    rows = await c.env.DB.prepare(`SELECT * FROM assets ${where} ORDER BY ${srt.order} LIMIT 100`)
+      .bind(...binds).all<Record<string, unknown>>().then((r) => r.results ?? []);
   } catch { /* table empty or missing */ }
+
+  const fFields = `
+    ${filterField("Search", `<input type="text" name="q" placeholder="name, symbol or asset id" value="${esc(q)}" maxlength="64" />`)}
+  `;
+  const fPop = filterPop("f-assets", "/assets", fFields, {
+    hidden: srt.qs ? { sort: srt.key, dir: srt.dir } : {},
+    reset: `/assets${srt.qs ? `?${srt.qs}` : ""}`,
+  });
 
   const body = rows.length
     ? rows.map((a) => `<tr>
@@ -1330,25 +1429,49 @@ pages.get("/assets", async (c) => {
       </tr>`).join("")
     : `<tr><td colspan="5" style="color:var(--text-dim)">No assets indexed yet (populated during tx detail pass).</td></tr>`;
 
-  const content = `<div class="panel"><h2>Assets <span style="color:var(--text-dim)">showing ${fmtInt(rows.length)} of indexed</span></h2><div class="tablewrap"><table data-srvsort="1">
+  const content = `<div class="panel">
+    <div class="panel-head">
+      <h2>Assets <span style="color:var(--text-dim)">showing ${fmtInt(rows.length)} of indexed</span></h2>
+      ${filterButton("f-assets", !!q)}
+      ${fPop}
+    </div>
+    <div class="tablewrap"><table data-srvsort="1">
     <thead><tr>${srt.th("asset", "Asset ID")}${srt.th("name", "Name")}${srt.th("symbol", "Symbol")}${srt.th("decimals", "Decimals", true)}${srt.th("first", "First seen (topo)", true)}</tr></thead>
     <tbody>${body}</tbody></table></div></div>`;
   return c.html(layout("Assets", content, "/assets"));
 });
 
 pages.get("/contracts", async (c) => {
+  const minInvRaw = Number(c.req.query("min_invokes") ?? "");
+  const minInv = Number.isFinite(minInvRaw) && minInvRaw > 0 ? Math.floor(minInvRaw) : 0;
   const srt = srvSort((n) => c.req.query(n), {
     contract: { sql: "contract_id", def: "asc" },
     deployer: { sql: "deployer", def: "asc" },
     deployed: { sql: "deploy_topo", def: "desc" },
     invokes: { sql: "invoke_count", def: "desc" },
     gas: { sql: "gas_total", def: "desc" },
-  }, "deployed", "contract_id", (s) => `/contracts${s ? `?${s}` : ""}`);
+  }, "deployed", "contract_id", (s) => {
+    const p = new URLSearchParams();
+    if (minInv) p.set("min_invokes", String(minInv));
+    if (s) for (const [k, v] of new URLSearchParams(s)) p.set(k, v);
+    const q = p.toString();
+    return q ? `/contracts?${q}` : "/contracts";
+  });
   let rows: Record<string, unknown>[] = [];
   try {
-    rows = await c.env.DB.prepare(`SELECT * FROM contracts ORDER BY ${srt.order} LIMIT 100`)
-      .all<Record<string, unknown>>().then((r) => r.results ?? []);
+    const where = minInv ? "WHERE invoke_count >= ?" : "";
+    const binds = minInv ? [minInv] : [];
+    rows = await c.env.DB.prepare(`SELECT * FROM contracts ${where} ORDER BY ${srt.order} LIMIT 100`)
+      .bind(...binds).all<Record<string, unknown>>().then((r) => r.results ?? []);
   } catch { /* not ready */ }
+
+  const fFields = `
+    ${filterField("Min invokes", `<input type="number" name="min_invokes" min="0" step="1" placeholder="e.g. 5" value="${minInv || ""}" />`)}
+  `;
+  const fPop = filterPop("f-contracts", "/contracts", fFields, {
+    hidden: srt.qs ? { sort: srt.key, dir: srt.dir } : {},
+    reset: `/contracts${srt.qs ? `?${srt.qs}` : ""}`,
+  });
 
   const body = rows.length
     ? rows.map((ct) => `<tr>
@@ -1360,7 +1483,13 @@ pages.get("/contracts", async (c) => {
       </tr>`).join("")
     : `<tr><td colspan="5" style="color:var(--text-dim)">No contracts indexed yet (populated during tx detail pass).</td></tr>`;
 
-  const content = `<div class="panel"><h2>Contracts <span style="color:var(--text-dim)">showing ${fmtInt(rows.length)} of indexed</span></h2><div class="tablewrap"><table data-srvsort="1">
+  const content = `<div class="panel">
+    <div class="panel-head">
+      <h2>Contracts <span style="color:var(--text-dim)">showing ${fmtInt(rows.length)} of indexed</span></h2>
+      ${filterButton("f-contracts", minInv > 0)}
+      ${fPop}
+    </div>
+    <div class="tablewrap"><table data-srvsort="1">
     <thead><tr>${srt.th("contract", "Contract")}${srt.th("deployer", "Deployer")}${srt.th("deployed", "Deployed (topo)", true)}${srt.th("invokes", "Invokes", true)}${srt.th("gas", "Gas", true)}</tr></thead>
     <tbody>${body}</tbody></table></div></div>`;
   return c.html(layout("Contracts", content, "/contracts"));
