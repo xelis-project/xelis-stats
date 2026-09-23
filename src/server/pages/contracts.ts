@@ -5,7 +5,7 @@ import { fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/format";
 import { srvSort } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
 import { rpc } from "../xelis";
-import { esc, entityTag, blkCopyScript, num } from "./shared";
+import { esc, entityTag, blkCopyScript, num, PAGE_SIZE, pager } from "./shared";
 import { fetchStorage, storageBatchHtml, storageCard, storageHeadText, storageScript } from "./storage";
 
 export const contracts = new Hono<{ Bindings: Env }>();
@@ -72,14 +72,17 @@ contracts.get("/contracts", async (c) => {
 contracts.get("/contracts/:id", async (c) => {
   const id = c.req.param("id");
   const db = c.env.DB;
+  const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
 
   let ct: Record<string, unknown> | undefined;
   let invokes: Record<string, unknown>[] = [];
+  let invokeTotal = 0;
   try {
     ct = (await db.prepare("SELECT * FROM contracts WHERE contract_id = ?").bind(id).first()) ?? undefined;
+    invokeTotal = (await db.prepare("SELECT COUNT(*) AS n FROM tx_index WHERE contract_id = ?").bind(id).first<{ n: number }>())?.n ?? 0;
     invokes = await db.prepare(
-      `SELECT hash, block_topo, ts, fee, executed, sender FROM tx_index WHERE contract_id = ? ORDER BY block_topo DESC LIMIT 25`
-    ).bind(id).all<Record<string, unknown>>().then((r) => r.results ?? []);
+      `SELECT hash, block_topo, ts, fee, executed, sender FROM tx_index WHERE contract_id = ? ORDER BY block_topo DESC LIMIT ? OFFSET ?`
+    ).bind(id, PAGE_SIZE, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>().then((r) => r.results ?? []);
   } catch { /* db not ready */ }
 
   if (!ct) return c.html(layout("Not found", notFound("Contract"), "/contracts"));
@@ -234,11 +237,14 @@ contracts.get("/contracts/:id", async (c) => {
       }).join("")
     : `<tr><td colspan="6" style="color:var(--text-dim)">No indexed invocations for this contract yet.</td></tr>`;
 
-  const invokesPanel = `<div class="panel"><h2>Recent Invocations ${invokes.length ? `<span style="color:var(--text-dim)">latest ${fmtInt(invokes.length)}</span>` : ""}</h2>
+  const totalPages = Math.max(1, Math.ceil(invokeTotal / PAGE_SIZE));
+  const pagerBase = `/contracts/${encodeURIComponent(deployHash)}`;
+  const invokesPanel = `<div class="panel"><h2>Invocations ${invokeTotal ? `<span style="color:var(--text-dim)">${fmtInt(invokeTotal)} indexed</span>` : ""}</h2>
     <div class="tablewrap"><table>
       <thead><tr><th>Hash</th><th>Block</th><th>Time</th><th>Sender</th><th class="num">Fee (XEL)</th><th>Execution</th></tr></thead>
       <tbody>${invokeRows}</tbody>
     </table></div>
+    ${pager(pagerBase, page, totalPages)}
   </div>`;
 
   const content = `${hero}
