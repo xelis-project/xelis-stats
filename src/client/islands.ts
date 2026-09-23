@@ -177,6 +177,18 @@ function initMarket(): void {
     baseVolume: number; quoteVolume: number; timestamp: number;
   }
 
+  let loaded = false;
+  let histLoaded = false;
+
+  function marketError(): void {
+    if (loaded) return;
+    const cards = document.getElementById("market-cards");
+    if (cards) cards.innerHTML = '<div class="card"><div class="label">Market data unavailable</div><div class="sub">retrying…</div></div>';
+    table!.innerHTML = '<tr><td colspan="11" style="color:var(--text-dim)">Market data unavailable, retrying…</td></tr>';
+    const hist = document.getElementById("u-price-history");
+    if (hist && !histLoaded) hist.innerHTML = '<p class="w-empty">Failed to load series.</p>';
+  }
+
   async function load(): Promise<void> {
     try {
       const res = await fetch("/api/market");
@@ -198,6 +210,7 @@ function initMarket(): void {
           <div class="card"><div class="label">Price Divergence</div><div class="value" style="color:${(div ?? 0) > 5 ? "var(--danger)" : "var(--mint)"}">${div != null && Number.isFinite(div) ? div.toFixed(2) + "%" : "—"}</div><div class="sub">max-min across exchanges</div></div>`;
       }
       if (!agg.tickers) return;
+      loaded = true;
       table!.innerHTML = agg.tickers.map((t) => `<tr>
         <td>${t.exchange}</td><td>${t.market}</td>
         <td class="num">$${t.last.toFixed(4)}</td>
@@ -239,8 +252,10 @@ function initMarket(): void {
       // price history chart
       const hist = await fetch("/api/history/price?range=30d&interval=day").then((r) => r.json()) as { points: SeriesPoint[] };
       const el = document.getElementById("u-price-history");
-      if (el && hist.points.length) renderChart(el, hist.points, "XEL/USDT");
-    } catch { /* market unavailable */ }
+      if (el && hist.points.length) { histLoaded = true; renderChart(el, hist.points, "XEL/USDT"); }
+    } catch {
+      marketError();
+    }
   }
 
   load();
