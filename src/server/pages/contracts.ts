@@ -110,6 +110,7 @@ contracts.get("/contracts/:id", async (c) => {
     }));
   } catch { /* none */ }
   const xel = "0000000000000000000000000000000000000000000000000000000000000000";
+  const deployer = String(ct.deployer ?? "");
 
   // contract hash == deploy tx hash: resolve the deployer on-chain when the
   // index missed the deploy tx, then backfill the DB
@@ -138,7 +139,6 @@ contracts.get("/contracts/:id", async (c) => {
   const gasTotal = num(ct.gas_total);
   const shownDeployer = deployer || liveDeployer;
   const deployTopo = num(ct.deploy_topo) || liveDeployTopo || 0;
-  const deployer = String(ct.deployer ?? "");
   const deployHash = String(ct.contract_id ?? id);
   const lastTs = invokes.length ? num(invokes[0].ts) : null;
 
