@@ -417,11 +417,12 @@ async function backfillBlocks(): Promise<void> {
   const CHECKPOINT_EVERY = 20_000;
 
   const markComplete = (from: number, to: number): void => {
-    completed.set(to, from);
+    // key by batch start so the contiguous frontier can advance from start-1
+    completed.set(from, to);
     while (completed.has(frontier + 1)) {
-      const fStart = completed.get(frontier + 1)!;
-      const fEnd = frontier + 1;
-      completed.delete(fEnd);
+      const fStart = frontier + 1;
+      const fEnd = completed.get(fStart)!;
+      completed.delete(fStart);
       frontier = fEnd;
       sinceCheckpoint += fEnd - fStart + 1;
       doneBlocks += fEnd - fStart + 1;
@@ -498,24 +499,60 @@ async function backfillTxs(): Promise<void> {
     if (next) { running++; next(); }
   };
 
-  const fetchTx = async (hash: string, ts: number): Promise<void> => {
+  // get_transactions fetches up to 20 txs per call; falls back to per-tx
+  // get_transaction when a chunk contains a hash the daemon rejects entirely
+  const fetchChunk = async (chunk: Array<{ hash: string; ts: number }>): Promise<void> => {
     await acquire();
     try {
       for (let attempt = 0; ; attempt++) {
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const t = await rpc<any>("get_transaction", { hash });
-          await processTx(t, ts);
+          const txs = await rpc<any[]>("get_transactions", { tx_hashes: chunk.map((c) => c.hash) });
+          const byHash = new Map<string, any>();
+          for (const t of txs ?? []) if (t?.hash) byHash.set(String(t.hash), t);
+          for (const c of chunk) {
+            const t = byHash.get(c.hash);
+            if (t) await processTx(t, c.ts);
+          }
           return;
         } catch (err) {
           const msg = (err as Error).message;
-          // pruned/orphaned txs: daemon wording varies ("not found", "Couldn't find", NON_EXISTENT)
-          if (/not found|couldn'?t find|doesn'?t exist|non.?existent|no transaction/i.test(msg)) return;
-          if (attempt >= 15) { console.error(`[txs] ${hash.slice(0, 10)} giving up: ${msg}`); return; }
+          if (attempt >= 6) {
+            if (chunk.length > 1) {
+              // one bad hash fails the whole batch; retry each individually
+              for (const c of chunk) await fetchSingle(c.hash, c.ts);
+            } else {
+              await fetchSingleRetry(chunk[0].hash, chunk[0].ts, 15);
+            }
+            return;
+          }
           await new Promise((r) => setTimeout(r, Math.min(Math.pow(2, Math.min(attempt, 6)) * 1000, 60_000)));
         }
       }
     } finally { release(); }
+  };
+
+  const fetchSingleRetry = async (hash: string, ts: number, maxAttempts: number): Promise<void> => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const t = await rpc<any>("get_transaction", { hash });
+        await processTx(t, ts);
+        return;
+      } catch (err) {
+        const msg = (err as Error).message;
+        // pruned/orphaned txs: daemon wording varies ("not found", "Couldn't find", NON_EXISTENT)
+        if (/not found|couldn'?t find|doesn'?t exist|non.?existent|no transaction/i.test(msg)) return;
+        if (attempt >= maxAttempts) { console.error(`[txs] ${hash.slice(0, 10)} giving up: ${msg}`); return; }
+        await new Promise((r) => setTimeout(r, Math.min(Math.pow(2, Math.min(attempt, 6)) * 1000, 60_000)));
+      }
+    }
+  };
+
+  // single-tx fetch used as a fallback when a batch fails
+  const fetchSingle = async (hash: string, ts: number): Promise<void> => {
+    await acquire();
+    try { await fetchSingleRetry(hash, ts, 15); } finally { release(); }
   };
 
   const startedAt = Date.now();
@@ -531,14 +568,20 @@ async function backfillTxs(): Promise<void> {
 
     if (!rows.length) break;
 
-    const jobs: Promise<void>[] = [];
+    const jobs: Array<{ hash: string; ts: number }>[] = [];
+    const chunks: Array<Array<{ hash: string; ts: number }>> = [];
     for (const row of rows) {
       const hashes = JSON.parse(row.txs_hashes) as string[];
       for (const h of hashes) {
-        jobs.push(fetchTx(h, Number(row.ts)).then(() => { doneSinceCheckpoint++; }));
+        if (chunks.length === 0 || chunks[chunks.length - 1].length >= 20) chunks.push([]);
+        chunks[chunks.length - 1].push({ hash: h, ts: Number(row.ts) });
       }
     }
-    await Promise.all(jobs.map((p) => p.catch(() => {})));
+    jobs.length = 0; // jobs repurposed as promises below
+    const promises: Promise<void>[] = chunks.map((c) =>
+      fetchChunk(c).then(() => { doneSinceCheckpoint += c.length; }).catch(() => {}),
+    );
+    await Promise.all(promises);
 
     txCursor = Number(rows[rows.length - 1].topoheight);
     txDone += doneSinceCheckpoint;
