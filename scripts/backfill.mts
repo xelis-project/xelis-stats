@@ -405,8 +405,29 @@ async function processTx(t: any, tsMs: number): Promise<boolean> {
 
 async function backfillBlocks(): Promise<void> {
   const stable = await getStableTopo();
-  const { last, done } = getState();
+  // no state row => fresh DB: resume from genesis (topo 0), not topo 1.
+  // getState() defaults last_topoheight to 0, which would skip topo 0.
+  const stateRow = db.prepare("SELECT last_topoheight, blocks_done FROM sync_state WHERE id = 1").get() as
+    | { last_topoheight: number; blocks_done: number }
+    | undefined;
+  const last = stateRow ? stateRow.last_topoheight : -1;
+  const done = stateRow ? stateRow.blocks_done : 0;
   const start = Math.max(last + 1, 0);
+
+  // repair DBs backfilled before the genesis off-by-one fix: the old resume
+  // logic started fresh runs at topo 1, leaving topo 0 (genesis) unindexed
+  if (start > 0) {
+    const hasGenesis = db.prepare("SELECT 1 FROM blocks WHERE topoheight = 0").get();
+    if (!hasGenesis) {
+      try {
+        for (const b of await getBlocksRange(0, 0)) processBlock(b);
+        console.log("[blocks] repaired missing genesis block (topo 0)");
+      } catch (err) {
+        console.error(`[blocks] genesis repair failed: ${(err as Error).message}`);
+      }
+    }
+  }
+
   console.log(`[blocks] stable=${stable} resume from ${start} (remaining ${stable - start + 1})`);
   if (start > stable) return;
 
