@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS blocks (
   fee_total INTEGER, cum_difficulty TEXT, tips TEXT, txs_hashes TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_blocks_height ON blocks(height);
+CREATE INDEX IF NOT EXISTS idx_blocks_hash ON blocks(hash);
 
 CREATE TABLE IF NOT EXISTS tx_index (
   hash TEXT PRIMARY KEY, block_topo INTEGER, ts INTEGER,
