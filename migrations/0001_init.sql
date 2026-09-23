@@ -134,16 +134,3 @@ CREATE TABLE IF NOT EXISTS node_versions (date TEXT, version TEXT, peer_count IN
 -- hourly tag / IP-prefix concentration rollups
 CREATE TABLE IF NOT EXISTS daily_peer_tags (date TEXT, tag TEXT, peers INTEGER, PRIMARY KEY (date, tag));
 CREATE TABLE IF NOT EXISTS daily_peer_prefixes (date TEXT, prefix TEXT, peers INTEGER, PRIMARY KEY (date, prefix));
-
--- archive export tracking (R2 chunks + publication status)
-CREATE TABLE IF NOT EXISTS archive_manifests (
-  chunk_key TEXT PRIMARY KEY, table_name TEXT, topo_start INTEGER, topo_end INTEGER,
-  checksum TEXT, schema_version TEXT, record_count INTEGER, status TEXT, published_at INTEGER
-);
-
--- ingestion failure tracking for inspection/retry
-CREATE TABLE IF NOT EXISTS ingestion_failures (
-  stage TEXT, record_id TEXT, error_class TEXT, message TEXT,
-  retries INTEGER DEFAULT 0, resolved INTEGER DEFAULT 0, first_seen INTEGER, last_seen INTEGER,
-  PRIMARY KEY (stage, record_id)
-);
