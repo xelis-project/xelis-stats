@@ -1285,9 +1285,9 @@ pages.get("/charts", async (c) => {
         <select id="sel-metric" title="Metric">${metricOpts}</select>
         <select id="sel-feestat" title="Fee statistic" ${FEE_METRICS[metric] ? "" : "hidden"}>${feeStatOpts}</select>
         <select id="sel-range" title="Period">${rangeOpts}</select>
-        <input type="date" class="period" id="inp-from" value="${from}" aria-label="Period start" ${custom ? "" : "hidden"} />
+        <input type="text" class="period" data-datepicker id="inp-from" value="${from}" aria-label="Period start" ${custom ? "" : "hidden"} />
         <span aria-hidden="true" id="period-sep" ${custom ? "" : "hidden"}>→</span>
-        <input type="date" class="period" id="inp-to" value="${to}" aria-label="Period end" ${custom ? "" : "hidden"} />
+        <input type="text" class="period" data-datepicker id="inp-to" value="${to}" aria-label="Period end" ${custom ? "" : "hidden"} />
         <select id="sel-interval" title="Bucket interval">${intervalOpts}</select>
         <select id="sel-exchange" title="Exchange" ${MARKET_METRICS.has(metric) ? "" : "hidden"}>${exchangeOpts}</select>
         <select id="sel-compare" title="Overlay a second metric">${compareOpts}</select>

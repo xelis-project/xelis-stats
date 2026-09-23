@@ -1,5 +1,6 @@
 import { renderChart, renderCompare, cumulativePoints, fmtAuto, type ChartOpts, type SeriesPoint } from "./charts";
 import { refreshSort } from "./sortable";
+import { attachDatePickers, setDatePickerValue } from "./datepicker";
 
 // ---------- charts hub page ----------
 
@@ -19,6 +20,7 @@ function initChartsHub(): void {
   const csvBtn = $("btn-csv");
   const chartEl = $("u-chart");
   if (!selMetric || !selRange || !selInterval || !chartEl) return;
+  attachDatePickers(document);
 
   const chartTarget = chartEl;
   const FEE_METRICS = new Set(["fees", "fees-median", "fee-p90", "fees-p99"]);
@@ -78,8 +80,10 @@ function initChartsHub(): void {
       if (sep) sep.hidden = !custom;
       if (custom && !inpFrom.value && !inpTo.value) {
         const now = new Date();
-        inpTo.value = now.toISOString().slice(0, 10);
-        inpFrom.value = new Date(now.getTime() - 30 * 86400_000).toISOString().slice(0, 10);
+        const to = now.toISOString().slice(0, 10);
+        const from = new Date(now.getTime() - 30 * 86400_000).toISOString().slice(0, 10);
+        setDatePickerValue(inpTo, to);
+        setDatePickerValue(inpFrom, from);
       }
     }
   }
@@ -286,6 +290,9 @@ function initMinerProfile(): void {
 }
 
 // ---------- boot ----------
+
+// date pickers used by page filter popups (e.g. the miners anchor date)
+attachDatePickers(document);
 
 const path = location.pathname;
 if (path.startsWith("/embed/")) {

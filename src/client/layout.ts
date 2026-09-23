@@ -1,5 +1,6 @@
 import { XEL_LOGO } from "./format";
 import appCss from "./style.css?inline";
+import flatpickrCss from "flatpickr/dist/flatpickr.min.css?inline";
 
 export function layout(title: string, content: string, active: string, bodyClass = ""): string {
   const nav = [
@@ -27,7 +28,7 @@ export function layout(title: string, content: string, active: string, bodyClass
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Jura:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <style>${appCss}</style>
+  <style>${flatpickrCss}${appCss}</style>
   <script type="module" src="/src/client/main.ts"></script>
 </head>
 <body class="${bodyClass}">

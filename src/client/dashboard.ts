@@ -1,6 +1,7 @@
 import { renderChart, renderCompare, cumulativePoints, ACCENTS, accentHex, type SeriesPoint, type LineWidth } from "./charts";
 import { fmt, fmtInt, fmtPct, shortHash, atomic, ago } from "./format";
 import { refreshSort } from "./sortable";
+import { attachDatePickers } from "./datepicker";
 import type uPlot from "uplot";
 
 type Kind = "stat" | "chart" | "compare" | "rank" | "list";
@@ -1124,8 +1125,8 @@ function settingsHtml(w: Widget, mode: SetMode): string {
               <label>Interval ${sel(o.interval ?? item.interval ?? "day", INTERVALS, "interval")}</label>
             </div>
             <div class="w-set-row" data-custom ${custom ? "" : "hidden"}>
-              <label>From <input type="date" data-opt="from" value="${esc(o.from ?? "")}"/></label>
-              <label>To <input type="date" data-opt="to" value="${esc(o.to ?? "")}"/></label>
+              <label>From <input type="text" data-datepicker data-opt="from" value="${esc(o.from ?? "")}"/></label>
+              <label>To <input type="text" data-datepicker data-opt="to" value="${esc(o.to ?? "")}"/></label>
             </div>
             <div class="w-set-row">
               <span class="w-set-chks">
@@ -1143,8 +1144,8 @@ function settingsHtml(w: Widget, mode: SetMode): string {
               <label>Interval ${sel(o.interval ?? item.interval ?? "day", INTERVALS, "interval")}</label>
             </div>
             <div class="w-set-row" data-custom ${custom ? "" : "hidden"}>
-              <label>From <input type="date" data-opt="from" value="${esc(o.from ?? "")}"/></label>
-              <label>To <input type="date" data-opt="to" value="${esc(o.to ?? "")}"/></label>
+              <label>From <input type="text" data-datepicker data-opt="from" value="${esc(o.from ?? "")}"/></label>
+              <label>To <input type="text" data-datepicker data-opt="to" value="${esc(o.to ?? "")}"/></label>
             </div>
             <div class="w-set-row">
               <span class="w-set-chks">
@@ -1247,6 +1248,7 @@ function wireSettings(w: Widget, el: HTMLElement, panel: HTMLElement, mode: SetM
         wireSettings(w, el, panel, mode);
       } else {
         setOpt(w, "range", (t as HTMLSelectElement).value);
+        customRow.hidden = (t as HTMLSelectElement).value !== "custom";
       }
       apply(true);
       return;
@@ -1295,6 +1297,8 @@ function wireSettings(w: Widget, el: HTMLElement, panel: HTMLElement, mode: SetM
       closeSettings(w, el);
     }
   });
+
+  attachDatePickers(panel);
 }
 
 function onWidgetKey(ev: KeyboardEvent, w: Widget, el: HTMLElement): void {
