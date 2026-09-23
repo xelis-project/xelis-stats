@@ -64,7 +64,10 @@ a.mono::after, td a::after { content: " ↗"; opacity: 0.5; font-size: 0.8em; }
 .hash { font-family: var(--mono); font-size: 1.2rem; color: var(--text-dim); }
 .hash:hover { color: var(--mint); }
 
-#app { max-width: none; margin: 0 auto; padding: 1.6rem 2.4rem 6rem; }
+/* Capped, centered shell: below the cap the layout is identical to the
+   canonical desktop design; above it content stays centered while the
+   full-viewport body background bleeds past the edges. */
+#app { max-width: 1720px; margin: 0 auto; padding: 1.6rem 2.4rem 6rem; }
 
 /* Header — floating pill */
 header.site {
@@ -491,6 +494,15 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
   .pager { flex-wrap: wrap; justify-content: center; }
   .kv td:first-child { width: auto; }
   .panel { padding: 1.2rem; }
+}
+/* Big monitors: everything is rem-based, so gently raising the root font
+   size scales the whole UI proportionally instead of leaving it small and
+   lost in dead space once the content shell is capped. */
+@media (min-width: 1600px) {
+  html { font-size: 66.5%; }
+}
+@media (min-width: 1920px) {
+  html { font-size: 71%; }
 }
 .tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
