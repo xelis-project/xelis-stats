@@ -36,6 +36,7 @@ app.use("/api/*", async (c, next) => {
 
 app.get("/", (c) => {
   const content = `
+<div class="dash-toolbar-sentinel"></div>
 <div class="dash-toolbar">
       <h2>Dashboard</h2>
       <span class="dash-hint">Drag a header to dock a widget · drag the corner to resize · Alt + arrows to nudge · rearrange on a wide window</span>

@@ -1848,6 +1848,14 @@ export function initDashboard(): void {
   wireTabs();
   render();
 
+  const toolbar = document.querySelector(".dash-toolbar");
+  const sentinel = document.querySelector(".dash-toolbar-sentinel");
+  if (toolbar && sentinel) {
+    new IntersectionObserver(([entry]) => {
+      toolbar.classList.toggle("is-stuck", !entry?.isIntersecting);
+    }).observe(sentinel);
+  }
+
   const addBtn = document.getElementById("btn-add-widget");
   const arrangeBtn = document.getElementById("btn-auto-arrange");
   const resetBtn = document.getElementById("btn-reset");
