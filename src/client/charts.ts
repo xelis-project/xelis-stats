@@ -161,10 +161,24 @@ function bucketToMs(d: string): number | null {
 }
 
 function xValues(dates: string[]): number[] {
-  return dates.map((d, i) => {
+  const ts: (number | null)[] = dates.map((d) => {
     const t = bucketToMs(d);
-    return t === null ? i : Math.round(t / 1000);
+    return t === null ? null : Math.round(t / 1000);
   });
+  // Back/forward-fill buckets that can't be parsed instead of falling back to
+  // the array index: an index is a ~1970 timestamp, which would break the time
+  // axis and make uPlot connect it to real points with long stray segments.
+  let next: number | null = null;
+  for (let i = ts.length - 1; i >= 0; i--) {
+    if (ts[i] === null) ts[i] = next;
+    else next = ts[i];
+  }
+  let prev: number | null = null;
+  for (let i = 0; i < ts.length; i++) {
+    if (ts[i] === null) ts[i] = prev ?? 0;
+    else prev = ts[i];
+  }
+  return ts as number[];
 }
 
 function dateLabel(ts: number): string {

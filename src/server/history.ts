@@ -65,14 +65,22 @@ function parseDateParam(v: string | undefined): string | null {
   return v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
 }
 
-// Monday-based week bucket matching the SQL strftime('%Y-W%W') format
+// Monday-based week bucket matching SQLite strftime('%Y-W%W'): week 01 starts
+// on the year's first Monday, and days before it are week 00. Computing the
+// index from the week's Monday instead yields a negative week for the partial
+// week around New Year ("2026-W-1"), a label the chart can't parse as a date;
+// it then falls back to the array index, injecting a 1970 x-value that draws
+// bogus straight lines across the chart. Clamping to the %W scheme keeps the
+// label two-digit and monotonic across the year boundary.
 function weekBucket(date: string): string {
   const d = new Date(`${date}T00:00:00Z`);
-  const day = (d.getUTCDay() + 6) % 7;
-  const monday = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - day);
-  const jan1 = Date.UTC(d.getUTCFullYear(), 0, 1);
-  const week = Math.floor((monday - jan1) / (7 * 86400_000));
-  return `${d.getUTCFullYear()}-W${String(week).padStart(2, "0")}`;
+  const year = d.getUTCFullYear();
+  const jan1 = Date.UTC(year, 0, 1);
+  const doy = Math.floor((Date.UTC(year, d.getUTCMonth(), d.getUTCDate()) - jan1) / 86400_000);
+  const jan1MondayIdx = (new Date(jan1).getUTCDay() + 6) % 7;
+  const firstMondayDoy = (7 - jan1MondayIdx) % 7;
+  const week = doy < firstMondayDoy ? 0 : Math.floor((doy - firstMondayDoy) / 7) + 1;
+  return `${year}-W${String(week).padStart(2, "0")}`;
 }
 
 // Gini coefficient of a set of non-negative values (0 = perfectly even,
