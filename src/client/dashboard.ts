@@ -1817,7 +1817,6 @@ function renderPalette(query: string): void {
     btn.addEventListener("click", () => {
       addWidget(btn.dataset.key ?? "");
       renderPalette((document.getElementById("palette-search") as HTMLInputElement | null)?.value ?? "");
-      overlay.hidden = true;
     });
   });
 }
