@@ -27,10 +27,7 @@ charts.get("/charts", async (c) => {
     ["hashrate", "Hashrate"], ["transfers", "Transfers"], ["fees", "Fees"],
     ["supply", "Supply"], ["chain-size", "Blockchain size"], ["market-cap", "Market Cap"], ["block-types", "Block types"],
     ["fees-rewards", "Fees vs rewards"], ["decentralization", "Decentralization"],
-    ["peers", "Peer count"], ["peers-pruned", "Pruned peers"], ["peers-lagging", "Lagging peers"],
-    ["peers-stale", "Stale peers"], ["peers-divergent", "Divergent peers"], ["peer-lag", "Avg peer lag"],
-    ["peers-hidden", "Hidden peers"], ["peers-new", "New connections"], ["peer-age", "Connection age"],
-    ["peer-view", "Peer visibility"], ["peer-traffic-in", "Peer traffic in"], ["peer-traffic-out", "Peer traffic out"],
+    ["peers", "Peer count"], ["peers-pruned", "Pruned peers"],
   ];
   const metricOpts = metrics.map(([m, name]) => `<option value="${m}" ${metric === m ? "selected" : ""}>${name}</option>`).join("");
   const rangeOpts = ["7d", "30d", "90d", "1y", "all", "custom"].map((r) => `<option value="${r}" ${range === r ? "selected" : ""}>${r === "custom" ? "custom period" : r}</option>`).join("");

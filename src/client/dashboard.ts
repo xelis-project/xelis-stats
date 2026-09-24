@@ -1056,10 +1056,6 @@ function mountChart(w: Widget): void {
 // widget but are still referenced by compare widgets (e.g. fee-p90).
 const METRIC_LABELS: Record<string, string> = {
   "fee-p90": "Fee P90",
-  "peers-lagging": "Lagging peers",
-  "peers-divergent": "Divergent tips",
-  "peer-traffic-in": "Bytes received",
-  "peer-traffic-out": "Bytes sent",
 };
 
 function metricLabel(m: string): string {
