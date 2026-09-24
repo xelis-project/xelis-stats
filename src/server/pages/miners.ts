@@ -4,7 +4,7 @@ import { layout } from "../../client/layout";
 import { fmt, fmtInt, shortHash } from "../../client/format";
 import { srvSort, TOP_COLS } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
-import { entityTag, num, PAGE_SIZE, pager } from "./shared";
+import { entityTag, esc, num, PAGE_SIZE, pager } from "./shared";
 
 export const miners = new Hono<{ Bindings: Env }>();
 
@@ -36,6 +36,9 @@ miners.get("/miners", async (c) => {
 
   let rows: Record<string, unknown>[] = [];
   let total = 0;
+  // Human-readable scope of the current view, shown next to the count so a
+  // day/week/month leaderboard isn't mistaken for the all-time one.
+  let rangeLabel = "";
   try {
     if (period === "all") {
       total = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners`)
@@ -44,6 +47,7 @@ miners.get("/miners", async (c) => {
         FROM daily_miners GROUP BY address ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
         .bind(PAGE_SIZE, (page - 1) * PAGE_SIZE)
         .all<Record<string, unknown>>().then((r) => r.results ?? []);
+      rangeLabel = "all time";
     } else if (period === "month") {
       const month = date || new Date().toISOString().slice(0, 7);
       total = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners WHERE date LIKE ? || '%'`)
@@ -52,14 +56,17 @@ miners.get("/miners", async (c) => {
         FROM daily_miners WHERE date LIKE ? || '%' GROUP BY address ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
         .bind(month, PAGE_SIZE, (page - 1) * PAGE_SIZE)
         .all<Record<string, unknown>>().then((r) => r.results ?? []);
+      rangeLabel = month;
     } else if (period === "week") {
+      const anchor = date || new Date().toISOString().slice(0, 10);
       total = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners WHERE date > date(?, '-7 days')`)
-        .bind(date || new Date().toISOString().slice(0, 10))
+        .bind(anchor)
         .first<{ n: number }>().then((r) => num(r?.n)).catch(() => 0);
       rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(rewards_earned) rewards
         FROM daily_miners WHERE date > date(?, '-7 days') GROUP BY address ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
-        .bind(date || new Date().toISOString().slice(0, 10), PAGE_SIZE, (page - 1) * PAGE_SIZE)
+        .bind(anchor, PAGE_SIZE, (page - 1) * PAGE_SIZE)
         .all<Record<string, unknown>>().then((r) => r.results ?? []);
+      rangeLabel = `7 days to ${anchor}`;
     } else {
       const day = date || await latestDay();
       total = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners WHERE date = ?`)
@@ -68,6 +75,7 @@ miners.get("/miners", async (c) => {
         FROM daily_miners WHERE date = ? GROUP BY address ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
         .bind(day, PAGE_SIZE, (page - 1) * PAGE_SIZE)
         .all<Record<string, unknown>>().then((r) => r.results ?? []);
+      rangeLabel = day;
     }
   } catch { /* db not ready */ }
 
@@ -105,8 +113,8 @@ miners.get("/miners", async (c) => {
 
 const content = `<div class="panel">
     <div class="panel-head">
-      <h2>Miner leaderboard</h2>
-      ${filterButton("f-miners", fActive)}
+      <h2>Miner leaderboard <span style="color:var(--text-dim)">${fmtInt(total)} miner${total === 1 ? "" : "s"}${rangeLabel ? ` · ${esc(rangeLabel)}` : ""}</span></h2>
+      ${filterButton("f-miners", fActive, period)}
       ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">

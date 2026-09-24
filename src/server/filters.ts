@@ -11,8 +11,11 @@ const escA = (v: string): string =>
   v.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] as string));
 
 // Filter toggle button for the panel head; `active` marks applied filters.
-export function filterButton(id: string, active: boolean): string {
-  return `<button type="button" class="btn ghost filter-toggle${active ? " on" : ""}" data-filter="${escA(id)}" aria-expanded="false" aria-haspopup="dialog" aria-controls="${escA(id)}" title="Filter this table">${icons.filter} Filter${active ? ' <span class="fdot" aria-hidden="true"></span>' : ""}</button>`;
+// `current` surfaces the active scope (e.g. the default period) so a filtered
+// default view isn't mistaken for an unfiltered one.
+export function filterButton(id: string, active: boolean, current?: string): string {
+  const cur = current ? ` <span class="f-cur">${escA(current)}</span>` : "";
+  return `<button type="button" class="btn ghost filter-toggle${active ? " on" : ""}" data-filter="${escA(id)}" aria-expanded="false" aria-haspopup="dialog" aria-controls="${escA(id)}" title="Filter this table">${icons.filter} Filter${cur}${active ? ' <span class="fdot" aria-hidden="true"></span>' : ""}</button>`;
 }
 
 export interface FilterPopOpts {

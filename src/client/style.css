@@ -657,6 +657,7 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
 .panel-head h2 { margin: 0; }
 .filter-toggle { margin-left: auto; flex: none; padding: 0.45rem 1.1rem; font-size: 1.2rem; }
 .filter-toggle .fdot { width: 0.5em; height: 0.5em; border-radius: 50%; background: currentColor; flex: none; }
+.filter-toggle .f-cur { color: var(--mint); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
 .filter-toggle.on, .filter-toggle:hover { color: var(--mint); border-color: rgba(2, 255, 207, 0.45); }
 .filter-pop {
   position: absolute; top: calc(100% + 0.5rem); right: 0; z-index: 90;
