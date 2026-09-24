@@ -8,7 +8,8 @@
  *   scripts/import_history.mts --tickers=<csv> --chain-size=<csv> [--out=export]
  *
  * market_tickers  -> market_snapshots   (seconds -> ms, venue names canonical,
- *                                        price->last, volume->base_volume)
+ *                                        price->last, volume->base_volume,
+ *                                        quote_volume = price * volume)
  * blockchain_size -> chain_size_snapshots (seconds -> ms, bytes)
  * both            -> exchanges           (name/status/url/added/retired)
  *
@@ -54,6 +55,17 @@ function esc(v: string | null): string {
   return /^-?\d+(\.\d+)?$/.test(v) ? v : `'${v.replace(/'/g, "''")}'`;
 }
 
+// legacy market_tickers has no quote volume; derive it from price * base volume
+// so the quote-volume history series has data before live cron collection began.
+function quoteVolume(price: string, volume: string): string {
+  if (price === "" || volume === "") return "NULL";
+  const p = Number(price);
+  const v = Number(volume);
+  if (!Number.isFinite(p) || !Number.isFinite(v)) return "NULL";
+  // trim binary floating-point noise (e.g. 1851.8249999999998 -> 1851.825)
+  return String(Number((p * v).toPrecision(12)));
+}
+
 function readCsv(path: string): { header: string[]; rows: string[][] } {
   const text = readFileSync(path, "utf8").replace(/^\uFEFF/, "");
   const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
@@ -96,7 +108,7 @@ if (TICKERS_CSV) {
   const { header, rows } = readCsv(TICKERS_CSV);
   const col = (r: string[], n: string): string => r[header.indexOf(n)] ?? "";
   const write = writer(join(OUT_DIR, "market_snapshots.sql"), "market_snapshots",
-    ["ts", "exchange", "market", "last", "high", "low", "base_volume", "source_ts"]);
+    ["ts", "exchange", "market", "last", "high", "low", "base_volume", "quote_volume", "source_ts"]);
   for (const r of rows) {
     const id = col(r, "exchange");
     if (!id) continue;
@@ -104,11 +116,13 @@ if (TICKERS_CSV) {
     if (!Number.isFinite(ts)) continue;
     const v = venue(id);
     const market = `XEL/${col(r, "asset") || QUOTE}`;
+    const price = col(r, "price");
+    const volume = col(r, "volume");
     const b = bounds.get(v.name) ?? { min: ts, max: ts };
     b.min = Math.min(b.min, ts); b.max = Math.max(b.max, ts);
     bounds.set(v.name, b);
-    write.add([String(ts), esc(v.name), esc(market), esc(col(r, "price")), esc(col(r, "high")),
-      esc(col(r, "low")), esc(col(r, "volume")), String(ts)]);
+    write.add([String(ts), esc(v.name), esc(market), esc(price), esc(col(r, "high")),
+      esc(col(r, "low")), esc(volume), quoteVolume(price, volume), String(ts)]);
     tickerCount++;
   }
   write.done();
