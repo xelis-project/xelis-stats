@@ -9,6 +9,48 @@ import { esc, entityTag, blkCopyScript, num, flaggedText } from "./shared";
 
 export const txDetail = new Hono<{ Bindings: Env }>();
 
+// Transfers: the destination address and asset of each transfer are plaintext
+// tx-payload fields; amounts are homomorphically encrypted on-chain (only a
+// ciphertext commitment is public), so the amount column always shows "hidden".
+type TransferEntry = { destination: string; asset: string; payload: boolean };
+const XEL_ASSET_ID = "0".repeat(64);
+type AssetMeta = { name: string | null; symbol: string | null; decimals: number | null };
+
+const parseTransfers = (data: Record<string, unknown>): TransferEntry[] =>
+  (Array.isArray(data.transfers) ? (data.transfers as Array<Record<string, unknown>>) : [])
+    .map((tr) => ({
+      destination: typeof tr.destination === "string" ? tr.destination : "",
+      asset: typeof tr.asset === "string" ? tr.asset : "",
+      payload: tr.extra_data != null,
+    }));
+
+// asset cell: native XEL is a plain badge; tokens use the registered symbol
+// when known and the truncated id otherwise, linking to the assets search
+const assetCellHtml = (assetId: string, meta: Map<string, AssetMeta>): string => {
+  if (!assetId) return '<span style="color:var(--text-dim)">—</span>';
+  if (assetId === XEL_ASSET_ID) return '<span class="badge">XEL</span>';
+  const symbol = meta.get(assetId)?.symbol;
+  const label = symbol ? flaggedText(symbol) : shortHash(assetId, 6);
+  return `<a class="mono" href="/assets?q=${esc(assetId)}">${label}</a>`;
+};
+
+const transfersPanelHtml = (list: TransferEntry[], meta: Map<string, AssetMeta> = new Map()): string => {
+  if (!list.length) return "";
+  const rows = list.map((tr, i) => `<tr>
+    <td class="num">${i + 1}</td>
+    <td>${tr.destination
+      ? `<a class="mono" href="/account/${esc(tr.destination)}">${shortHash(tr.destination, 10)}</a>${entityTag(tr.destination)} <button class="copybtn" type="button" onclick="blkCopy('${esc(tr.destination)}', this)">copy</button>`
+      : '<span style="color:var(--text-dim)">—</span>'}</td>
+    <td>${assetCellHtml(tr.asset, meta)}</td>
+    <td><span class="badge priv" title="Amount is encrypted on-chain">hidden</span>${tr.payload ? ' <span class="badge priv" title="Encrypted transfer payload attached">payload</span>' : ""}</td>
+  </tr>`).join("");
+  return `<div class="panel"><h2>Transfers <span style="color:var(--text-dim)">${fmtInt(list.length)} · receivers public, amounts encrypted</span></h2>
+    <div class="tablewrap"><table>
+      <thead><tr><th class="num">#</th><th>Destination</th><th>Asset</th><th>Amount</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div></div>`;
+};
+
 txDetail.get("/tx/:hash", async (c) => {
   const hash = c.req.param("hash");
   const db = c.env.DB;
@@ -95,12 +137,15 @@ txDetail.get("/tx/:hash", async (c) => {
 
         const payloadPanel = `<div class="panel"><h2>Payload <span style="color:var(--text-dim)">(public fields)</span></h2><pre class="json-pre">${esc(payload)}</pre></div>`;
 
+        const transfersPanel = transfersPanelHtml(parseTransfers(data));
+
         const content = `${hero}
           ${overview}
+          ${transfersPanel}
           ${payloadPanel}
           <div class="tx-note">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            <span>Transfer amounts and receivers are encrypted; only verified public metadata is shown. This transaction is served straight from the node and is not indexed yet.</span>
+            <span>Transfer amounts are encrypted; receivers and assets are public metadata shown above. This transaction is served straight from the node and is not indexed yet.</span>
           </div>
           <script>${blkCopyScript}</script>`;
         return c.html(layout(`TX ${shortHash(hash, 8)}`, content, "/transactions"));
@@ -109,8 +154,8 @@ txDetail.get("/tx/:hash", async (c) => {
     return c.html(layout("Not found", notFound("Transaction"), "/transactions"));
   }
 
-  // Transfer amounts and receivers are encrypted on mainnet; only asset
-  // involvement is public.
+  // Transfer amounts are encrypted on mainnet; destinations and asset
+  // involvement are public.
   const topo = num(tx.block_topo);
   const ts = num(tx.ts);
   const fee = num(tx.fee);
@@ -138,6 +183,16 @@ txDetail.get("/tx/:hash", async (c) => {
   const contractId = String(tx.contract_id ?? "") || (txType === "deploy_contract" ? hash : "");
   const gas = num(tx.gas);
   const feeRate = fee > 0 && size > 0 ? `${atomic((fee * 1024) / size, 5)} XEL / kB` : "";
+
+  // transfers list: only the count is indexed; destinations and assets are
+  // public in the tx payload, so fetch the list live from the node (best effort)
+  let transfers: TransferEntry[] = [];
+  if (num(tx.transfer_count) > 0 || txType === "transfer" || txType === "multisig") {
+    try {
+      const t = await rpc<Record<string, unknown>>("get_transaction", { hash });
+      transfers = parseTransfers(((t.data ?? {}) as Record<string, unknown>));
+    } catch { /* node unreachable: page degrades to public metadata only */ }
+  }
 
   // context queries (best-effort; page degrades gracefully)
   let maxTopo: number | null = null;
@@ -204,7 +259,7 @@ txDetail.get("/tx/:hash", async (c) => {
       : tx.multisig
         ? statCard("Multisig", "yes", "threshold in payload")
         : txType === "transfer"
-          ? statCard("Transfers", fmtInt(tx.transfer_count as number), "receivers encrypted")
+          ? statCard("Transfers", fmtInt(tx.transfer_count as number), "amounts encrypted on-chain")
           : statCard("Version", `v${num(tx.version)}`, "payload format");
 
   const hero = `<div class="panel blk-hero">
@@ -244,7 +299,7 @@ txDetail.get("/tx/:hash", async (c) => {
     <tr><td>Version</td><td>v${num(tx.version)}</td></tr>
     <tr><td>Privacy</td><td>${isBurn
       ? '<span class="badge burn">public burn</span> <span style="color:var(--text-dim)">burn amount &amp; asset are public; balances stay encrypted</span>'
-      : '<span class="badge priv">encrypted</span> <span style="color:var(--text-dim)">amounts &amp; receivers hidden</span>'}</td></tr>
+      : '<span class="badge priv">encrypted</span> <span style="color:var(--text-dim)">amounts &amp; balances hidden; receivers public</span>'}</td></tr>
   </table></div>`;
 
   const statusPanel = `<div class="panel"><h2>Status &amp; Cost</h2><table class="kv">
@@ -305,6 +360,8 @@ txDetail.get("/tx/:hash", async (c) => {
     <td class="num">${a.decimals !== null && a.decimals !== undefined ? fmtInt(a.decimals) : "—"}</td>
   </tr>`).join("");
 
+  const transfersPanel = transfersPanelHtml(transfers, new Map(assetRows.map((a) => [a.asset_id, a])));
+
   const assetsPanel = assetRows.length
     ? `<div class="panel"><h2>Assets Involved <span style="color:var(--text-dim)">(${assetRows.length})</span></h2>
        <div class="tablewrap"><table>
@@ -334,6 +391,7 @@ txDetail.get("/tx/:hash", async (c) => {
 
   const content = `${hero}
     <div class="grid-2">${overview}${statusPanel}</div>
+    ${transfersPanel}
     ${contractPanel}
     ${logsPanel}
     ${assetsPanel}
@@ -342,7 +400,7 @@ txDetail.get("/tx/:hash", async (c) => {
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
       <span>${isBurn
         ? "Burn transactions are public on Xelis: the burned amount and asset are visible to everyone. Wallet balances and transfer amounts stay encrypted."
-        : "Xelis is private by design: transfer amounts, receivers and balances are encrypted for everyone — including this explorer. This page shows only the public metadata indexed from the chain."}</span>
+        : "Xelis is private by design: transfer amounts and balances are encrypted for everyone — including this explorer. Receiver addresses and asset ids are public metadata; only the amounts stay hidden."}</span>
     </div>
     <script>${blkCopyScript}</script>`;
   return c.html(layout(`TX ${shortHash(hash, 8)}`, content, "/transactions"));
