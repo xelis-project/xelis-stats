@@ -34,18 +34,26 @@ function initChartsHub(): void {
     return { type: selType?.value === "bar" ? "bar" : "line", log: !!chkLog?.checked };
   }
 
+  function showEmpty(): void {
+    chartTarget.innerHTML = '<p style="color:var(--text-dim)">No data for this range yet.</p>';
+  }
+
   function draw(): void {
     const m = selMetric!.value;
     const o = renderOpts();
     const useCum = !!chkCum?.checked;
     const m2 = selCompare?.value ?? "";
+    const s1 = useCum ? cumulativePoints(data1) : data1;
     if (m2 && m2 !== m && data2) {
+      const s2 = useCum ? cumulativePoints(data2) : data2;
+      if (!s1.length && !s2.length) { showEmpty(); return; }
       renderCompare(chartTarget, [
-        { label: m, points: useCum ? cumulativePoints(data1) : data1 },
-        { label: m2, points: useCum ? cumulativePoints(data2) : data2 },
+        { label: m, points: s1 },
+        { label: m2, points: s2 },
       ], { ...o, fmt: metricFormatter(m) });
     } else {
-      renderChart(chartTarget, useCum ? cumulativePoints(data1) : data1, m, metricFormatter(m), o);
+      if (!s1.length) { showEmpty(); return; }
+      renderChart(chartTarget, s1, m, metricFormatter(m), o);
     }
   }
 
