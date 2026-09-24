@@ -43,6 +43,7 @@ transactions.get("/transactions", async (c) => {
   let total = 0;
   let hasPrev = false;
   let hasNext = false;
+  let lastCur: string | null = null;
   try {
     total = await countRaw(c.env, { table: "tx_index", extra, floorCol: "block_topo" });
     if (keyset) {
@@ -64,6 +65,21 @@ transactions.get("/transactions", async (c) => {
         rows = desc.slice(0, PAGE_SIZE);
         hasNext = desc.length > PAGE_SIZE;
         hasPrev = !!cursor;
+      }
+      // Terminal cursor for the "Last" link: walk the `tail` oldest rows from
+      // the bottom of the (block_topo, hash) order; the newest of them is the
+      // exclusive boundary whose "older" page is the final one.
+      if (hasNext) {
+        const tail = total % PAGE_SIZE || PAGE_SIZE;
+        const bottom = await pagedCompositeRaw(c.env, {
+          table: "tx_index", select: "*",
+          cols: [{ col: "block_topo", dir: "DESC" }, { col: "hash", dir: "DESC" }],
+          cursor: [-1, ""], limit: tail + 1, direction: "newer", extra,
+        });
+        if (bottom.length > tail) {
+          const b = bottom[bottom.length - 1];
+          lastCur = `${b.block_topo}:${b.hash}`;
+        }
       }
     } else {
       rows = await topNRaw(c.env, {
@@ -95,6 +111,7 @@ transactions.get("/transactions", async (c) => {
         first: hasPrev ? qlink({}) : null,
         prev: hasPrev && rows.length ? qlink({ cur: curOf(rows[0]), newer: "1" }) : null,
         next: hasNext && rows.length ? qlink({ cur: curOf(rows[rows.length - 1]) }) : null,
+        last: lastCur ? qlink({ cur: lastCur }) : null,
         info: rows.length ? `Block ${rows[rows.length - 1].block_topo}–${rows[0].block_topo}` : "No transactions",
       })
     : pager(srt.link(srt.key, srt.dir), page, totalPages);
