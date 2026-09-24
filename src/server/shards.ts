@@ -40,7 +40,7 @@ const SHARD_SCHEMA = [
   "CREATE INDEX IF NOT EXISTS idx_blocks_hash ON blocks(hash)",
   "CREATE INDEX IF NOT EXISTS idx_blocks_ts ON blocks(ts)",
   "CREATE INDEX IF NOT EXISTS idx_blocks_miner ON blocks(miner_address)",
-  // sort indexes mirrored from migrations/0006_sort_indexes.sql
+  // sort indexes mirrored from migrations/0001_init.sql
   "CREATE INDEX IF NOT EXISTS idx_blocks_ts_topo ON blocks(ts, topoheight)",
   "CREATE INDEX IF NOT EXISTS idx_blocks_tx_count_topo ON blocks(tx_count, topoheight)",
   "CREATE INDEX IF NOT EXISTS idx_blocks_difficulty_topo ON blocks(difficulty, topoheight)",
@@ -55,7 +55,7 @@ const SHARD_SCHEMA = [
   "CREATE INDEX IF NOT EXISTS idx_tx_block ON tx_index(block_topo)",
   "CREATE INDEX IF NOT EXISTS idx_tx_sender ON tx_index(sender)",
   "CREATE INDEX IF NOT EXISTS idx_tx_type_ts ON tx_index(tx_type, ts)",
-  // sort/keyset indexes mirrored from migrations/0006_sort_indexes.sql
+  // sort/keyset indexes mirrored from migrations/0001_init.sql
   "CREATE INDEX IF NOT EXISTS idx_tx_block_hash ON tx_index(block_topo, hash)",
   "CREATE INDEX IF NOT EXISTS idx_tx_ts_hash ON tx_index(ts, hash)",
   "CREATE INDEX IF NOT EXISTS idx_tx_fee_hash ON tx_index(fee, hash)",

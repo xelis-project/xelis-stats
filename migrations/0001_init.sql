@@ -1,5 +1,5 @@
 -- Xelis Stats — D1 schema (Cloudflare live side)
--- Consolidated init schema (merges former 0001–0004 migrations).
+-- Consolidated init schema (merges former 0001–0006 migrations).
 -- sync state: separate per-stage checkpoints
 CREATE TABLE IF NOT EXISTS sync_state (
   stage TEXT PRIMARY KEY,
@@ -22,6 +22,18 @@ CREATE INDEX IF NOT EXISTS idx_blocks_hash ON blocks(hash);
 CREATE INDEX IF NOT EXISTS idx_blocks_ts ON blocks(ts);
 -- per-address miner lookups (miner profile page, account page, search)
 CREATE INDEX IF NOT EXISTS idx_blocks_miner ON blocks(miner_address);
+-- Composite sort indexes. The list pages sort with a stable
+-- `ORDER BY <col> <dir>, <tiebreak> <dir>` (the tiebreak follows the sort
+-- direction). Without a matching index SQLite does a full scan plus a temp
+-- B-tree sort (tens of seconds over millions of rows); with it the query is an
+-- ordered index scan that stops after the page size. A `(sort key, tiebreak)`
+-- index serves ASC via a forward scan and DESC via a reverse scan. These are
+-- mirrored in SHARD_SCHEMA (src/server/shards.ts) for newly created shards.
+CREATE INDEX IF NOT EXISTS idx_blocks_ts_topo ON blocks(ts, topoheight);
+CREATE INDEX IF NOT EXISTS idx_blocks_tx_count_topo ON blocks(tx_count, topoheight);
+CREATE INDEX IF NOT EXISTS idx_blocks_difficulty_topo ON blocks(difficulty, topoheight);
+CREATE INDEX IF NOT EXISTS idx_blocks_reward_topo ON blocks(miner_reward, topoheight);
+CREATE INDEX IF NOT EXISTS idx_blocks_type_topo ON blocks(block_type, topoheight);
 
 CREATE TABLE IF NOT EXISTS tx_index (
   hash TEXT PRIMARY KEY, block_topo INTEGER, ts INTEGER,
@@ -36,6 +48,14 @@ CREATE TABLE IF NOT EXISTS tx_index (
 CREATE INDEX IF NOT EXISTS idx_tx_block ON tx_index(block_topo);
 CREATE INDEX IF NOT EXISTS idx_tx_sender ON tx_index(sender);
 CREATE INDEX IF NOT EXISTS idx_tx_type_ts ON tx_index(tx_type, ts);
+-- tx_index default order is block_topo DESC, hash DESC; the composite index is
+-- both the sort index and the keyset cursor for deep transaction browsing.
+CREATE INDEX IF NOT EXISTS idx_tx_block_hash ON tx_index(block_topo, hash);
+CREATE INDEX IF NOT EXISTS idx_tx_ts_hash ON tx_index(ts, hash);
+CREATE INDEX IF NOT EXISTS idx_tx_fee_hash ON tx_index(fee, hash);
+CREATE INDEX IF NOT EXISTS idx_tx_type_hash ON tx_index(tx_type, hash);
+CREATE INDEX IF NOT EXISTS idx_tx_sender_hash ON tx_index(sender, hash);
+CREATE INDEX IF NOT EXISTS idx_tx_executed_hash ON tx_index(executed, hash);
 
 -- Public asset involvement per tx (ids only; amounts are encrypted)
 CREATE TABLE IF NOT EXISTS tx_assets (
@@ -102,6 +122,29 @@ CREATE TABLE IF NOT EXISTS tx_contracts (
 );
 CREATE INDEX IF NOT EXISTS idx_tx_contracts_cid ON tx_contracts(contract_id);
 
+-- D1 sharding support (10GB per-database hardcap workaround).
+-- Raw chain tables (blocks, tx_index, tx_assets, tx_contracts) are migrated out
+-- of this database into per-range shard databases once the 10GB cap nears.
+-- The shards table is the routing registry; hotFloor = max(last_topo) of sealed
+-- shards; topos <= hotFloor live in shards, everything newer lives here.
+CREATE TABLE IF NOT EXISTS shards (
+  id INTEGER PRIMARY KEY,
+  name TEXT UNIQUE,
+  db_id TEXT NOT NULL,
+  first_topo INTEGER NOT NULL,
+  last_topo INTEGER,             -- cut target while open; final bound once sealed
+  copied_topo INTEGER NOT NULL DEFAULT 0,
+  first_ts INTEGER, last_ts INTEGER,
+  sealed INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_shards_topo ON shards(first_topo, last_topo);
+
+-- Point-lookup routing (hash -> topo) so tx/block detail pages hit exactly one
+-- database. Written at ingest; backfilled lazily on first lookup miss.
+CREATE TABLE IF NOT EXISTS tx_route (hash TEXT PRIMARY KEY, block_topo INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS block_route (hash TEXT PRIMARY KEY, topoheight INTEGER NOT NULL);
+
 -- entities
 CREATE TABLE IF NOT EXISTS assets (
   asset_id TEXT PRIMARY KEY, name TEXT, symbol TEXT, decimals INTEGER, first_seen_topo INTEGER
@@ -120,7 +163,30 @@ CREATE TABLE IF NOT EXISTS market_snapshots (
 CREATE INDEX IF NOT EXISTS idx_market_ts ON market_snapshots(ts);
 CREATE INDEX IF NOT EXISTS idx_market_ex ON market_snapshots(exchange, ts);
 
+-- Exchange registry: lifecycle + display metadata for the market feeds.
+-- Seeded by scripts/import_history.mts from the legacy Postgres market history;
+-- venues live in src/server/market/sources.ts are 'active'. status is one of
+-- 'active' | 'inactive'. added_ts/retired_ts are market-snapshot timestamps (ms)
+-- bounding the data we hold, so the charts page can order and label venues.
+CREATE TABLE IF NOT EXISTS exchanges (
+  name TEXT PRIMARY KEY,
+  status TEXT NOT NULL DEFAULT 'active',
+  url TEXT,
+  added_ts INTEGER,
+  retired_ts INTEGER,
+  notes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_exchanges_status ON exchanges(status);
+
 CREATE TABLE IF NOT EXISTS mempool_snapshots (ts INTEGER PRIMARY KEY, size INTEGER);
+
+-- On-disk chain (database) size snapshots, from the node's get_size_on_disk
+-- RPC. Recorded by the cron alongside mempool/peer snapshots so the blockchain
+-- size can be charted over time; the newest row is also the "current" size.
+CREATE TABLE IF NOT EXISTS chain_size_snapshots (
+  ts INTEGER PRIMARY KEY,
+  size_bytes INTEGER
+);
 
 -- peers
 CREATE TABLE IF NOT EXISTS peer_snapshots (
@@ -134,3 +200,8 @@ CREATE TABLE IF NOT EXISTS node_versions (date TEXT, version TEXT, peer_count IN
 -- hourly tag / IP-prefix concentration rollups
 CREATE TABLE IF NOT EXISTS daily_peer_tags (date TEXT, tag TEXT, peers INTEGER, PRIMARY KEY (date, tag));
 CREATE TABLE IF NOT EXISTS daily_peer_prefixes (date TEXT, prefix TEXT, peers INTEGER, PRIMARY KEY (date, prefix));
+-- hourly peer country concentration from GeoIP (aggregates only, no raw addresses stored)
+CREATE TABLE IF NOT EXISTS daily_peer_countries (
+  date TEXT, country TEXT, country_code TEXT, peers INTEGER,
+  PRIMARY KEY (date, country)
+);
