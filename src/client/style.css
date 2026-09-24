@@ -139,6 +139,20 @@ header.site .status.off .dot::after { animation: none; opacity: 0; }
   75%, 100% { transform: scale(2.8); opacity: 0; }
 }
 
+/* Footer */
+footer.site {
+  display: flex; align-items: center; gap: 1.6rem; flex-wrap: wrap;
+  margin-top: 4rem; padding: 1.8rem 0.4rem 0;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim); font-size: 1.2rem;
+}
+footer.site .footer-brand { display: flex; align-items: center; gap: 0.7rem; font-weight: 700; font-size: 1.4rem; }
+footer.site .footer-brand svg { width: 1.8rem; height: 1.8rem; color: var(--mint); }
+footer.site .footer-links { display: flex; gap: 1.6rem; }
+footer.site .footer-links a { font-size: 1.25rem; font-weight: 600; color: var(--text-dim); }
+footer.site .footer-links a:hover { color: var(--mint); }
+footer.site .footer-copy { margin-left: auto; color: var(--text-dim); }
+
 /* Search */
 .searchbox {
   display: flex; align-items: center; gap: 0.7rem; cursor: pointer;
@@ -548,6 +562,8 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
   header.site .status { order: 1; margin-left: auto; padding: 0.4rem 0.9rem; font-size: 1rem; }
   .search-overlay { padding-top: 12vh; }
   .pager { flex-wrap: wrap; justify-content: center; }
+  footer.site { gap: 1rem 1.4rem; }
+  footer.site .footer-copy { margin-left: 0; flex-basis: 100%; }
   .kv td:first-child { width: auto; }
   .panel { padding: 1.2rem; }
 }

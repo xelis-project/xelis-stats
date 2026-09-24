@@ -40,6 +40,16 @@ export function layout(title: string, content: string, active: string, bodyClass
       <div class="status connecting" id="ws-status"><span class="dot" id="ws-dot"></span><span id="ws-label">connecting</span></div>
     </header>
     <main id="main">${content}</main>
+    <footer class="site">
+      <a class="footer-brand" href="/">${XEL_LOGO}<span>XELIS&nbsp;<span style="color:var(--mint)">STATS</span></span></a>
+      <nav class="footer-links">
+        <a href="/api/docs">API</a>
+        <a href="/status">Status</a>
+        <a href="/charts">Charts</a>
+        <a href="/miners">Miners</a>
+      </nav>
+      <div class="footer-copy">© ${new Date().getFullYear()} Xelis Stats · Data from the Xelis network</div>
+    </footer>
     <div class="search-overlay" id="search-overlay" hidden>
       <div class="search-pop" role="dialog" aria-modal="true">
         <form class="searchbox" onsubmit="return handleSearch(event)">
