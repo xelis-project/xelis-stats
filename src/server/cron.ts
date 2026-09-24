@@ -87,7 +87,7 @@ export async function snapshotPeers(
         const prefix = host.includes(".") ? host.split(".").slice(0, 2).join(".") : host.split(":").slice(0, 2).join(":");
         prefixes.set(prefix, (prefixes.get(prefix) ?? 0) + 1);
       }
-      const tagStmts = [...tags.entries()].filter(([, n]) => n >= 2).map(([tag, n]) =>
+      const tagStmts = [...tags.entries()].map(([tag, n]) =>
         env.DB.prepare("INSERT OR REPLACE INTO daily_peer_tags (date, tag, peers) VALUES (?, ?, ?)").bind(date, tag.slice(0, 64), n)
       );
       const prefixStmts = [...prefixes.entries()].filter(([, n]) => n >= 2).map(([prefix, n]) =>
