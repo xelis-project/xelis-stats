@@ -146,10 +146,16 @@ export class StatsCollector {
             `INSERT INTO daily_block_types (date, block_type, count) VALUES (?, ?, 1)
              ON CONFLICT(date, block_type) DO UPDATE SET count = count + 1`).bind(day, String(b.block_type ?? "normal")));
           if (b.miner) {
+            const reward = Number(b.miner_reward ?? 0);
+            // blocks_found counts every type; side/sync break out the non-normal
+            // share for the miners leaderboard columns.
+            const bt = String(b.block_type ?? "normal").toLowerCase();
+            const side = bt === "side" ? 1 : 0;
+            const sync = bt === "sync" ? 1 : 0;
             inserts.push(this.env.DB.prepare(
-              `INSERT INTO daily_miners (date, address, blocks_found, rewards_earned) VALUES (?, ?, 1, ?)
-               ON CONFLICT(date, address) DO UPDATE SET blocks_found = blocks_found + 1, rewards_earned = rewards_earned + ?`)
-              .bind(day, String(b.miner), Number(b.miner_reward ?? 0), Number(b.miner_reward ?? 0)));
+              `INSERT INTO daily_miners (date, address, blocks_found, rewards_earned, side_count, sync_count) VALUES (?, ?, 1, ?, ?, ?)
+               ON CONFLICT(date, address) DO UPDATE SET blocks_found = blocks_found + 1, rewards_earned = rewards_earned + ?, side_count = side_count + ?, sync_count = sync_count + ?`)
+              .bind(day, String(b.miner), reward, side, sync, reward, side, sync));
           }
         }
         await this.env.DB.batch(inserts);

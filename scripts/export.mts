@@ -181,9 +181,12 @@ const AGG_JOBS: Array<[string, string, string[], string]> = [
             emitted_supply, burned_supply,
             emitted_supply - burned_supply AS circulating_supply
      FROM cumulative ORDER BY date`],
-  ["daily_miners", "daily_miners", ["date", "address", "blocks_found", "rewards_earned"],
+  ["daily_miners", "daily_miners", ["date", "address", "blocks_found", "rewards_earned", "side_count", "sync_count"],
     `SELECT date(ts/1000,'unixepoch') date, miner_address address, COUNT(*) blocks_found,
-            SUM(miner_reward) rewards_earned FROM blocks WHERE miner_address != '' GROUP BY 1,2 ORDER BY 1`],
+            SUM(miner_reward) rewards_earned,
+            SUM(CASE WHEN LOWER(block_type) = 'side' THEN 1 ELSE 0 END) side_count,
+            SUM(CASE WHEN LOWER(block_type) = 'sync' THEN 1 ELSE 0 END) sync_count
+     FROM blocks WHERE miner_address != '' GROUP BY 1,2 ORDER BY 1`],
   ["daily_block_types", "daily_block_types", ["date", "block_type", "count"],
     `SELECT date(ts/1000,'unixepoch') date, block_type, COUNT(*) count FROM blocks GROUP BY 1,2 ORDER BY 1`],
   ["accounts", "accounts", ["address", "first_seen", "last_active", "tx_count"],

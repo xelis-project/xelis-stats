@@ -78,6 +78,7 @@ CREATE TABLE IF NOT EXISTS daily_block_types (
 
 CREATE TABLE IF NOT EXISTS daily_miners (
   date TEXT, address TEXT, blocks_found INTEGER, rewards_earned INTEGER,
+  side_count INTEGER NOT NULL DEFAULT 0, sync_count INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (date, address)
 );
 
@@ -129,6 +130,9 @@ function migrate(): void {
   db.exec("UPDATE tx_index SET executed = 1 WHERE executed IS NULL AND block_topo IS NOT NULL");
   try { db.exec("CREATE TABLE IF NOT EXISTS tx_assets (tx_hash TEXT, asset TEXT); CREATE INDEX IF NOT EXISTS idx_tx_assets_asset ON tx_assets(asset);"); } catch { /* exists */ }
   try { db.exec("CREATE TABLE IF NOT EXISTS tx_contracts (tx_hash TEXT PRIMARY KEY, contract_id TEXT, max_gas INTEGER); CREATE INDEX IF NOT EXISTS idx_tx_contracts_cid ON tx_contracts(contract_id);"); } catch { /* exists */ }
+  const mcols = (db.prepare("PRAGMA table_info(daily_miners)").all() as Array<{ name: string }>).map((c) => c.name);
+  if (!mcols.includes("side_count")) db.exec("ALTER TABLE daily_miners ADD COLUMN side_count INTEGER NOT NULL DEFAULT 0");
+  if (!mcols.includes("sync_count")) db.exec("ALTER TABLE daily_miners ADD COLUMN sync_count INTEGER NOT NULL DEFAULT 0");
   try { db.exec("CREATE TABLE IF NOT EXISTS contracts (contract_id TEXT PRIMARY KEY, deployer TEXT, deploy_topo INTEGER, invoke_count INTEGER, gas_total INTEGER, events_count INTEGER);"); } catch { /* exists */ }
   // contract ids are the TXIDs of their deploy transactions; repair deploys
   // indexed before that was known, and register them
@@ -289,11 +293,13 @@ const upsertContractInvoke = db.prepare(`
     gas_total = gas_total + ?
 `);
 const upsertDailyMiner = db.prepare(`
-  INSERT INTO daily_miners (date, address, blocks_found, rewards_earned)
-  VALUES (?, ?, 1, ?)
+  INSERT INTO daily_miners (date, address, blocks_found, rewards_earned, side_count, sync_count)
+  VALUES (?, ?, 1, ?, ?, ?)
   ON CONFLICT(date, address) DO UPDATE SET
     blocks_found = blocks_found + 1,
-    rewards_earned = rewards_earned + ?
+    rewards_earned = rewards_earned + ?,
+    side_count = side_count + ?,
+    sync_count = sync_count + ?
 `);
 const upsertDailyBlockType = db.prepare(`
   INSERT INTO daily_block_types (date, block_type, count)
@@ -329,8 +335,11 @@ String(b.cumulative_difficulty ?? ""), JSON.stringify(b.tips ?? []),
   if (b.miner) {
     const day = dayOf(tsMs);
     const reward = Number(b.miner_reward ?? 0);
+    const bt = blockType.toLowerCase();
+    const side = bt === "side" ? 1 : 0;
+    const sync = bt === "sync" ? 1 : 0;
     upsertAccountNoCount.run(String(b.miner), tsMs, tsMs, tsMs);
-    upsertDailyMiner.run(day, String(b.miner), reward, reward);
+    upsertDailyMiner.run(day, String(b.miner), reward, side, sync, reward, side, sync);
     upsertDailyBlockType.run(day, blockType);
   }
 }

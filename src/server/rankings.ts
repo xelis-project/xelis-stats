@@ -38,7 +38,7 @@ function whereFor(period: Period, date: string | null): { dim: string; binds: un
 // ORDER BY is injected from the ?sort whitelist in TOP_COLS so every column
 // sorts over the full period dataset before the limit applies
 const QUERIES: Record<string, (dim: string) => string> = {
-  miners: (dim) => `SELECT address, SUM(blocks_found) blocks, SUM(rewards_earned) rewards FROM daily_miners ${dim} GROUP BY address`,
+  miners: (dim) => `SELECT address, SUM(blocks_found) blocks, SUM(sync_count) sync, SUM(side_count) side, SUM(rewards_earned) rewards FROM daily_miners ${dim} GROUP BY address`,
   senders: (dim) => `SELECT address, SUM(tx_count) tx_count, SUM(transfer_outputs) transfer_outputs FROM daily_address_stats ${dim} GROUP BY address`,
   burners: (dim) => `SELECT address, SUM(burned) burned FROM daily_address_stats ${dim} GROUP BY address`,
   assets: (dim) => `SELECT da.asset_id, a.symbol, SUM(da.tx_count) tx_count, SUM(da.transfer_count) transfers FROM daily_assets da LEFT JOIN assets a ON a.asset_id = da.asset_id ${dim ? dim.replace("WHERE", "WHERE da.") : ""} GROUP BY da.asset_id`,
