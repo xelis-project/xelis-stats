@@ -5,6 +5,7 @@ import { fmtInt, shortHash } from "../../client/format";
 import { srvSort } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
 import { esc } from "./shared";
+import { PAGE_SIZE, pager } from "./shared";
 import { fetchBlock, fetchTx } from "../shards";
 
 export const assets = new Hono<{ Bindings: Env }>();
@@ -25,12 +26,23 @@ assets.get("/assets", async (c) => {
     return qs ? `/assets?${qs}` : "/assets";
   });
   let rows: Record<string, unknown>[] = [];
+  let total = 0;
+  const pageRaw = Number(c.req.query("page") ?? 1);
+  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1;
   try {
     const where = q ? "WHERE (name LIKE ? OR symbol LIKE ? OR asset_id LIKE ?)" : "";
     const binds = q ? [`%${q}%`, `%${q}%`, `%${q}%`] : [];
-    rows = await c.env.DB.prepare(`SELECT * FROM assets ${where} ORDER BY ${srt.order} LIMIT 100`)
+    total = (await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM assets ${where}`)
+      .bind(...binds).first<{ n: number }>())?.n ?? 0;
+    rows = await c.env.DB.prepare(`SELECT * FROM assets ${where} ORDER BY ${srt.order} LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}`)
       .bind(...binds).all<Record<string, unknown>>().then((r) => r.results ?? []);
   } catch { /* table empty or missing */ }
+  const p = new URLSearchParams();
+  if (q) p.set("q", q);
+  if (srt.qs) for (const [k, v] of new URLSearchParams(srt.qs)) p.set(k, v);
+  const pq = p.toString();
+  const pagerBase = pq ? `/assets?${pq}` : "/assets";
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const fFields = `
     ${filterField("Search", `<input type="text" name="q" placeholder="name, symbol or asset id" value="${esc(q)}" maxlength="64" />`)}
@@ -52,13 +64,15 @@ assets.get("/assets", async (c) => {
 
   const content = `<div class="panel">
     <div class="panel-head">
-      <h2>Assets <span style="color:var(--text-dim)">showing ${fmtInt(rows.length)} of indexed</span></h2>
+      <h2>Assets <span style="color:var(--text-dim)">${fmtInt(total)} total</span></h2>
       ${filterButton("f-assets", !!q)}
       ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
     <thead><tr>${srt.th("asset", "Asset ID")}${srt.th("name", "Name")}${srt.th("symbol", "Symbol")}${srt.th("decimals", "Decimals", true)}${srt.th("first", "First seen (topo)", true)}</tr></thead>
-    <tbody>${body}</tbody></table></div></div>`;
+    <tbody>${body}</tbody></table></div>
+    ${pager(pagerBase, page, totalPages)}
+  </div>`;
   return c.html(layout("Assets", content, "/assets"));
 });
 
