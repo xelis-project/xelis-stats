@@ -213,6 +213,5 @@
       "kind": "pool",
       "link": "https://7pool.net/xelis/"
     }
-  ],
-  "_entities_help": "Add known addresses here: { \"address\": \"xel:...\", \"label\": \"MEXC Hot Wallet\", \"kind\": \"exchange\" }. Powers account badges and exchange flow tagging."
+  ]
 }
