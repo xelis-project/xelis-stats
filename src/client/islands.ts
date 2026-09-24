@@ -187,6 +187,7 @@ function initMarket(): void {
 
   let loaded = false;
   let histLoaded = false;
+  let volLoaded = false;
 
   function marketError(): void {
     if (loaded) return;
@@ -195,6 +196,8 @@ function initMarket(): void {
     table!.innerHTML = '<tr><td colspan="11" style="color:var(--text-dim)">Market data unavailable, retrying…</td></tr>';
     const hist = document.getElementById("u-price-history");
     if (hist && !histLoaded) hist.innerHTML = '<p class="w-empty">Failed to load series.</p>';
+    const vol = document.getElementById("u-volume-history");
+    if (vol && !volLoaded) vol.innerHTML = '<p class="w-empty">Failed to load series.</p>';
   }
 
   async function load(): Promise<void> {
@@ -261,6 +264,11 @@ function initMarket(): void {
       const hist = await fetch("/api/history/price?range=30d&interval=day").then((r) => r.json()) as { points: SeriesPoint[] };
       const el = document.getElementById("u-price-history");
       if (el && hist.points.length) { histLoaded = true; renderChart(el, hist.points, "XEL/USDT"); }
+
+      // 24h quote volume history chart
+      const vol = await fetch("/api/history/quote-volume?range=30d&interval=day").then((r) => r.json()) as { points: SeriesPoint[] };
+      const volEl = document.getElementById("u-volume-history");
+      if (volEl && vol.points.length) { volLoaded = true; renderChart(volEl, vol.points, "24h volume", fmtAuto, { type: "bar", accent: "gold" }); }
     } catch {
       marketError();
     }
