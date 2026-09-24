@@ -41,8 +41,14 @@ charts.get("/charts", async (c) => {
   const exchangeParam = (c.req.query("exchange") ?? "").replace(/[^\w .-]/g, "").slice(0, 64);
   let exchanges: string[] = [];
   try {
-    const rows = await c.env.DB.prepare("SELECT DISTINCT exchange FROM market_snapshots ORDER BY exchange").all<{ exchange: string }>();
-    exchanges = (rows.results ?? []).map((r) => r.exchange).filter((e) => e && e.length <= 64);
+    // registry first (curated order, active feeds ahead of retired ones), with a
+    // fallback to whatever the snapshots contain if it hasn't been seeded
+    const rows = await c.env.DB.prepare("SELECT name FROM exchanges ORDER BY (status = 'active') DESC, name").all<{ name: string }>();
+    exchanges = (rows.results ?? []).map((r) => r.name).filter((e) => e && e.length <= 64);
+    if (!exchanges.length) {
+      const distinct = await c.env.DB.prepare("SELECT DISTINCT exchange FROM market_snapshots ORDER BY exchange").all<{ exchange: string }>();
+      exchanges = (distinct.results ?? []).map((r) => r.exchange).filter((e) => e && e.length <= 64);
+    }
   } catch { /* db not ready */ }
   const exchange = exchanges.includes(exchangeParam) ? exchangeParam : "";
   const exchangeOpts = ['<option value="">all exchanges</option>', ...exchanges.map((e) => `<option value="${e}" ${exchange === e ? "selected" : ""}>${e}</option>`)].join("");

@@ -1,0 +1,165 @@
+/**
+ * Import legacy Postgres market + chain-size history into D1 SQL files.
+ *
+ * Source CSVs (produced once from the old cluster via COPY, see README) are
+ * transformed into the current D1 schema and written next to the other export
+ * artifacts for `wrangler d1 execute --file`.
+ *
+ *   scripts/import_history.mts --tickers=<csv> --chain-size=<csv> [--out=export]
+ *
+ * market_tickers  -> market_snapshots   (seconds -> ms, venue names canonical,
+ *                                        price->last, volume->base_volume)
+ * blockchain_size -> chain_size_snapshots (seconds -> ms, bytes)
+ * both            -> exchanges           (name/status/url/added/retired)
+ *
+ * Remote import:
+ *   npx wrangler d1 execute xelis-stats --file export/exchanges.sql --remote
+ *   npx wrangler d1 execute xelis-stats --file export/market_snapshots.sql --remote
+ *   npx wrangler d1 execute xelis-stats --file export/chain_size_snapshots.sql --remote
+ */
+import { readFileSync, writeFileSync, mkdirSync, unlinkSync, statSync } from "node:fs";
+import { join } from "node:path";
+
+const arg = (name: string): string | undefined =>
+  process.argv.find((a: string) => a.startsWith(`--${name}=`))?.split("=").slice(1).join("=");
+
+const TICKERS_CSV = arg("tickers") ?? process.env.OLD_TICKERS_CSV ?? "";
+const CHAIN_SIZE_CSV = arg("chain-size") ?? process.env.OLD_CHAIN_SIZE_CSV ?? "";
+const OUT_DIR = arg("out") ?? process.env.EXPORT_DIR ?? "export";
+const QUOTE = "USDT";
+const MARKET = `XEL/${QUOTE}`;
+
+// canonical display name + lifecycle metadata, keyed by the legacy (lowercase)
+// venue id. Lives in the registry so the charts page can order/label venues and
+// mark retired feeds; mirrors config/entities.json links.
+const VENUES: Record<string, { name: string; status: string; url: string }> = {
+  mexc: { name: "MEXC", status: "active", url: "https://www.mexc.com/" },
+  coinex: { name: "CoinEx", status: "active", url: "https://www.coinex.com" },
+  nonkyc: { name: "NonKyc", status: "active", url: "https://nonkyc.io/" },
+  tradeogre: { name: "TradeOgre", status: "inactive", url: "https://tradeogre.com/" },
+  exbitron: { name: "Exbitron", status: "inactive", url: "https://exbitron.com/" },
+  xeggex: { name: "XeggeX", status: "inactive", url: "https://xeggex.com/" },
+  xt: { name: "XT", status: "inactive", url: "https://www.xt.com/" },
+  biconomy: { name: "Biconomy", status: "inactive", url: "https://biconomy.com/" },
+  mecacex: { name: "MecaCex", status: "inactive", url: "https://mecacex.com/" },
+};
+
+function venue(id: string): { name: string; status: string; url: string } {
+  return VENUES[id.toLowerCase()] ?? { name: id, status: "inactive", url: "" };
+}
+
+function esc(v: string | null): string {
+  if (v === null || v === "") return "NULL";
+  // all numeric source columns; keep raw text so no float rounding is introduced
+  return /^-?\d+(\.\d+)?$/.test(v) ? v : `'${v.replace(/'/g, "''")}'`;
+}
+
+function readCsv(path: string): { header: string[]; rows: string[][] } {
+  const text = readFileSync(path, "utf8").replace(/^\uFEFF/, "");
+  const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
+  const header = lines[0].split(",");
+  const rows = lines.slice(1).map((l) => l.split(","));
+  return { header, rows };
+}
+
+mkdirSync(OUT_DIR, { recursive: true });
+function fresh(file: string): void {
+  try { unlinkSync(file); } catch { /* not there */ }
+}
+function writer(file: string, table: string, cols: string[]): { add: (row: string[]) => void; done: () => void } {
+  fresh(file);
+  let buffer: string[] = [];
+  const flush = (): void => {
+    if (!buffer.length) return;
+    writeFileSync(file, `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${buffer.join(",\n")};\n`, { flag: "a" });
+    buffer = [];
+  };
+  return {
+    add: (row: string[]) => {
+      buffer.push(`(${row.join(",")})`);
+      if (buffer.length >= 100) flush();
+    },
+    done: flush,
+  };
+}
+function report(name: string, count: number): void {
+  const file = join(OUT_DIR, `${name}.sql`);
+  const size = statSync(file).size / 1e6;
+  console.log(`  ${name}: ${count.toLocaleString()} rows (${size.toFixed(1)} MB)`);
+}
+
+const bounds = new Map<string, { min: number; max: number }>();
+let tickerCount = 0;
+
+if (TICKERS_CSV) {
+  console.log(`Importing market tickers from ${TICKERS_CSV}…`);
+  const { header, rows } = readCsv(TICKERS_CSV);
+  const col = (r: string[], n: string): string => r[header.indexOf(n)] ?? "";
+  const write = writer(join(OUT_DIR, "market_snapshots.sql"), "market_snapshots",
+    ["ts", "exchange", "market", "last", "high", "low", "base_volume", "source_ts"]);
+  for (const r of rows) {
+    const id = col(r, "exchange");
+    if (!id) continue;
+    const ts = Number(col(r, "timestamp")) * 1000;
+    if (!Number.isFinite(ts)) continue;
+    const v = venue(id);
+    const market = `XEL/${col(r, "asset") || QUOTE}`;
+    const b = bounds.get(v.name) ?? { min: ts, max: ts };
+    b.min = Math.min(b.min, ts); b.max = Math.max(b.max, ts);
+    bounds.set(v.name, b);
+    write.add([String(ts), esc(v.name), esc(market), esc(col(r, "price")), esc(col(r, "high")),
+      esc(col(r, "low")), esc(col(r, "volume")), String(ts)]);
+    tickerCount++;
+  }
+  write.done();
+  report("market_snapshots", tickerCount);
+} else {
+  console.log("  market_snapshots: skipped (no --tickers)");
+}
+
+if (CHAIN_SIZE_CSV) {
+  console.log(`Importing chain size from ${CHAIN_SIZE_CSV}…`);
+  const { header, rows } = readCsv(CHAIN_SIZE_CSV);
+  const col = (r: string[], n: string): string => r[header.indexOf(n)] ?? "";
+  const write = writer(join(OUT_DIR, "chain_size_snapshots.sql"), "chain_size_snapshots", ["ts", "size_bytes"]);
+  let n = 0;
+  for (const r of rows) {
+    const ts = Number(col(r, "timestamp")) * 1000;
+    const size = Number(col(r, "size_in_bytes"));
+    if (!Number.isFinite(ts) || !Number.isFinite(size)) continue;
+    write.add([String(ts), String(size)]);
+    n++;
+  }
+  write.done();
+  report("chain_size_snapshots", n);
+} else {
+  console.log("  chain_size_snapshots: skipped (no --chain-size)");
+}
+
+// exchanges registry: metadata for every venue we know, bounded by imported data
+{
+  const write = writer(join(OUT_DIR, "exchanges.sql"), "exchanges",
+    ["name", "status", "url", "added_ts", "retired_ts", "notes"]);
+  const ids = new Set<string>([...Object.keys(VENUES), ...[...bounds.keys()].map((n) => n.toLowerCase())]);
+  let n = 0;
+  for (const id of ids) {
+    const v = venue(id);
+    // bounds are keyed by canonical name
+    const b = bounds.get(v.name);
+    const active = v.status === "active";
+    write.add([
+      esc(v.name), esc(v.status), esc(v.url),
+      b ? String(b.min) : "NULL",
+      active || !b ? "NULL" : String(b.max),
+      esc("seeded from legacy market history"),
+    ]);
+    n++;
+  }
+  write.done();
+  report("exchanges", n);
+}
+
+console.log("\nDone. Import to D1 (after migrations):");
+console.log("  npx wrangler d1 execute xelis-stats --file export/exchanges.sql --remote");
+console.log("  npx wrangler d1 execute xelis-stats --file export/market_snapshots.sql --remote");
+console.log("  npx wrangler d1 execute xelis-stats --file export/chain_size_snapshots.sql --remote");

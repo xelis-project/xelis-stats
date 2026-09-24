@@ -12,7 +12,8 @@
     "backfill": "node --experimental-strip-types scripts/backfill.mts",
     "backfill:monitor": "node --experimental-strip-types scripts/monitor.mts",
     "contracts": "node --experimental-strip-types scripts/contracts.mts",
-    "export": "node --experimental-strip-types scripts/export.mts"
+    "export": "node --experimental-strip-types scripts/export.mts",
+    "import:history": "node --experimental-strip-types scripts/import_history.mts"
   },
   "dependencies": {
     "flatpickr": "^4.6.13",
