@@ -216,7 +216,7 @@ footer.site .footer-copy { margin-left: auto; color: var(--text-dim); }
 }
 
 /* Cards */
-.cards { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; margin-bottom: 2rem; }
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 2rem; }
 .card {
   border: 1px solid var(--border); border-radius: var(--radius);
   background: linear-gradient(180deg, hsla(0, 0%, 100%, 0.045), hsla(0, 0%, 100%, 0.015));
