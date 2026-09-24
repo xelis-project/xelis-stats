@@ -9,7 +9,7 @@ import { entityTag, esc, num, PAGE_SIZE, pager } from "./shared";
 export const miners = new Hono<{ Bindings: Env }>();
 
 miners.get("/miners", async (c) => {
-  const period = c.req.query("period") ?? "day";
+  const period = c.req.query("period") ?? "all";
   const date = c.req.query("date") ?? "";
   const page = Math.max(1, Number(c.req.query("page")) || 1);
   const db = c.env.DB;
@@ -93,7 +93,7 @@ miners.get("/miners", async (c) => {
       </tr>`).join("")
     : `<tr><td colspan="4" style="color:var(--text-dim)">No indexed miners yet — backfill pending.</td></tr>`;
 
-  const fActive = period !== "day" || !!date;
+  const fActive = period !== "all" || !!date;
   const fFields = `
     ${filterField("Period", `<select name="period">${periodOpts}</select>`)}
     ${dateHint ? filterField(`Anchor date <span class="f-hint">(${dateHint})</span>`, `<input type="text" name="date" data-datepicker placeholder="${dateHint}" value="${date || (period === "day" ? resolvedDay : "")}" />`) : ""}
