@@ -5,6 +5,7 @@ import { fmt, fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/forma
 import { srvSort, BLOCK_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
 import { esc, entityTag, blkCopyScript, num, PAGE_SIZE, pager } from "./shared";
+import { topNRaw, countRaw, mergeAgg, mergeGroups, cmpBy } from "../shards";
 
 interface MinerTotals {
   blocks: number;
@@ -89,35 +90,47 @@ minerDetail.get("/miner/:address", async (c) => {
       `SELECT ${dayAgg} FROM daily_miners`
     ).bind(anchor, anchor, anchor, anchor, anchor, anchor).first();
 
-    winMiner = await db.prepare(
-      `SELECT ${winAgg} FROM blocks WHERE miner_address = ?`
-    ).bind(now - DAY, now - 7 * DAY, now - 30 * DAY, now - DAY, now - 7 * DAY, now - 30 * DAY, address).first();
-    winNet = await db.prepare(
-      `SELECT ${winAgg} FROM blocks`
-    ).bind(now - DAY, now - 7 * DAY, now - 30 * DAY, now - DAY, now - 7 * DAY, now - 30 * DAY).first();
+    // window/all-time aggregates are additive: merge SUM/COUNT across shards
+    winMiner = await mergeAgg(c.env,
+      `SELECT ${winAgg} FROM blocks WHERE miner_address = ?`,
+      [now - DAY, now - 7 * DAY, now - 30 * DAY, now - DAY, now - 7 * DAY, now - 30 * DAY, address],
+      { sum: ["b1", "b7", "b30", "ball", "r1", "r7", "r30", "rall"] });
+    winNet = await mergeAgg(c.env,
+      `SELECT ${winAgg} FROM blocks`,
+      [now - DAY, now - 7 * DAY, now - 30 * DAY, now - DAY, now - 7 * DAY, now - 30 * DAY],
+      { sum: ["b1", "b7", "b30", "ball", "r1", "r7", "r30", "rall"] });
 
-    allTime = await db.prepare(
-      "SELECT COUNT(*) c, SUM(miner_reward) r, MIN(ts) f, MAX(ts) l FROM blocks WHERE miner_address = ?"
-    ).bind(address).first();
-    hash24 = await db.prepare(
-      "SELECT AVG(difficulty) ad, COUNT(*) c FROM blocks WHERE miner_address = ? AND ts > ?"
-    ).bind(address, now - DAY).first();
-    lastBlock = await db.prepare(
-      "SELECT topoheight, ts FROM blocks WHERE miner_address = ? ORDER BY topoheight DESC LIMIT 1"
-    ).bind(address).first<Record<string, unknown>>();
+    // SUM(difficulty) instead of AVG: merged in JS as sd/c
+    allTime = await mergeAgg(c.env,
+      "SELECT COUNT(*) c, SUM(miner_reward) r, MIN(ts) f, MAX(ts) l FROM blocks WHERE miner_address = ?",
+      [address], { sum: ["c", "r"], min: "f", max: "l" });
+    hash24 = await mergeAgg(c.env,
+      "SELECT SUM(difficulty) sd, COUNT(*) c FROM blocks WHERE miner_address = ? AND ts > ?",
+      [address, now - DAY], { sum: ["sd", "c"] });
+    lastBlock = (await topNRaw(c.env, {
+      table: "blocks",
+      select: "topoheight, ts",
+      order: "topoheight DESC",
+      limit: 1,
+      extra: { sql: "miner_address = ?", binds: [address] },
+      floorCol: "topoheight",
+    }))[0] ?? null;
     const bconds = ["miner_address = ?"];
     const cbinds: unknown[] = [address];
     if (bType) { bconds.push("UPPER(block_type) = UPPER(?)"); cbinds.push(bType); }
     if (minTxs) { bconds.push("tx_count >= ?"); cbinds.push(minTxs); }
-    const bwhere = `WHERE ${bconds.join(" AND ")}`;
+    const bextra = { sql: bconds.join(" AND "), binds: cbinds };
     // unfiltered total reuses the all-time count fetched above
-    filteredTotal = bconds.length === 1 ? num(allTime?.c) : await db.prepare(
-      `SELECT COUNT(*) c FROM blocks ${bwhere}`
-    ).bind(...cbinds).first<{ c: number }>().then((r) => r?.c ?? 0);
-    pageRows = await db.prepare(
-      `SELECT topoheight, hash, ts, tx_count, difficulty, miner_reward, block_type
-       FROM blocks ${bwhere} ORDER BY ${srt.order} LIMIT ? OFFSET ?`
-    ).bind(...cbinds, PAGE_SIZE + 1, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>().then((r) => r.results ?? []);
+    filteredTotal = bconds.length === 1 ? num(allTime?.c) : await countRaw(c.env, { table: "blocks", extra: bextra, floorCol: "topoheight" });
+    pageRows = await topNRaw(c.env, {
+      table: "blocks",
+      select: "topoheight, hash, ts, tx_count, difficulty, miner_reward, block_type",
+      order: srt.order,
+      limit: PAGE_SIZE,
+      skip: (page - 1) * PAGE_SIZE,
+      extra: bextra,
+      floorCol: "topoheight",
+    });
     seriesRows = await db.prepare(
       `SELECT date, blocks_found, rewards_earned FROM daily_miners
        WHERE address = ? AND date > date(?, '-90 days') ORDER BY date DESC LIMIT 90`
@@ -201,14 +214,11 @@ minerDetail.get("/miner/:address", async (c) => {
       rank = num(r?.ahead) + 1;
       totalMiners = num(t?.n);
     } else if (blockCount > 0) {
-      const r = await db.prepare(
-        "SELECT COUNT(*) AS ahead FROM (SELECT COUNT(*) c FROM blocks WHERE miner_address != '' GROUP BY miner_address) WHERE c > ?"
-      ).bind(blockCount).first<{ ahead: number }>();
-      const t = await db.prepare(
-        "SELECT COUNT(*) AS n FROM (SELECT miner_address FROM blocks WHERE miner_address != '' GROUP BY miner_address)"
-      ).first<{ n: number }>();
-      rank = num(r?.ahead) + 1;
-      totalMiners = num(t?.n);
+      const grouped = await mergeGroups(c.env,
+        "SELECT miner_address, COUNT(*) c FROM blocks WHERE miner_address != '' GROUP BY miner_address",
+        [], "miner_address", ["c"]);
+      totalMiners = grouped.length;
+      rank = grouped.filter((r) => num(r.c) > blockCount).length + 1;
     }
   } catch { /* rank unavailable */ }
 
@@ -231,7 +241,8 @@ minerDetail.get("/miner/:address", async (c) => {
   const seriesRewards: MinerChartPoint[] = series.map((p) => ({ date: p.date, value: p.rewards / 1e8 }));
   const hasSeries = seriesBlocks.some((p) => p.value > 0) || seriesRewards.some((p) => p.value > 0);
 
-  const hashRate = num(hash24?.ad) > 0 && num(hash24?.c) > 0 ? (num(hash24?.ad) * num(hash24?.c)) / 86400 : null;
+  const hashAvg = num(hash24?.c) > 0 ? num(hash24?.sd) / num(hash24?.c) : 0;
+  const hashRate = hashAvg > 0 && num(hash24?.c) > 0 ? (hashAvg * num(hash24?.c)) / 86400 : null;
   const lastTopo = lastBlock ? num(lastBlock.topoheight) : null;
   const lastTs = lastBlock ? num(lastBlock.ts) : (dailyMiner?.d1 ? Date.parse(String(dailyMiner.d1) + "T00:00:00Z") : null);
   const sinceLabel = useDaily

@@ -5,6 +5,7 @@ import { fmt, fmtInt, shortHash } from "../../client/format";
 import { srvSort, TOP_COLS } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
 import { entityTag, num, PAGE_SIZE, pager } from "./shared";
+import { mergeGroups, cmpBy } from "../shards";
 
 export const miners = new Hono<{ Bindings: Env }>();
 
@@ -77,13 +78,14 @@ miners.get("/miners", async (c) => {
       else if (period === "day") { conds.push("date(ts/1000,'unixepoch') = ?"); args.push(await latestDay()); }
       else if (period === "week") { conds.push("ts > ?"); args.push(Date.now() - 7 * 86400_000); }
       else if (period === "month") { conds.push("ts > ?"); args.push(Date.now() - 30 * 86400_000); }
-      const where = conds.join(" AND ");
-      total = await db.prepare(`SELECT COUNT(DISTINCT miner_address) n FROM blocks WHERE ${where}`)
-        .bind(...args).first<{ n: number }>().then((r) => num(r?.n)).catch(() => 0);
-      rows = await db.prepare(`SELECT miner_address address, COUNT(*) blocks, SUM(miner_reward) rewards
-        FROM blocks WHERE ${where} GROUP BY miner_address ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
-        .bind(...args, PAGE_SIZE, (page - 1) * PAGE_SIZE)
-        .all<Record<string, unknown>>().then((r) => r.results ?? []).catch(() => []);
+      // GROUP BY merged across hot + shards, then sorted/sliced in JS
+      const grouped = await mergeGroups(c.env,
+        `SELECT miner_address, COUNT(*) blocks, SUM(miner_reward) rewards FROM blocks WHERE ${conds.join(" AND ")} GROUP BY miner_address`,
+        args, "miner_address", ["blocks", "rewards"]);
+      total = grouped.length;
+      grouped.sort(cmpBy(srt.order));
+      rows = grouped.slice((page - 1) * PAGE_SIZE, (page - 1) * PAGE_SIZE + PAGE_SIZE)
+        .map((g) => ({ address: g.miner_address, blocks: g.blocks, rewards: g.rewards }));
     }
   } catch { /* db not ready */ }
 

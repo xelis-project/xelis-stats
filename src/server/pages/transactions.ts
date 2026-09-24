@@ -5,6 +5,7 @@ import { fmtInt, shortHash, fmtTime, atomic } from "../../client/format";
 import { srvSort, TX_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
 import { PAGE_SIZE, pager, entityTag, resultBadge } from "./shared";
+import { topNRaw, countRaw } from "../shards";
 
 export const transactions = new Hono<{ Bindings: Env }>();
 
@@ -14,7 +15,6 @@ transactions.get("/transactions", async (c) => {
   const rawType = c.req.query("type") ?? "";
   const type = TX_TYPES.includes(rawType) ? rawType : "";
   const executed = c.req.query("executed") === "1" || c.req.query("executed") === "0" ? c.req.query("executed")! : "";
-  const db = c.env.DB;
   const srt = srvSort((n) => c.req.query(n), TX_COLS, "block", "hash", (s) => {
     const p = new URLSearchParams();
     if (type) p.set("type", type);
@@ -32,10 +32,17 @@ transactions.get("/transactions", async (c) => {
     if (type) { conds.push("tx_type = ?"); binds.push(type); }
     if (executed === "1") { conds.push("executed = 1"); }
     if (executed === "0") { conds.push("executed = 0"); }
-    const where = conds.length ? "WHERE " + conds.join(" AND ") : "";
-    total = await db.prepare(`SELECT COUNT(*) AS n FROM tx_index ${where}`).bind(...binds).first<{ n: number }>().then((r) => r?.n ?? 0);
-    rows = await db.prepare(`SELECT * FROM tx_index ${where} ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
-      .bind(...binds, PAGE_SIZE + 1, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>().then((r) => r.results ?? []);
+    const extra = conds.length ? { sql: conds.join(" AND "), binds } : undefined;
+    total = await countRaw(c.env, { table: "tx_index", extra, floorCol: "block_topo" });
+    rows = await topNRaw(c.env, {
+      table: "tx_index",
+      select: "*",
+      order: srt.order,
+      limit: PAGE_SIZE + 1,
+      skip: (page - 1) * PAGE_SIZE,
+      extra,
+      floorCol: "block_topo",
+    });
   } catch { /* db not ready */ }
   const hasMore = rows.length > PAGE_SIZE;
   rows = rows.slice(0, PAGE_SIZE);

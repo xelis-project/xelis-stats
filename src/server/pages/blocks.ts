@@ -5,6 +5,7 @@ import { fmt, fmtInt, shortHash, fmtTime, atomic } from "../../client/format";
 import { srvSort, BLOCK_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
 import { PAGE_SIZE, pager, esc } from "./shared";
+import { topNRaw, countRaw } from "../shards";
 
 export const blocks = new Hono<{ Bindings: Env }>();
 
@@ -15,7 +16,6 @@ blocks.get("/blocks", async (c) => {
   const type = ["normal", "side", "sync"].includes(typeRaw) ? typeRaw[0].toUpperCase() + typeRaw.slice(1) : "";
   const minTxsRaw = Number(c.req.query("min_txs") ?? "");
   const minTxs = Number.isFinite(minTxsRaw) && minTxsRaw > 0 ? Math.floor(minTxsRaw) : 0;
-  const db = c.env.DB;
   const srt = srvSort((n) => c.req.query(n), BLOCK_COLS, "topo", "topoheight DESC", (s) => {
     const p = new URLSearchParams();
     if (type) p.set("type", type);
@@ -28,13 +28,20 @@ blocks.get("/blocks", async (c) => {
   const binds: unknown[] = [];
   if (type) { conds.push("UPPER(block_type) = UPPER(?)"); binds.push(type); }
   if (minTxs) { conds.push("tx_count >= ?"); binds.push(minTxs); }
-  const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
   let rows: Record<string, unknown>[];
   let total = 0;
   try {
-    total = await db.prepare(`SELECT COUNT(*) AS n FROM blocks ${where}`).bind(...binds).first<{ n: number }>().then((r) => r?.n ?? 0);
-    rows = await db.prepare(`SELECT * FROM blocks ${where} ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
-      .bind(...binds, PAGE_SIZE + 1, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>().then((r) => r.results ?? []);
+    const extra = conds.length ? { sql: conds.join(" AND "), binds } : undefined;
+    total = await countRaw(c.env, { table: "blocks", extra, floorCol: "topoheight" });
+    rows = await topNRaw(c.env, {
+      table: "blocks",
+      select: "*",
+      order: srt.order,
+      limit: PAGE_SIZE + 1,
+      skip: (page - 1) * PAGE_SIZE,
+      extra,
+      floorCol: "topoheight",
+    });
   } catch {
     rows = [];
   }

@@ -6,6 +6,7 @@ import { knownEntity } from "../entities";
 import { srvSort, TX_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
 import { PAGE_SIZE, pager, esc, blkCopyScript, num } from "./shared";
+import { topNRaw, countRaw, mergeAgg, mergeGroups } from "../shards";
 
 export const account = new Hono<{ Bindings: Env }>();
 
@@ -44,23 +45,29 @@ account.get("/account/:address", async (c) => {
     if (type) { conds.push("tx_type = ?"); binds.push(type); }
     if (executed === "1") { conds.push("executed = 1"); }
     if (executed === "0") { conds.push("executed = 0"); }
-    const histWhere = `WHERE ${conds.join(" AND ")}`;
-    histTotal = await db.prepare(`SELECT COUNT(*) AS n FROM tx_index ${histWhere}`).bind(...binds).first<{ n: number }>().then((r) => r?.n ?? 0);
-    lastSendTopo = await db.prepare("SELECT MAX(block_topo) AS m FROM tx_index WHERE sender = ?").bind(address)
-      .first<{ m: number | null }>().then((r) => r?.m ?? 0);
-    txs = await db.prepare(`SELECT * FROM tx_index ${histWhere} ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
-      .bind(...binds, PAGE_SIZE + 1, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>().then((r) => r.results ?? []);
-    txs = txs.slice(0, PAGE_SIZE);
-    agg = await db.prepare(
-      `SELECT COUNT(*) c, SUM(fee) fees, AVG(fee) avg_fee, MIN(ts) first_tx, MAX(ts) last_tx,
+    const histExtra = { sql: conds.join(" AND "), binds };
+    // SUM(fee) instead of AVG(fee): averages are merged across shards in JS
+    histTotal = await countRaw(c.env, { table: "tx_index", extra: histExtra, floorCol: "block_topo" });
+    lastSendTopo = (await mergeAgg(c.env, "SELECT MAX(block_topo) AS m FROM tx_index WHERE sender = ?", [address], { sum: [], max: "m" })).m ?? 0;
+    txs = await topNRaw(c.env, {
+      table: "tx_index",
+      select: "*",
+      order: srt.order,
+      limit: PAGE_SIZE,
+      skip: (page - 1) * PAGE_SIZE,
+      extra: histExtra,
+      floorCol: "block_topo",
+    });
+    agg = await mergeAgg(c.env,
+      `SELECT COUNT(*) c, SUM(fee) fees, MIN(ts) first_tx, MAX(ts) last_tx,
               SUM(encrypted) enc, SUM(CASE WHEN executed = 1 THEN 1 ELSE 0 END) ok
-       FROM tx_index WHERE sender = ?`
-    ).bind(address).first();
-    types = await db.prepare(
-      "SELECT tx_type, COUNT(*) c FROM tx_index WHERE sender = ? GROUP BY tx_type ORDER BY c DESC"
-    ).bind(address).all<Record<string, unknown>>().then((r) => r.results ?? []);
-    mined = await db.prepare("SELECT COUNT(*) AS c FROM blocks WHERE miner_address = ?").bind(address)
-      .first<{ c: number }>().then((r) => r?.c ?? 0);
+       FROM tx_index WHERE sender = ?`,
+      [address], { sum: ["c", "fees", "enc", "ok"], min: "first_tx", max: "last_tx" });
+    types = await mergeGroups(c.env,
+      "SELECT tx_type, COUNT(*) c FROM tx_index WHERE sender = ? GROUP BY tx_type",
+      [address], "tx_type", ["c"]);
+    types.sort((a, b) => num(b.c) - num(a.c));
+    mined = await countRaw(c.env, { table: "blocks", extra: { sql: "miner_address = ?", binds: [address] }, floorCol: "topoheight" });
     minedAll = await db.prepare("SELECT SUM(blocks_found) AS c FROM daily_miners WHERE address = ?").bind(address)
       .first<{ c: number | null }>().then((r) => Number(r?.c) || 0);
     maxTopo = (await db.prepare("SELECT MAX(topoheight) AS m FROM blocks").first<{ m: number | null }>())?.m ?? null;
@@ -69,7 +76,7 @@ account.get("/account/:address", async (c) => {
 
   const txCount = num(acct?.tx_count) || num(agg?.c);
   const fees = num(agg?.fees);
-  const avgFee = num(agg?.avg_fee);
+  const avgFee = txCount > 0 ? fees / txCount : 0;
   const firstTx = num(agg?.first_tx);
   const lastTx = num(agg?.last_tx);
   const firstSeen = num(acct?.first_seen) || firstTx;

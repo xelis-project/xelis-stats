@@ -5,6 +5,7 @@ import { fmtInt, shortHash } from "../../client/format";
 import { srvSort } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
 import { esc } from "./shared";
+import { fetchBlock, fetchTx } from "../shards";
 
 export const assets = new Hono<{ Bindings: Env }>();
 
@@ -77,12 +78,12 @@ search.get("/search/:query", async (c) => {
     } catch { /* db not ready */ }
     return c.redirect(`/account/${q}`);
   }
-  // try tx hash
+  // try tx hash (routes across hot + shard databases)
   try {
-    const tx = await db.prepare("SELECT hash FROM tx_index WHERE hash = ?").bind(q).first();
-    if (tx) return c.redirect(`/tx/${q}`);
-    const block = await db.prepare("SELECT topoheight FROM blocks WHERE hash = ?").bind(q).first();
-    if (block) return c.redirect(`/block/${block.topoheight}`);
+    const foundTx = await fetchTx(c.env, q);
+    if (foundTx) return c.redirect(`/tx/${q}`);
+    const foundBlock = await fetchBlock(c.env, q);
+    if (foundBlock) return c.redirect(`/block/${foundBlock.row.topoheight}`);
     const acct = await db.prepare("SELECT address FROM accounts WHERE address = ?").bind(q).first();
     if (acct) return c.redirect(`/account/${q}`);
     const ct = await db.prepare("SELECT contract_id FROM contracts WHERE contract_id = ?").bind(q).first();

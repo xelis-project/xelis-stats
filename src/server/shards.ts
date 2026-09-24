@@ -349,6 +349,173 @@ export async function pagedRaw(
   return out;
 }
 
+// ---------- cross-shard fan-out helpers (SSR pages) ----------
+
+function cmpVal(a: unknown, b: unknown): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return -1; // SQLite NULLs sort smallest
+  if (b == null) return 1;
+  if (typeof a === "number" && typeof b === "number") return a < b ? -1 : a > b ? 1 : 0;
+  const af = Number(a), bf = Number(b);
+  if (Number.isFinite(af) && Number.isFinite(bf) && String(af) === String(a) && String(bf) === String(b)) {
+    return af < bf ? -1 : af > bf ? 1 : 0;
+  }
+  const as = String(a), bs = String(b);
+  return as < bs ? -1 : as > bs ? 1 : 0;
+}
+
+/** Build a JS comparator from an SQL ORDER BY clause ("col DESC, other ASC"). */
+export function cmpBy(order: string): (a: Row, b: Row) => number {
+  const cols = order.split(",").map((s) => s.trim()).filter(Boolean).map((t) => {
+    const parts = t.split(/\s+/);
+    return { col: parts[0], desc: (parts[1] ?? "ASC").toUpperCase() === "DESC" };
+  });
+  return (a, b) => {
+    for (const { col, desc } of cols) {
+      let r = cmpVal(a[col], b[col]);
+      if (r !== 0) return desc ? -r : r;
+    }
+    return 0;
+  };
+}
+
+function allTargets(shards: ShardRow[]): RawTarget[] {
+  const ts: RawTarget[] = shards.filter((s) => s.sealed).map((s) => ({ kind: "shard", dbId: s.db_id }));
+  ts.push({ kind: "hot" });
+  return ts;
+}
+
+// bound hot reads to the retained window so rows mid-migration (present in
+// hot and shard) are never served twice; NULL cursors never migrate, keep them
+function hotFloorBound(floorCol: string, floor: number): string {
+  return `(${floorCol} > ${floor} OR ${floorCol} IS NULL)`;
+}
+
+const countCache = new Map<string, { at: number; n: number }>();
+
+/** COUNT(*) over hot + all sealed shards (60s cache). */
+export async function countRaw(
+  env: Env,
+  opts: { table: string; extra?: { sql: string; binds: unknown[] }; floorCol?: string },
+): Promise<number> {
+  const shards = await getShards(env);
+  const floor = hotFloor(shards);
+  const where = opts.extra ? `WHERE ${opts.extra.sql}` : "";
+  const key = `${opts.table}|${where}|${(opts.extra?.binds ?? []).join(",")}|${floor}`;
+  const hit = countCache.get(key);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.n;
+  const results = await Promise.all(allTargets(shards).map(async (t) => {
+    let w = where;
+    const binds = [...(opts.extra?.binds ?? [])];
+    if (t.kind === "hot" && floor >= 0 && opts.floorCol) {
+      w = where ? `${where} AND ${hotFloorBound(opts.floorCol, floor)}` : `WHERE ${hotFloorBound(opts.floorCol, floor)}`;
+    }
+    const rows = await runOn(env, t, `SELECT COUNT(*) AS n FROM ${opts.table} ${w}`, binds);
+    return Number(rows[0]?.n ?? 0);
+  }));
+  const n = results.reduce((a, b) => a + b, 0);
+  countCache.set(key, { at: Date.now(), n });
+  return n;
+}
+
+/**
+ * Top-N over hot + all sealed shards for arbitrary ORDER BY / OFFSET pages:
+ * each segment returns its own top (skip+limit) rows, merged and re-sorted in
+ * JS, then sliced — equivalent to ORDER BY ... LIMIT ? OFFSET ? over one DB.
+ */
+export async function topNRaw(
+  env: Env,
+  opts: {
+    table: string;
+    select: string;
+    order: string;
+    limit: number;
+    skip?: number;
+    extra?: { sql: string; binds: unknown[] };
+    floorCol?: string;
+  },
+): Promise<Row[]> {
+  const shards = await getShards(env);
+  const floor = hotFloor(shards);
+  const need = (opts.skip ?? 0) + opts.limit;
+  const where = opts.extra ? `WHERE ${opts.extra.sql}` : "";
+  const per = await Promise.all(allTargets(shards).map(async (t) => {
+    let w = where;
+    const binds = [...(opts.extra?.binds ?? [])];
+    if (t.kind === "hot" && floor >= 0 && opts.floorCol) {
+      w = where ? `${where} AND ${hotFloorBound(opts.floorCol, floor)}` : `WHERE ${hotFloorBound(opts.floorCol, floor)}`;
+    }
+    return runOn(env, t, `SELECT ${opts.select} FROM ${opts.table} ${w} ORDER BY ${opts.order} LIMIT ${need}`, binds);
+  }));
+  const merged = per.flat();
+  merged.sort(cmpBy(opts.order));
+  return merged.slice(opts.skip ?? 0, need);
+}
+
+/**
+ * Run an additive aggregate (SUMs/COUNTs + optional MIN/MAX cols) on every
+ * target and merge the results. Use SUM instead of AVG in the SQL; averages
+ * are computed by the caller from sum/count pairs.
+ */
+export async function mergeAgg(
+  env: Env,
+  sql: string,
+  binds: unknown[],
+  opts: { sum: string[]; min?: string; max?: string },
+): Promise<Record<string, number>> {
+  const shards = await getShards(env);
+  const rows = await Promise.all(allTargets(shards).map((t) => runOn(env, t, sql, binds)));
+  const out: Record<string, number> = {};
+  for (const col of opts.sum) out[col] = 0;
+  for (const rowsOne of rows) {
+    const r = rowsOne[0];
+    if (!r) continue;
+    for (const col of opts.sum) {
+      const v = r[col];
+      if (v != null) out[col] = (out[col] ?? 0) + Number(v);
+    }
+    for (const col of [opts.min, opts.max]) {
+      if (!col) continue;
+      const v = r[col];
+      if (v == null) continue;
+      const n = Number(v);
+      if (!Number.isFinite(out[col])) out[col] = n;
+      else out[col] = col === opts.min ? Math.min(out[col], n) : Math.max(out[col], n);
+    }
+  }
+  return out;
+}
+
+/**
+ * GROUP BY over hot + sealed shards with additive value columns, merged by key
+ * in JS. Returns unmerged-order rows: [{ [keyCol]: key, ...sums }].
+ */
+export async function mergeGroups(
+  env: Env,
+  sql: string,
+  binds: unknown[],
+  keyCol: string,
+  sumCols: string[],
+): Promise<Row[]> {
+  const shards = await getShards(env);
+  const rows = await Promise.all(allTargets(shards).map((t) => runOn(env, t, sql, binds)));
+  const byKey = new Map<string, Row>();
+  for (const rs of rows) {
+    for (const r of rs) {
+      const key = String(r[keyCol] ?? "");
+      const acc = byKey.get(key);
+      if (!acc) {
+        const fresh: Row = { [keyCol]: r[keyCol] };
+        for (const c of sumCols) fresh[c] = Number(r[c] ?? 0);
+        byKey.set(key, fresh);
+      } else {
+        for (const c of sumCols) acc[c] = Number(acc[c] ?? 0) + Number(r[c] ?? 0);
+      }
+    }
+  }
+  return [...byKey.values()];
+}
+
 // ---------- rotation ----------
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
