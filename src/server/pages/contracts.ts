@@ -27,17 +27,24 @@ contracts.get("/contracts", async (c) => {
     return q ? `/contracts?${q}` : "/contracts";
   });
   let rows: Record<string, unknown>[] = [];
+  let total = 0;
+  const pageRaw = Number(c.req.query("page") ?? 1);
+  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1;
   try {
     const where = minInv ? "WHERE invoke_count >= ?" : "";
     const binds = minInv ? [minInv] : [];
-    rows = await c.env.DB.prepare(`SELECT * FROM contracts ${where} ORDER BY ${srt.order} LIMIT 100`)
+    total = (await c.env.DB.prepare(`SELECT COUNT(*) AS n FROM contracts ${where}`)
+      .bind(...binds).first<{ n: number }>())?.n ?? 0;
+    rows = await c.env.DB.prepare(`SELECT * FROM contracts ${where} ORDER BY ${srt.order} LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}`)
       .bind(...binds).all<Record<string, unknown>>().then((r) => r.results ?? []);
   } catch { /* not ready */ }
-  let onChainCount: number | null = null;
-  try {
-    onChainCount = await rpc<number>("count_contracts");
-  } catch { /* node unreachable */ }
-  const showing = onChainCount !== null ? `showing ${fmtInt(rows.length)} of ${fmtInt(onChainCount)} on-chain` : `showing ${fmtInt(rows.length)} of indexed`;
+  const p = new URLSearchParams();
+  if (minInv) p.set("min_invokes", String(minInv));
+  if (srt.qs) for (const [k, v] of new URLSearchParams(srt.qs)) p.set(k, v);
+  const pq = p.toString();
+  const pagerBase = pq ? `/contracts?${pq}` : "/contracts";
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const showing = `showing ${fmtInt((page - 1) * PAGE_SIZE + 1)}-${fmtInt((page - 1) * PAGE_SIZE + rows.length)} of ${fmtInt(total)} indexed`;
 
   const fFields = `
     ${filterField("Min invokes", `<input type="number" name="min_invokes" min="0" step="1" placeholder="e.g. 5" value="${minInv || ""}" />`)}
@@ -65,7 +72,9 @@ contracts.get("/contracts", async (c) => {
     </div>
     <div class="tablewrap"><table data-srvsort="1">
     <thead><tr>${srt.th("contract", "Contract")}${srt.th("deployer", "Deployer")}${srt.th("deployed", "Deployed (topo)", true)}${srt.th("invokes", "Invokes", true)}${srt.th("gas", "Gas", true)}</tr></thead>
-    <tbody>${body}</tbody></table></div></div>`;
+    <tbody>${body}</tbody></table></div>
+    ${pager(pagerBase, page, totalPages)}
+  </div>`;
   return c.html(layout("Contracts", content, "/contracts"));
 });
 
