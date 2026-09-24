@@ -36,7 +36,6 @@ account.get("/account/:address", async (c) => {
   let lastSendTopo = 0;
   let agg: Record<string, unknown> | null = null;
   let types: Record<string, unknown>[] = [];
-  let mined = 0;
   let minedAll = 0;
   let maxTopo: number | null = null;
   try {
@@ -82,9 +81,6 @@ account.get("/account/:address", async (c) => {
     types = typeRows;
     types.sort((a, b) => num(b.c) - num(a.c));
     minedAll = Number(minedAllRow?.c) || 0;
-    // Counting a prolific miner's blocks is a large index scan; only fall back
-    // to it when the daily rollup has no rows for this address.
-    mined = minedAll > 0 ? 0 : await countRaw(c.env, { table: "blocks", extra: { sql: "miner_address = ?", binds: [address] }, floorCol: "topoheight" });
     maxTopo = maxTopoRow?.m ?? null;
   } catch { /* db not ready */ }
   const histPages = Math.max(1, Math.ceil(histTotal / PAGE_SIZE));
@@ -99,7 +95,7 @@ account.get("/account/:address", async (c) => {
   const okCount = num(agg?.ok);
   const encCount = num(agg?.enc);
   const okPct = txCount > 0 ? (okCount / txCount) * 100 : null;
-  const minedTotal = minedAll > 0 ? minedAll : mined;
+  const minedTotal = minedAll;
 
   const ent = knownEntity(address);
   const dbLabel = (acct?.label as string) ?? "";
@@ -135,7 +131,7 @@ account.get("/account/:address", async (c) => {
       ${statCard("Fees Paid", txCount > 0 ? `${atomic(fees, 4)} XEL` : "—", avgFee > 0 ? `avg ${atomic(avgFee, 6)} / tx` : "public metadata only")}
       ${statCard("First Seen", firstSeen ? fmtTime(firstSeen) : "—", firstSeen ? ago(firstSeen) : "not in indexed data")}
       ${statCard("Last Active", lastActive ? ago(lastActive) : "—", lastActive ? fmtTime(lastActive) : "")}
-      ${statCard("Blocks Mined", minedTotal > 0 ? fmtInt(minedTotal) : "—", minedTotal > 0 ? (minedAll > 0 ? "all-time rollups" : "indexed window") : "payment-only account")}
+      ${statCard("Blocks Mined", minedTotal > 0 ? fmtInt(minedTotal) : "—", minedTotal > 0 ? "all-time rollups" : "payment-only account")}
     </div>
   </div>`;
 
