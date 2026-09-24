@@ -44,7 +44,7 @@ contracts.get("/contracts", async (c) => {
   const pq = p.toString();
   const pagerBase = pq ? `/contracts?${pq}` : "/contracts";
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const showing = `showing ${fmtInt((page - 1) * PAGE_SIZE + 1)}-${fmtInt((page - 1) * PAGE_SIZE + rows.length)} of ${fmtInt(total)} indexed`;
+  const showing = `${fmtInt(total)} total`;
 
   const fFields = `
     ${filterField("Min invokes", `<input type="number" name="min_invokes" min="0" step="1" placeholder="e.g. 5" value="${minInv || ""}" />`)}
