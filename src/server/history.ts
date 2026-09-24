@@ -35,7 +35,10 @@ const METRICS: Record<string, { table: string; col: string; agg?: "sum" | "avg";
   "encrypted": { table: "tx_encrypted", col: "", agg: "avg" },
   "block-types": { table: "daily_block_types", col: "count", agg: "sum" },
   "price": { table: "market_snapshots", col: "last", agg: "avg" },
-  "quote-volume": { table: "market_snapshots", col: "quote_volume", agg: "sum" },
+  // market snapshots hold a rolling 24h quote volume, so this metric averages
+  // per exchange across the bucket before summing exchanges (see below); the
+  // raw per-snapshot sum would multiply the window by the snapshot count.
+  "quote-volume": { table: "market_snapshots", col: "quote_volume", agg: "avg" },
   "mempool": { table: "mempool_snapshots", col: "size", agg: "avg" },
   "chain-size": { table: "chain_size_snapshots", col: "size_bytes", agg: "avg" },
   "peers": { table: "peer_snapshots", col: "total", agg: "avg" },
@@ -291,7 +294,42 @@ history.get("/api/history/:metric", async (c) => {
     } catch { rows = []; }
   } else {
     try {
-      if (spec.table === "market_snapshots" || spec.table === "mempool_snapshots" || spec.table === "peer_snapshots" || spec.table === "chain_size_snapshots") {
+      if (spec.table === "market_snapshots" && metric === "quote-volume") {
+        // Every snapshot stores a *rolling 24h* quote volume, and the cron runs
+        // every 2 min (~720 rows/day/exchange). Summing raw snapshots would
+        // multiply the window by the snapshot count, so instead average each
+        // exchange's volume over the bucket, then sum across exchanges to get
+        // the bucket's mean cross-exchange 24h volume.
+        const conds: string[] = [];
+        const binds: (string | number)[] = [];
+        if (from) {
+          conds.push("ts >= ?");
+          binds.push(Date.parse(from));
+        } else if (Number.isFinite(days)) {
+          conds.push("ts > ?");
+          binds.push(Date.now() - days * 86400_000);
+        }
+        if (until) {
+          conds.push("ts < ?");
+          binds.push(Date.parse(to!) + 86400_000);
+        }
+        if (exchange) {
+          conds.push("exchange = ?");
+          binds.push(exchange);
+        }
+        const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+        if (exchange) {
+          rows = await c.env.DB.prepare(
+            `SELECT ${bucketTs} bucket, AVG(${spec.col}) value FROM market_snapshots ${where} GROUP BY bucket ORDER BY bucket`
+          ).bind(...binds).all<{ bucket: string; value: number }>().then((r) => r.results ?? []);
+        } else {
+          rows = await c.env.DB.prepare(
+            `SELECT bucket, SUM(value) value FROM (
+               SELECT ${bucketTs} bucket, AVG(${spec.col}) value FROM market_snapshots ${where} GROUP BY bucket, exchange
+             ) GROUP BY bucket ORDER BY bucket`
+          ).bind(...binds).all<{ bucket: string; value: number }>().then((r) => r.results ?? []);
+        }
+      } else if (spec.table === "market_snapshots" || spec.table === "mempool_snapshots" || spec.table === "peer_snapshots" || spec.table === "chain_size_snapshots") {
         const conds: string[] = [];
         const binds: (string | number)[] = [];
         if (from) {
