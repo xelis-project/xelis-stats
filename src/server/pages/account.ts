@@ -218,5 +218,5 @@ account.get("/account/:address", async (c) => {
       <span>Sender-observation page: shows this address's publicly visible sending activity. Xelis balances, transfer amounts and receivers are encrypted and never shown.</span>
     </div>
     <script>${blkCopyScript}</script>`;
-  return c.html(layout(`Account ${shortHash(address, 6)}`, content, ""));
+  return c.html(layout(`Account ${shortHash(address, 6)}`, content, "/accounts"));
 });
