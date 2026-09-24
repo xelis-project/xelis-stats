@@ -24,7 +24,7 @@ charts.get("/charts", async (c) => {
   const metrics: Array<[string, string]> = [
     ["txs", "Transactions/day"], ["accounts", "Accounts growth"], ["miners", "Miners"],
     ["hashrate", "Hashrate"], ["transfers", "Transfers"], ["fees", "Fees"],
-    ["supply", "Supply"], ["market-cap", "Market Cap"], ["block-types", "Block types"],
+    ["supply", "Supply"], ["chain-size", "Blockchain size"], ["market-cap", "Market Cap"], ["block-types", "Block types"],
     ["fees-rewards", "Fees vs rewards"], ["decentralization", "Decentralization"],
     ["peers", "Peer count"], ["peers-pruned", "Pruned peers"], ["peers-lagging", "Lagging peers"],
     ["peers-stale", "Stale peers"], ["peers-divergent", "Divergent peers"], ["peer-lag", "Avg peer lag"],

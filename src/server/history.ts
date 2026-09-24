@@ -35,6 +35,7 @@ const METRICS: Record<string, { table: string; col: string; agg?: "sum" | "avg" 
   "price": { table: "market_snapshots", col: "last", agg: "avg" },
   "quote-volume": { table: "market_snapshots", col: "quote_volume", agg: "sum" },
   "mempool": { table: "mempool_snapshots", col: "size", agg: "avg" },
+  "chain-size": { table: "chain_size_snapshots", col: "size_bytes", agg: "avg" },
   "peers": { table: "peer_snapshots", col: "total", agg: "avg" },
   "peers-hidden": { table: "peer_snapshots", col: "hidden", agg: "avg" },
   "peers-pruned": { table: "peer_snapshots", col: "pruned", agg: "avg" },
@@ -288,7 +289,7 @@ history.get("/api/history/:metric", async (c) => {
     } catch { rows = []; }
   } else {
     try {
-      if (spec.table === "market_snapshots" || spec.table === "mempool_snapshots" || spec.table === "peer_snapshots") {
+      if (spec.table === "market_snapshots" || spec.table === "mempool_snapshots" || spec.table === "peer_snapshots" || spec.table === "chain_size_snapshots") {
         const conds: string[] = [];
         const binds: (string | number)[] = [];
         if (from) {

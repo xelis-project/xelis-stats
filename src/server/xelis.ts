@@ -51,8 +51,19 @@ export async function rpc<T = unknown>(method: string, params?: unknown, node = 
   return json.result as T;
 }
 
+export interface ChainSize {
+  size_bytes: number;
+  size_formatted: string;
+}
+
 export async function getInfo(node?: string): Promise<ChainInfo> {
   return rpc<ChainInfo>("get_info", undefined, node);
+}
+
+// On-disk chain (database) size. Not all nodes expose it; callers should
+// tolerate rejection and treat the value as optional.
+export async function getSizeOnDisk(node?: string): Promise<ChainSize> {
+  return rpc<ChainSize>("get_size_on_disk", undefined, node);
 }
 
 export async function count(method: string, node?: string): Promise<number> {

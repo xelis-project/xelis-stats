@@ -30,6 +30,15 @@ export function atomicPrecise(n: number | null | undefined): string {
   return v.toFixed(Math.min(10, 2 - Math.floor(Math.log10(v))));
 }
 
+// binary byte sizes: 9.6 GiB-style, for on-disk chain size
+export function fmtBytes(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return "—";
+  const units = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+  let v = n, i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${i === 0 || v >= 100 ? v.toFixed(0) : v.toFixed(2)} ${units[i]}`;
+}
+
 export function shortHash(h: string | null | undefined, size = 6): string {
   if (!h) return "—";
   if (h.length <= size * 2 + 3) return h;

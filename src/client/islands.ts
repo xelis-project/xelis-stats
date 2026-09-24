@@ -1,4 +1,5 @@
 import { renderChart, renderCompare, cumulativePoints, fmtAuto, type ChartOpts, type SeriesPoint } from "./charts";
+import { fmtBytes } from "./format";
 import { refreshSort } from "./sortable";
 import { attachDatePickers, setDatePickerValue } from "./datepicker";
 
@@ -45,7 +46,7 @@ function initChartsHub(): void {
         { label: m2, points: useCum ? cumulativePoints(data2) : data2 },
       ], o);
     } else {
-      renderChart(chartTarget, useCum ? cumulativePoints(data1) : data1, m, fmtAuto, o);
+      renderChart(chartTarget, useCum ? cumulativePoints(data1) : data1, m, m === "chain-size" ? fmtBytes : fmtAuto, o);
     }
   }
 

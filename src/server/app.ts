@@ -98,6 +98,8 @@ app.get("/api/summary", async (c) => {
     block_time_target_s: s.info.block_time_target / 1000,
     block_reward: s.info.miner_reward + s.info.dev_reward,
     mempool: s.info.mempool_size,
+    chain_size_bytes: s.chainSize?.size_bytes ?? null,
+    chain_size_formatted: s.chainSize?.size_formatted ?? null,
     peers: s.peers,
     counts: { transactions: s.txCount, accounts: s.accounts, assets: s.assets },
     supply: {

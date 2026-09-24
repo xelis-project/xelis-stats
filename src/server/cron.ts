@@ -1,11 +1,12 @@
 import type { Env } from "./app";
 import { fetchAllTickers, aggregate } from "./market/sources";
-import { rpc } from "./xelis";
+import { rpc, getSizeOnDisk } from "./xelis";
 import { rotateShards } from "./shards";
 import { syncAssetRegistry } from "./asset-registry";
 
 /**
- * Cron: every 2 min — market snapshot, mempool snapshot, peer network snapshot.
+ * Cron: every 2 min — market snapshot, mempool snapshot, chain size snapshot,
+ * peer network snapshot.
  * Cron: hourly — node version/pruned counts, tag + prefix concentration, daily rollup.
  */
 
@@ -130,6 +131,19 @@ export async function handleCron(env: Env): Promise<void> {
 
   // peer network snapshot (every run)
   if (info) await snapshotPeers(env, info.topoheight, info.top_block_hash);
+
+  // on-disk chain size snapshot; the node may not expose get_size_on_disk
+  try {
+    const size = await getSizeOnDisk(env.XELIS_NODE);
+    if (Number.isFinite(size?.size_bytes)) {
+      await env.DB.prepare("INSERT OR REPLACE INTO chain_size_snapshots (ts, size_bytes) VALUES (?, ?)")
+        .bind(Date.now(), size.size_bytes).run();
+      // chain size grows slowly; keep a year of snapshots for long-term trend
+      await env.DB.prepare("DELETE FROM chain_size_snapshots WHERE ts < ?").bind(Date.now() - 365 * 86400_000).run();
+    }
+  } catch (err) {
+    console.error("chain size cron:", (err as Error).message);
+  }
 
   // reconcile the full asset registry so /assets is complete even for assets
   // the tx-detail pass never saw in a transfer/burn (cheap when unchanged)

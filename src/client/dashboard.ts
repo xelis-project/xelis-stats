@@ -1,5 +1,5 @@
 import { renderChart, renderCompare, cumulativePoints, ACCENTS, accentHex, type SeriesPoint, type LineWidth } from "./charts";
-import { fmt, fmtInt, fmtPct, shortHash, atomic, ago } from "./format";
+import { fmt, fmtInt, fmtPct, fmtBytes, shortHash, atomic, ago } from "./format";
 import { refreshSort } from "./sortable";
 import { attachDatePickers } from "./datepicker";
 import type uPlot from "uplot";
@@ -99,6 +99,8 @@ interface Summary {
   block_time_target_s?: number;
   block_reward?: number;
   mempool?: number;
+  chain_size_bytes?: number | null;
+  chain_size_formatted?: string | null;
   peers?: number;
   counts?: { transactions?: number; accounts?: number; assets?: number };
   supply?: { circulating?: number; emitted?: number; burned?: number; max?: number };
@@ -116,6 +118,7 @@ const CATALOG: CatalogItem[] = [
   { key: "stat-hashrate", kind: "stat", field: "hashrate", label: "Estimated hashrate", desc: "Difficulty / block time", w: 3, h: 2 },
   { key: "stat-marketcap", kind: "stat", field: "marketcap", label: "Market cap", desc: "Circulating supply x price", w: 3, h: 2 },
   { key: "stat-mempool", kind: "stat", field: "mempool", label: "Mempool", desc: "Pending transaction count", w: 3, h: 2 },
+  { key: "stat-chainsize", kind: "stat", field: "chainsize", label: "Blockchain size", desc: "On-disk chain size from the node", w: 3, h: 2 },
   { key: "stat-supply", kind: "stat", field: "supply", label: "Circulating supply", desc: "XEL in circulation", w: 3, h: 2 },
   { key: "stat-burned", kind: "stat", field: "burned", label: "Burned supply", desc: "Publicly burned XEL", w: 3, h: 2 },
   { key: "stat-blocktime", kind: "stat", field: "blocktime", label: "Block time", desc: "Average vs target", w: 3, h: 2 },
@@ -158,6 +161,7 @@ const CATALOG: CatalogItem[] = [
   { key: "chart-burned", kind: "chart", metric: "burned-supply", label: "Burned supply", desc: "Cumulative publicly burned XEL", range: "1y", interval: "week", w: 6, h: 5 },
   { key: "chart-block-types", kind: "chart", metric: "block-types", label: "Block types", desc: "Normal/Side/Sync counts per day", range: "30d", interval: "day", w: 6, h: 5 },
   { key: "chart-mempool", kind: "chart", metric: "mempool", label: "Mempool", desc: "Pending tx count over time", range: "3d", interval: "day", w: 6, h: 5 },
+  { key: "chart-chainsize", kind: "chart", metric: "chain-size", label: "Blockchain size", desc: "Node on-disk chain size over time", range: "1y", interval: "week", w: 6, h: 5 },
   { key: "chart-peers", kind: "chart", metric: "peers", label: "Peer count", desc: "Connected peers over time", range: "7d", interval: "day", w: 6, h: 5 },
   { key: "chart-peers-pruned", kind: "chart", metric: "peers-pruned", label: "Pruned peers", desc: "Pruned nodes over time", range: "7d", interval: "day", w: 6, h: 5 },
   { key: "chart-peer-lag", kind: "chart", metric: "peer-lag", label: "Peer sync lag", desc: "Average topoheight lag vs our tip", range: "7d", interval: "day", w: 6, h: 5 },
@@ -197,6 +201,7 @@ const EXPLAIN: Record<string, string> = {
   "stat-hashrate": "Estimated from the current network difficulty divided by the observed block time. It is a statistical estimate rather than a direct measurement of mining power.",
   "stat-marketcap": "Circulating XEL supply multiplied by the latest price. Only shown once a price is available.",
   "stat-mempool": "Number of transactions currently waiting in the mempool, taken from the latest snapshot.",
+  "stat-chainsize": "Total on-disk size of the node's chain database, from the node's get_size_on_disk RPC. This is the blockchain size as stored by a full node.",
   "stat-burned": "Total XEL provably burned through public burn addresses and transactions.",
   "stat-blocktime": "Recent average interval between blocks compared with the protocol target, so you can see whether the network is running fast or slow.",
   "stat-difficulty": "The current proof-of-work difficulty required for a block.",
@@ -228,6 +233,7 @@ const EXPLAIN: Record<string, string> = {
   "chart-burned": "Cumulative publicly burned XEL read from the burned-supply column.",
   "chart-block-types": "Daily counts of Normal, Side and Sync blocks, so you can see the mix of block types over time.",
   "chart-mempool": "Average pending transaction count from periodic mempool snapshots.",
+  "chart-chainsize": "On-disk blockchain size sampled from the node's get_size_on_disk RPC, averaged within the bucket. Grows with chain history and pruning is not reflected until a node prunes.",
   "chart-peers": "Average number of connected peers from periodic peer snapshots.",
   "chart-peers-pruned": "Average number of peers advertising pruned mode (they do not retain full history).",
   "chart-peer-lag": "Average topoheight lag of connected peers compared with our own chain tip. A high value means peers are behind.",
@@ -273,6 +279,8 @@ const DEFAULT_TABS: Array<{ name: string; widgets: Array<[string, number, number
       ["chart-market-cap", 6, 12, 6, 5],
       ["chart-nakamoto", 0, 17, 6, 5],
       ["chart-gini", 6, 17, 6, 5],
+      ["chart-chainsize", 0, 22, 6, 5],
+      ["stat-chainsize", 6, 22, 6, 2],
     ],
   },
   {
@@ -556,6 +564,11 @@ function statValue(field: string | undefined, s: Summary): { value: string; sub:
       return { value: Number.isFinite(mc) ? `$${fmt(mc)}` : "—", sub: `${fmt(circ)} XEL circulating` };
     }
     case "mempool": return { value: fmtInt(s.mempool ?? NaN), sub: "pending transactions" };
+    case "chainsize": {
+      const bytes = s.chain_size_bytes ?? NaN;
+      const label = s.chain_size_formatted ?? fmtBytes(bytes);
+      return { value: label, sub: Number.isFinite(bytes) ? `${fmtInt(bytes)} bytes on disk` : "node did not report size" };
+    }
     case "peers": return { value: fmtInt(s.peers ?? NaN), sub: `${fmtInt(s.peers ?? 0)} connected peers` };
     case "supply": {
       const circ = (s.supply?.circulating ?? 0) / 1e8;
@@ -1040,7 +1053,7 @@ function mountChart(w: Widget): void {
         return;
       }
       if (o.cum) points = cumulativePoints(points);
-      const inst = renderChart(body, points, item.label, undefined, { type: o.type, log: o.log, accent: o.accent, fill: o.fill, points: o.points, lineWidth: o.lineWidth });
+      const inst = renderChart(body, points, item.label, item.metric === "chain-size" ? fmtBytes : undefined, { type: o.type, log: o.log, accent: o.accent, fill: o.fill, points: o.points, lineWidth: o.lineWidth });
       if (inst) charts.set(w.id, inst);
     })
     .catch(() => { setLoading(w, false); body.innerHTML = '<p class="w-empty">Failed to load series.</p>'; });
