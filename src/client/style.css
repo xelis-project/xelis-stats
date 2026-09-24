@@ -248,6 +248,11 @@ footer.site .footer-copy { margin-left: auto; color: var(--text-dim); }
 .panel h2 { font-size: 1.6rem; margin: 0 0 1.2rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-dim); font-weight: 700; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
 .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2rem; }
+/* Grid tracks are floored at their content's min-content width by default.
+   uPlot pins its wrapper to a fixed pixel width, so without min-width:0 the
+   columns can grow but never shrink — the chart's ResizeObserver never sees
+   a narrower container and the canvas stays stale. */
+.grid-2 > *, .grid-3 > * { min-width: 0; }
 
 /* Tables */
 table { width: 100%; border-collapse: collapse; font-size: 1.3rem; }
