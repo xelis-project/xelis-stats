@@ -1246,12 +1246,8 @@ function settingsHtml(w: Widget, mode: SetMode): string {
       <div class="w-set-group">
         <span class="w-set-group-t">About this panel</span>
         <p class="w-info-title">${esc(w.opts?.title || item?.label || w.key)}</p>
-        <p class="w-info-desc">${esc(item?.desc || "No description available.")}</p>
         <p class="w-info-kind">${kind}</p>
-      </div>
-      <div class="w-set-group">
-        <span class="w-set-group-t">Explanation</span>
-        <p class="w-info-desc">${esc(explainItem(item))}</p>
+        <p class="w-info-explain">${esc(explainItem(item))}</p>
       </div>
       <div class="w-set-actions">
         <button type="button" class="w-btn" data-act="settings-close">done</button>

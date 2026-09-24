@@ -813,7 +813,7 @@ tr.sk-tr .sk-row { justify-content: center; }
 }
 .w-set-none { color: var(--text-dim); margin: 0; }
 .w-info-title { margin: 0; font-size: 1.25rem; font-weight: 700; color: var(--text); }
-.w-info-desc { margin: 0; color: var(--text-dim); line-height: 1.45; }
+.w-info-explain { margin: 0; color: var(--text-dim); line-height: 1.45; }
 .w-info-kind {
   margin: 0; align-self: flex-start;
   padding: 0.15rem 0.6rem; border-radius: 0.5rem;
