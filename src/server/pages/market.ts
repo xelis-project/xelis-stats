@@ -20,13 +20,17 @@ market.get("/market", async (c) => {
     const label = r.url ? `<a href="${r.url}" target="_blank" rel="noopener">${r.name}</a>` : r.name;
     return `<tr><td>${label}</td><td>${span}</td></tr>`;
   }).join("");
-  const retiredHtml = retired.length
+  const retiredPanel = retired.length
     ? `<div class="panel"><h2>Retired exchanges</h2>
        <div class="tablewrap"><table id="retired-table">
          <thead><tr><th>Exchange</th><th>Tracked period</th></tr></thead>
          <tbody>${retiredRows}</tbody>
        </table></div></div>`
     : "";
+  const priceHistoryPanel = `<div class="panel"><h2>Price history</h2><div id="u-price-history" style="min-height:260px"><div class="w-skel sk-chart">${[42, 66, 38, 74, 55, 84, 61, 90, 70, 52, 78, 46].map((h) => `<span class="sk-bar sk-col" style="height:${h}%"></span>`).join("")}</div></div></div>`;
+  const historyRow = retiredPanel
+    ? `<div class="grid-2">${priceHistoryPanel}${retiredPanel}</div>`
+    : priceHistoryPanel;
   const content = `
     <div class="panel"><h2>XEL Markets</h2>
       <div id="market-cards" class="cards">${Array.from({ length: 5 }, () =>
@@ -40,7 +44,6 @@ market.get("/market", async (c) => {
       <div id="market-volshare" class="volshare"></div>
       <div id="market-volshare-legend" class="volshare-legend"></div>
     </div>
-    <div class="panel"><h2>Price history</h2><div id="u-price-history" style="min-height:260px"><div class="w-skel sk-chart">${[42, 66, 38, 74, 55, 84, 61, 90, 70, 52, 78, 46].map((h) => `<span class="sk-bar sk-col" style="height:${h}%"></span>`).join("")}</div></div></div>
-    ${retiredHtml}`;
+    ${historyRow}`;
   return c.html(layout("Market", content, "/market"));
 });
