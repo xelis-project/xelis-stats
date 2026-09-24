@@ -91,10 +91,15 @@ minerDetail.get("/miner/:address", async (c) => {
       `SELECT ${dayAgg} FROM daily_miners`
     ).bind(anchor, anchor, anchor, anchor, anchor, anchor).first();
 
-    // window/all-time aggregates are additive: merge SUM/COUNT across shards.
-    // Only needed when this address has no daily rollups; otherwise these
-    // full-table scans (winNet scans every block) are wasted work.
-    if (num(dailyMiner?.ball) === 0) {
+    // SUM(difficulty) instead of AVG: merged in JS as sd/c
+    allTime = await mergeAgg(c.env,
+      "SELECT COUNT(*) c, SUM(miner_reward) r, MIN(ts) f, MAX(ts) l FROM blocks WHERE miner_address = ?",
+      [address], { sum: ["c", "r"], min: "f", max: "l" });
+
+    // window aggregates are additive: merge SUM/COUNT across shards. They are
+    // only used when this address has no daily rollups but does mine, so skip
+    // these full-table scans (winNet scans every block) for everyone else.
+    if (num(dailyMiner?.ball) === 0 && num(allTime?.c) > 0) {
       winMiner = await mergeAgg(c.env,
         `SELECT ${winAgg} FROM blocks WHERE miner_address = ?`,
         [now - DAY, now - 7 * DAY, now - 30 * DAY, now - DAY, now - 7 * DAY, now - 30 * DAY, address],
@@ -105,10 +110,6 @@ minerDetail.get("/miner/:address", async (c) => {
         { sum: ["b1", "b7", "b30", "ball", "r1", "r7", "r30", "rall"] });
     }
 
-    // SUM(difficulty) instead of AVG: merged in JS as sd/c
-    allTime = await mergeAgg(c.env,
-      "SELECT COUNT(*) c, SUM(miner_reward) r, MIN(ts) f, MAX(ts) l FROM blocks WHERE miner_address = ?",
-      [address], { sum: ["c", "r"], min: "f", max: "l" });
     hash24 = await mergeAgg(c.env,
       "SELECT SUM(difficulty) sd, COUNT(*) c FROM blocks WHERE miner_address = ? AND ts > ?",
       [address, now - DAY], { sum: ["sd", "c"] });
