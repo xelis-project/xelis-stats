@@ -40,6 +40,12 @@ const SHARD_SCHEMA = [
   "CREATE INDEX IF NOT EXISTS idx_blocks_hash ON blocks(hash)",
   "CREATE INDEX IF NOT EXISTS idx_blocks_ts ON blocks(ts)",
   "CREATE INDEX IF NOT EXISTS idx_blocks_miner ON blocks(miner_address)",
+  // sort indexes mirrored from migrations/0006_sort_indexes.sql
+  "CREATE INDEX IF NOT EXISTS idx_blocks_ts_topo ON blocks(ts, topoheight)",
+  "CREATE INDEX IF NOT EXISTS idx_blocks_tx_count_topo ON blocks(tx_count, topoheight)",
+  "CREATE INDEX IF NOT EXISTS idx_blocks_difficulty_topo ON blocks(difficulty, topoheight)",
+  "CREATE INDEX IF NOT EXISTS idx_blocks_reward_topo ON blocks(miner_reward, topoheight)",
+  "CREATE INDEX IF NOT EXISTS idx_blocks_type_topo ON blocks(block_type, topoheight)",
   `CREATE TABLE IF NOT EXISTS tx_index (
     hash TEXT PRIMARY KEY, block_topo INTEGER, ts INTEGER,
     fee INTEGER, size INTEGER, tx_type TEXT, sender TEXT,
@@ -49,6 +55,13 @@ const SHARD_SCHEMA = [
   "CREATE INDEX IF NOT EXISTS idx_tx_block ON tx_index(block_topo)",
   "CREATE INDEX IF NOT EXISTS idx_tx_sender ON tx_index(sender)",
   "CREATE INDEX IF NOT EXISTS idx_tx_type_ts ON tx_index(tx_type, ts)",
+  // sort/keyset indexes mirrored from migrations/0006_sort_indexes.sql
+  "CREATE INDEX IF NOT EXISTS idx_tx_block_hash ON tx_index(block_topo, hash)",
+  "CREATE INDEX IF NOT EXISTS idx_tx_ts_hash ON tx_index(ts, hash)",
+  "CREATE INDEX IF NOT EXISTS idx_tx_fee_hash ON tx_index(fee, hash)",
+  "CREATE INDEX IF NOT EXISTS idx_tx_type_hash ON tx_index(tx_type, hash)",
+  "CREATE INDEX IF NOT EXISTS idx_tx_sender_hash ON tx_index(sender, hash)",
+  "CREATE INDEX IF NOT EXISTS idx_tx_executed_hash ON tx_index(executed, hash)",
   "CREATE TABLE IF NOT EXISTS tx_assets (tx_hash TEXT, asset TEXT, PRIMARY KEY (tx_hash, asset))",
   "CREATE INDEX IF NOT EXISTS idx_tx_assets_asset ON tx_assets(asset)",
   "CREATE TABLE IF NOT EXISTS tx_contracts (tx_hash TEXT PRIMARY KEY, contract_id TEXT, max_gas INTEGER)",
@@ -398,8 +411,77 @@ export async function pagedRawAsc(
   return out;
 }
 
-// ---------- cross-shard fan-out helpers (SSR pages) ----------
+/**
+ * Keyset scan over hot + sealed shards for a two-column cursor ordered by
+ * `cols` (e.g. "block_topo DESC, hash DESC"). The "older" direction walks
+ * below the cursor and returns rows in display order; "newer" walks above it
+ * and returns them nearest-first (callers reverse them for display). The first
+ * column must be the shard partition key (block_topo / topoheight).
+ */
+export async function pagedCompositeRaw(
+  env: Env,
+  opts: {
+    table: string;
+    select: string;
+    cols: [{ col: string; dir: "ASC" | "DESC" }, { col: string; dir: "ASC" | "DESC" }];
+    cursor: [number | string, number | string] | null;
+    limit: number;
+    direction: "older" | "newer";
+    extra?: { sql: string; binds: (string | number)[] };
+  },
+): Promise<Row[]> {
+  const older = opts.direction === "older";
+  if (!older && !opts.cursor) return [];
+  const shards = await getShards(env);
+  const floor = hotFloor(shards);
+  const [c0, c1] = opts.cols;
+  const part = c0.col;
+  // "before/after" for the walk direction, per column direction
+  const cmp = (dir: "ASC" | "DESC") => ((dir === "DESC") === older ? "<" : ">");
+  const pred = opts.cursor
+    ? `(${c0.col} ${cmp(c0.dir)} ? OR (${c0.col} = ? AND ${c1.col} ${cmp(c1.dir)} ?))`
+    : "";
+  const orderCols = older
+    ? opts.cols
+    : opts.cols.map((c) => ({ col: c.col, dir: c.dir === "DESC" ? ("ASC" as const) : ("DESC" as const) }));
+  const order = orderCols.map((c) => `${c.col} ${c.dir}`).join(", ");
 
+  const segments: Array<{ t: RawTarget; hi: number; lo: number }> = shards
+    .filter((s) => s.sealed && s.first_topo != null && s.last_topo != null)
+    .map((s) => ({ t: { kind: "shard" as const, dbId: s.db_id }, hi: s.last_topo!, lo: s.first_topo }));
+  segments.push({ t: { kind: "hot" }, hi: Number.MAX_SAFE_INTEGER, lo: floor + 1 });
+  segments.sort((a, b) => (older ? b.hi - a.hi : a.lo - b.lo));
+
+  const cur0 = opts.cursor ? Number(opts.cursor[0]) : null;
+  const out: Row[] = [];
+  for (const seg of segments) {
+    if (out.length >= opts.limit) break;
+    // skip segments that sit entirely outside the cursor on the partition col
+    if (cur0 != null && (older ? seg.lo > cur0 : seg.hi <= cur0)) continue;
+    const conds: string[] = [];
+    const binds: (string | number)[] = [];
+    if (older) {
+      const upper = cur0 == null ? seg.hi : Math.min(cur0, seg.hi);
+      conds.push(`${part} <= ?`);
+      binds.push(upper === Number.MAX_SAFE_INTEGER ? Number.MAX_SAFE_INTEGER : upper);
+      if (seg.t.kind === "hot" && floor >= 0) { conds.push(`${part} >= ?`); binds.push(seg.lo); }
+    } else {
+      conds.push(`${part} >= ?`);
+      binds.push(cur0 == null ? seg.lo : Math.max(cur0, seg.lo));
+    }
+    if (pred) { conds.push(pred); binds.push(opts.cursor![0], opts.cursor![0], opts.cursor![1]); }
+    if (opts.extra) { conds.push(`(${opts.extra.sql})`); binds.push(...opts.extra.binds); }
+    const rows = await runOn(
+      env, seg.t,
+      `SELECT ${opts.select} FROM ${opts.table} WHERE ${conds.join(" AND ")} ORDER BY ${order} LIMIT ?`,
+      [...binds, opts.limit - out.length],
+    );
+    out.push(...rows);
+  }
+  return out;
+}
+
+// ---------- cross-shard fan-out helpers (SSR pages) ----------
 function cmpVal(a: unknown, b: unknown): number {
   if (a == null && b == null) return 0;
   if (a == null) return -1; // SQLite NULLs sort smallest

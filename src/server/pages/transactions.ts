@@ -4,8 +4,8 @@ import { layout } from "../../client/layout";
 import { fmtInt, shortHash, fmtTime, atomic } from "../../client/format";
 import { srvSort, TX_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
-import { PAGE_SIZE, pager, entityTag, resultBadge } from "./shared";
-import { topNRaw, countRaw } from "../shards";
+import { PAGE_SIZE, pager, cursorPager, entityTag, resultBadge } from "./shared";
+import { pagedCompositeRaw, topNRaw, countRaw } from "../shards";
 
 export const transactions = new Hono<{ Bindings: Env }>();
 
@@ -24,29 +24,80 @@ transactions.get("/transactions", async (c) => {
     return q ? `/transactions?${q}` : "/transactions";
   });
 
+  const conds: string[] = [];
+  const binds: (string | number)[] = [];
+  if (type) { conds.push("tx_type = ?"); binds.push(type); }
+  if (executed === "1") { conds.push("executed = 1"); }
+  if (executed === "0") { conds.push("executed = 0"); }
+  const extra = conds.length ? { sql: conds.join(" AND "), binds } : undefined;
+
+  // Default view (newest block first) uses a two-column keyset cursor
+  // (block_topo, hash): any depth is an index seek, no offset scan.
+  const keyset = srt.key === "block" && srt.dir === "desc";
+  const curRaw = c.req.query("cur") ?? "";
+  const [curBt, curHash] = curRaw.includes(":") ? curRaw.split(":") : ["", ""];
+  const cursor: [number, string] | null = curBt && curHash ? [Number(curBt), curHash] : null;
+  const newer = c.req.query("newer") === "1";
+
   let rows: Record<string, unknown>[] = [];
   let total = 0;
+  let hasPrev = false;
+  let hasNext = false;
   try {
-    const conds: string[] = [];
-    const binds: unknown[] = [];
-    if (type) { conds.push("tx_type = ?"); binds.push(type); }
-    if (executed === "1") { conds.push("executed = 1"); }
-    if (executed === "0") { conds.push("executed = 0"); }
-    const extra = conds.length ? { sql: conds.join(" AND "), binds } : undefined;
     total = await countRaw(c.env, { table: "tx_index", extra, floorCol: "block_topo" });
-    rows = await topNRaw(c.env, {
-      table: "tx_index",
-      select: "*",
-      order: srt.order,
-      limit: PAGE_SIZE + 1,
-      skip: (page - 1) * PAGE_SIZE,
-      extra,
-      floorCol: "block_topo",
-    });
+    if (keyset) {
+      if (newer && cursor) {
+        const asc = await pagedCompositeRaw(c.env, {
+          table: "tx_index", select: "*",
+          cols: [{ col: "block_topo", dir: "DESC" }, { col: "hash", dir: "DESC" }],
+          cursor, limit: PAGE_SIZE + 1, direction: "newer", extra,
+        });
+        rows = asc.slice(0, PAGE_SIZE).reverse();
+        hasPrev = asc.length > PAGE_SIZE;
+        hasNext = asc.length > 0;
+      } else {
+        const desc = await pagedCompositeRaw(c.env, {
+          table: "tx_index", select: "*",
+          cols: [{ col: "block_topo", dir: "DESC" }, { col: "hash", dir: "DESC" }],
+          cursor, limit: PAGE_SIZE + 1, direction: "older", extra,
+        });
+        rows = desc.slice(0, PAGE_SIZE);
+        hasNext = desc.length > PAGE_SIZE;
+        hasPrev = !!cursor;
+      }
+    } else {
+      rows = await topNRaw(c.env, {
+        table: "tx_index",
+        select: "*",
+        order: srt.order,
+        limit: PAGE_SIZE + 1,
+        skip: (page - 1) * PAGE_SIZE,
+        extra,
+        floorCol: "block_topo",
+      });
+      hasNext = rows.length > PAGE_SIZE;
+      rows = rows.slice(0, PAGE_SIZE);
+    }
   } catch { /* db not ready */ }
-  const hasMore = rows.length > PAGE_SIZE;
-  rows = rows.slice(0, PAGE_SIZE);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const qlink = (params: Record<string, string>): string => {
+    const p = new URLSearchParams();
+    if (type) p.set("type", type);
+    if (executed) p.set("executed", executed);
+    for (const [k, v] of Object.entries(params)) p.set(k, v);
+    const q = p.toString();
+    return q ? `/transactions?${q}` : "/transactions";
+  };
+  const curOf = (r: Record<string, unknown>) => `${r.block_topo}:${r.hash}`;
+  const pagerHtml = keyset
+    ? cursorPager({
+        first: hasPrev ? qlink({}) : null,
+        prev: hasPrev && rows.length ? qlink({ cur: curOf(rows[0]), newer: "1" }) : null,
+        next: hasNext && rows.length ? qlink({ cur: curOf(rows[rows.length - 1]) }) : null,
+        info: rows.length ? `Block ${rows[rows.length - 1].block_topo}–${rows[0].block_topo}` : "No transactions",
+      })
+    : pager(srt.link(srt.key, srt.dir), page, totalPages);
 
   const fActive = !!type || !!executed;
   const fFields = `
@@ -80,7 +131,7 @@ transactions.get("/transactions", async (c) => {
       <thead><tr><th>Hash</th>${srt.th("block", "Block")}${srt.th("time", "Time")}${srt.th("type", "Type")}${srt.th("sender", "Sender")}${srt.th("fee", "Fee (XEL)", true)}${srt.th("executed", "Execution")}</tr></thead>
       <tbody>${body}</tbody>
     </table></div>
-    ${pager(srt.link(srt.key, srt.dir), page, totalPages)}
+    ${pagerHtml}
   </div>`;
   return c.html(layout("Transactions", content, "/transactions"));
 });

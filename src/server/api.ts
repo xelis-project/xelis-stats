@@ -24,7 +24,7 @@ api.get("/api/blocks", async (c) => {
     let sql: string;
     let binds: (number | string)[];
     if (sorted) {
-      const { order } = parseSort((n) => c.req.query(n), BLOCK_COLS, "topo", "topoheight DESC");
+      const { order } = parseSort((n) => c.req.query(n), BLOCK_COLS, "topo", "topoheight");
       sql = `SELECT * FROM blocks ${type ? "WHERE UPPER(block_type) = UPPER(?)" : ""} ORDER BY ${order} LIMIT ?`;
       binds = [...(type ? [type] : []), limit];
       const rows = await c.env.DB.prepare(sql).bind(...binds).all().then((r) => r.results);

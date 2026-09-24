@@ -16,7 +16,7 @@ blocks.get("/blocks", async (c) => {
   const type = ["normal", "side", "sync"].includes(typeRaw) ? typeRaw[0].toUpperCase() + typeRaw.slice(1) : "";
   const minTxsRaw = Number(c.req.query("min_txs") ?? "");
   const minTxs = Number.isFinite(minTxsRaw) && minTxsRaw > 0 ? Math.floor(minTxsRaw) : 0;
-  const srt = srvSort((n) => c.req.query(n), BLOCK_COLS, "topo", "topoheight DESC", (s) => {
+  const srt = srvSort((n) => c.req.query(n), BLOCK_COLS, "topo", "topoheight", (s) => {
     const p = new URLSearchParams();
     if (type) p.set("type", type);
     if (minTxs) p.set("min_txs", String(minTxs));

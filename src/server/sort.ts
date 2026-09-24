@@ -10,12 +10,17 @@ export interface SortCol {
 type QueryFn = (name: string) => string | undefined;
 
 // Resolves ?sort/&dir against a whitelist and builds the ORDER BY clause with a
-// stable tiebreak so pagination stays consistent.
+// stable tiebreak so pagination stays consistent. The tiebreak follows the sort
+// direction (unless it carries its own), so a single composite index
+// `(sortCol, tiebreak)` serves both ASC and DESC via forward/reverse scans.
 export function parseSort(query: QueryFn, cols: Record<string, SortCol>, defKey: string, tiebreak: string): { order: string; key: string; dir: "asc" | "desc" } {
   const reqKey = query("sort") ?? "";
   const key = cols[reqKey] ? reqKey : defKey;
   const dir: "asc" | "desc" = query("dir") === "asc" || query("dir") === "desc" ? (query("dir") as "asc" | "desc") : cols[key].def;
-  const order = `${cols[key].sql} ${dir.toUpperCase()}${tiebreak && tiebreak !== cols[key].sql ? `, ${tiebreak}` : ""}`;
+  const tb = tiebreak.replace(/\s+(?:ASC|DESC)\s*$/i, "").trim();
+  const hasDir = /\s+(?:ASC|DESC)\s*$/i.test(tiebreak);
+  const tie = tb && tb !== cols[key].sql ? `, ${hasDir ? tiebreak : `${tb} ${dir.toUpperCase()}`}` : "";
+  const order = `${cols[key].sql} ${dir.toUpperCase()}${tie}`;
   return { order, key, dir };
 }
 

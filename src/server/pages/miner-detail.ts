@@ -37,7 +37,7 @@ minerDetail.get("/miner/:address", async (c) => {
   const minTxsRaw = Number(c.req.query("min_txs") ?? "");
   const minTxs = Number.isFinite(minTxsRaw) && minTxsRaw > 0 ? Math.floor(minTxsRaw) : 0;
   const basePath = `/miner/${addr}`;
-  const srt = srvSort((nm) => c.req.query(nm), BLOCK_COLS, "topo", "topoheight DESC", (s) => {
+  const srt = srvSort((nm) => c.req.query(nm), BLOCK_COLS, "topo", "topoheight", (s) => {
     const p = new URLSearchParams();
     if (bType) p.set("type", bType);
     if (minTxs) p.set("min_txs", String(minTxs));
