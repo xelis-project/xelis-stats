@@ -214,6 +214,13 @@ export async function handleCron(env: Env): Promise<void> {
   // hourly tasks (single cron schedule; use minute to distinguish — run when minute === 0)
   const minute = new Date().getUTCMinutes();
   if (minute === 0) {
+    // asset supply history (the node only exposes the current minted supply)
+    try {
+      const snapped = await snapshotAssetSupply(env);
+      if (snapped) console.log(`asset supply: recorded ${snapped} snapshots`);
+    } catch (err) {
+      console.error("asset supply cron:", (err as Error).message);
+    }
     // daily rollup: recompute today's (and yesterday's) daily_stats row from D1
     await rollupDailyStats(env, new Date().toISOString().slice(0, 10));
     await rollupDailyStats(env, new Date(Date.now() - 86400_000).toISOString().slice(0, 10));
@@ -225,6 +232,61 @@ export async function handleCron(env: Env): Promise<void> {
       console.error("shard rotation:", (err as Error).message);
     }
   }
+}
+
+// Assets sampled for supply history each hour. Supply changes slowly, so we
+// snapshot hourly and only write when the value changed. The cap keeps the RPC
+// fan-out bounded; fixed/mintable tokens are prioritized, then oldest assets.
+const ASSET_SUPPLY_MAX = 100;
+const ASSET_SUPPLY_CONCURRENCY = 10;
+const ASSET_SUPPLY_RETENTION_MS = 180 * 86400_000;
+
+/**
+ * Record current minted supply for tracked assets. `get_asset_supply` returns
+ * only the latest value, so this is the only source of a supply history.
+ * Returns the number of snapshots written.
+ */
+export async function snapshotAssetSupply(env: Env): Promise<number> {
+  const rows = await env.DB.prepare(
+    `SELECT asset_id FROM assets
+     ORDER BY (max_supply_kind IN ('fixed','mintable')) DESC, first_seen_topo ASC
+     LIMIT ?`
+  ).bind(ASSET_SUPPLY_MAX).all<{ asset_id: string }>();
+  const ids = (rows.results ?? []).map((r) => r.asset_id).filter(Boolean);
+  if (!ids.length) return 0;
+
+  // last recorded value per asset, so unchanged supplies are not rewritten
+  const latest = new Map<string, number>();
+  const prev = await env.DB.prepare(
+    `SELECT s.asset_id AS asset_id, s.supply AS supply
+     FROM asset_supply_snapshots s
+     JOIN (SELECT asset_id, MAX(ts) AS mt FROM asset_supply_snapshots GROUP BY asset_id) m
+       ON m.asset_id = s.asset_id AND m.mt = s.ts`
+  ).all<{ asset_id: string; supply: number }>();
+  for (const r of prev.results ?? []) latest.set(r.asset_id, Number(r.supply));
+
+  const ts = Date.now();
+  const stmts: D1PreparedStatement[] = [];
+  for (let i = 0; i < ids.length; i += ASSET_SUPPLY_CONCURRENCY) {
+    const chunk = ids.slice(i, i + ASSET_SUPPLY_CONCURRENCY);
+    const results = await Promise.all(chunk.map(async (id) => {
+      try {
+        const s = await rpc<{ data?: number }>("get_asset_supply", { asset: id }, env.XELIS_NODE);
+        const v = Number(s?.data);
+        return Number.isFinite(v) ? { id, v } : null;
+      } catch {
+        return null; // asset gone / node hiccup: retried next hour
+      }
+    }));
+    for (const r of results) {
+      if (!r || latest.get(r.id) === r.v) continue;
+      stmts.push(env.DB.prepare("INSERT OR REPLACE INTO asset_supply_snapshots (ts, asset_id, supply) VALUES (?, ?, ?)")
+        .bind(ts, r.id, r.v));
+    }
+  }
+  if (stmts.length) await env.DB.batch(stmts);
+  await env.DB.prepare("DELETE FROM asset_supply_snapshots WHERE ts < ?").bind(ts - ASSET_SUPPLY_RETENTION_MS).run();
+  return stmts.length;
 }
 
 /** Recompute a single day's daily_stats row from blocks/tx_index in D1. */

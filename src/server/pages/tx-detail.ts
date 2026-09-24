@@ -31,7 +31,7 @@ const assetCellHtml = (assetId: string, meta: Map<string, AssetMeta>): string =>
   if (assetId === XEL_ASSET_ID) return '<span class="badge">XEL</span>';
   const symbol = meta.get(assetId)?.symbol;
   const label = symbol ? flaggedText(symbol) : shortHash(assetId, 6);
-  return `<a class="mono" href="/assets?q=${esc(assetId)}">${label}</a>`;
+  return `<a class="mono" href="/asset/${esc(assetId)}">${label}</a>`;
 };
 
 // extra_data arrives as a byte array from the node; render printable UTF-8 as
@@ -366,7 +366,7 @@ txDetail.get("/tx/:hash", async (c) => {
     : "";
 
   const assetRowsHtml = assetRows.map((a) => `<tr>
-    <td><span class="mono">${shortHash(a.asset_id, 10)}</span> <button class="copybtn" type="button" onclick="blkCopy('${esc(a.asset_id)}', this)">copy</button></td>
+    <td><a class="mono" href="/asset/${esc(a.asset_id)}">${shortHash(a.asset_id, 10)}</a> <button class="copybtn" type="button" onclick="blkCopy('${esc(a.asset_id)}', this)">copy</button></td>
     <td>${a.name ? flaggedText(a.name) : "—"}</td>
     <td>${a.symbol ? flaggedText(a.symbol) : "—"}</td>
     <td class="num">${a.decimals !== null && a.decimals !== undefined ? fmtInt(a.decimals) : "—"}</td>

@@ -307,6 +307,25 @@ function initMinerProfile(): void {
   if (rewardsEl && data.rewards?.length) renderChart(rewardsEl, data.rewards, "XEL", fmtAuto, { type: "bar", accent: "gold" });
 }
 
+// ---------- asset profile ----------
+
+function initAssetDetail(): void {
+  const el = document.getElementById("asset-series");
+  if (!el) return;
+  let data: { txs?: SeriesPoint[]; transfers?: SeriesPoint[]; supply?: SeriesPoint[] };
+  try {
+    data = JSON.parse(el.textContent ?? "{}") as typeof data;
+  } catch {
+    return;
+  }
+  const txsEl = document.getElementById("u-asset-txs");
+  if (txsEl && data.txs?.length) renderChart(txsEl, data.txs, "transactions", fmtAuto, { type: "bar" });
+  const trEl = document.getElementById("u-asset-transfers");
+  if (trEl && data.transfers?.length) renderChart(trEl, data.transfers, "transfers", fmtAuto, { type: "bar", accent: "gold" });
+  const supEl = document.getElementById("u-asset-supply");
+  if (supEl && data.supply && data.supply.length >= 2) renderChart(supEl, data.supply, "supply", fmtAuto, { fill: true });
+}
+
 // ---------- boot ----------
 
 // date pickers used by page filter popups (e.g. the miners anchor date)
@@ -329,3 +348,4 @@ if (path.startsWith("/embed/")) {
 if (path === "/charts") initChartsHub();
 if (path === "/market") initMarket();
 if (path.startsWith("/miner/")) initMinerProfile();
+if (path.startsWith("/asset/")) initAssetDetail();

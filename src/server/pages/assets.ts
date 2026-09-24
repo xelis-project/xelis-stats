@@ -54,8 +54,8 @@ assets.get("/assets", async (c) => {
 
   const body = rows.length
     ? rows.map((a) => `<tr>
-        <td><span class="mono">${shortHash(a.asset_id as string, 8)}</span></td>
-        <td>${a.name ? flaggedText(a.name) : "—"}</td>
+        <td><a class="mono" href="/asset/${esc(a.asset_id as string)}">${shortHash(a.asset_id as string, 8)}</a></td>
+        <td>${a.name ? `<a href="/asset/${esc(a.asset_id as string)}">${flaggedText(a.name)}</a>` : "—"}</td>
         <td>${a.symbol ? flaggedText(a.symbol) : "—"}</td>
         <td class="num">${fmtInt(a.decimals as number)}</td>
         <td class="num">${fmtInt(a.first_seen_topo as number)}</td>
@@ -102,6 +102,8 @@ search.get("/search/:query", async (c) => {
     if (acct) return c.redirect(`/account/${q}`);
     const ct = await db.prepare("SELECT contract_id FROM contracts WHERE contract_id = ?").bind(q).first();
     if (ct) return c.redirect(`/contracts/${q}`);
+    const asset = await db.prepare("SELECT asset_id FROM assets WHERE asset_id = ?").bind(q).first();
+    if (asset) return c.redirect(`/asset/${q}`);
   } catch { /* db not ready */ }
   return c.html(layout("Search", notFound(`"${q.slice(0, 20)}"`), ""));
 });
