@@ -4,13 +4,14 @@ import { layout } from "../../client/layout";
 import { fmt, fmtInt, shortHash } from "../../client/format";
 import { srvSort, TOP_COLS } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
-import { entityTag } from "./shared";
+import { entityTag, num, PAGE_SIZE, pager } from "./shared";
 
 export const miners = new Hono<{ Bindings: Env }>();
 
 miners.get("/miners", async (c) => {
   const period = c.req.query("period") ?? "day";
   const date = c.req.query("date") ?? "";
+  const page = Math.max(1, Number(c.req.query("page")) || 1);
   const db = c.env.DB;
   const srt = srvSort((n) => c.req.query(n), TOP_COLS.miners, "blocks", "address", (s) => {
     const p = new URLSearchParams();
@@ -34,26 +35,39 @@ miners.get("/miners", async (c) => {
   };
 
   let rows: Record<string, unknown>[] = [];
+  let total = 0;
   try {
     if (period === "all") {
+      total = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners`)
+        .first<{ n: number }>().then((r) => num(r?.n)).catch(() => 0);
       rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(rewards_earned) rewards
-        FROM daily_miners GROUP BY address ORDER BY ${srt.order} LIMIT 50`)
+        FROM daily_miners GROUP BY address ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
+        .bind(PAGE_SIZE, (page - 1) * PAGE_SIZE)
         .all<Record<string, unknown>>().then((r) => r.results ?? []);
     } else if (period === "month") {
+      const month = date || new Date().toISOString().slice(0, 7);
+      total = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners WHERE date LIKE ? || '%'`)
+        .bind(month).first<{ n: number }>().then((r) => num(r?.n)).catch(() => 0);
       rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(rewards_earned) rewards
-        FROM daily_miners WHERE date LIKE ? || '%' GROUP BY address ORDER BY ${srt.order} LIMIT 50`)
-        .bind(date || new Date().toISOString().slice(0, 7))
+        FROM daily_miners WHERE date LIKE ? || '%' GROUP BY address ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
+        .bind(month, PAGE_SIZE, (page - 1) * PAGE_SIZE)
         .all<Record<string, unknown>>().then((r) => r.results ?? []);
     } else if (period === "week") {
-      rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(rewards_earned) rewards
-        FROM daily_miners WHERE date > date(?, '-7 days') GROUP BY address ORDER BY ${srt.order} LIMIT 50`)
+      total = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners WHERE date > date(?, '-7 days')`)
         .bind(date || new Date().toISOString().slice(0, 10))
+        .first<{ n: number }>().then((r) => num(r?.n)).catch(() => 0);
+      rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(rewards_earned) rewards
+        FROM daily_miners WHERE date > date(?, '-7 days') GROUP BY address ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
+        .bind(date || new Date().toISOString().slice(0, 10), PAGE_SIZE, (page - 1) * PAGE_SIZE)
         .all<Record<string, unknown>>().then((r) => r.results ?? []);
     } else {
       const day = date || await latestDay();
+      total = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners WHERE date = ?`)
+        .bind(day).first<{ n: number }>().then((r) => num(r?.n)).catch(() => 0);
       rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(rewards_earned) rewards
-        FROM daily_miners WHERE date = ? GROUP BY address ORDER BY ${srt.order} LIMIT 50`)
-        .bind(day).all<Record<string, unknown>>().then((r) => r.results ?? []);
+        FROM daily_miners WHERE date = ? GROUP BY address ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
+        .bind(day, PAGE_SIZE, (page - 1) * PAGE_SIZE)
+        .all<Record<string, unknown>>().then((r) => r.results ?? []);
     }
     // fallback: derive from the blocks table when daily rollups have no rows yet
     if (!rows.length) {
@@ -63,9 +77,13 @@ miners.get("/miners", async (c) => {
       else if (period === "day") { conds.push("date(ts/1000,'unixepoch') = ?"); args.push(await latestDay()); }
       else if (period === "week") { conds.push("ts > ?"); args.push(Date.now() - 7 * 86400_000); }
       else if (period === "month") { conds.push("ts > ?"); args.push(Date.now() - 30 * 86400_000); }
+      const where = conds.join(" AND ");
+      total = await db.prepare(`SELECT COUNT(DISTINCT miner_address) n FROM blocks WHERE ${where}`)
+        .bind(...args).first<{ n: number }>().then((r) => num(r?.n)).catch(() => 0);
       rows = await db.prepare(`SELECT miner_address address, COUNT(*) blocks, SUM(miner_reward) rewards
-        FROM blocks WHERE ${conds.join(" AND ")} GROUP BY miner_address ORDER BY ${srt.order} LIMIT 50`)
-        .bind(...args).all<Record<string, unknown>>().then((r) => r.results ?? []).catch(() => []);
+        FROM blocks WHERE ${where} GROUP BY miner_address ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
+        .bind(...args, PAGE_SIZE, (page - 1) * PAGE_SIZE)
+        .all<Record<string, unknown>>().then((r) => r.results ?? []).catch(() => []);
     }
   } catch { /* db not ready */ }
 
@@ -76,7 +94,7 @@ miners.get("/miners", async (c) => {
 
   const body = rows.length
     ? rows.map((r, i) => `<tr>
-        <td class="num">${i + 1}</td>
+        <td class="num">${(page - 1) * PAGE_SIZE + i + 1}</td>
         <td><a class="mono" href="/miner/${r.address}">${shortHash(r.address as string, 10)}</a>${entityTag(r.address as string)}</td>
         <td class="num">${fmtInt(r.blocks as number)}</td>
         <td class="num">${fmt((r.rewards as number) / 1e8)}</td>
@@ -93,6 +111,14 @@ miners.get("/miners", async (c) => {
     reset: `/miners${srt.qs ? `?${srt.qs}` : ""}`,
   });
 
+  const pParams = new URLSearchParams();
+  pParams.set("period", period);
+  if (date) pParams.set("date", date);
+  if (srt.qs) for (const [k, v] of new URLSearchParams(srt.qs)) pParams.set(k, v);
+  const pQs = pParams.toString();
+  const pageBase = `/miners${pQs ? `?${pQs}` : ""}`;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
 const content = `<div class="panel">
     <div class="panel-head">
       <h2>Miner leaderboard</h2>
@@ -103,6 +129,7 @@ const content = `<div class="panel">
       <thead><tr><th class="num">#</th>${srt.th("address", "Miner")}${srt.th("blocks", "Blocks", true)}${srt.th("rewards", "Rewards (XEL)", true)}</tr></thead>
       <tbody>${body}</tbody>
     </table></div>
+    ${pager(pageBase, page, totalPages)}
   </div>`;
   return c.html(layout("Miners", content, "/miners"));
 });
