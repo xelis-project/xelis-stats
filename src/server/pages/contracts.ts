@@ -61,7 +61,7 @@ contracts.get("/contracts", async (c) => {
         <td><a class="mono" href="/account/${ct.deployer}">${shortHash(ct.deployer as string, 8)}</a></td>
         <td class="num">${fmtInt(ct.deploy_topo as number)}</td>
         <td class="num">${fmtInt(ct.invoke_count as number)}</td>
-        <td class="num">${fmtInt(ct.gas_total as number)}</td>
+        <td class="num">${num(ct.gas_total) > 0 ? `${atomic(ct.gas_total as number)} XEL` : "—"}</td>
       </tr>`).join("")
     : `<tr><td colspan="5" style="color:var(--text-dim)">No contracts indexed yet (populated during tx detail pass).</td></tr>`;
 
@@ -72,7 +72,7 @@ contracts.get("/contracts", async (c) => {
       ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
-    <thead><tr>${srt.th("contract", "Contract")}${srt.th("deployer", "Deployer")}${srt.th("deployed", "Deployed (topo)", true)}${srt.th("invokes", "Invokes", true)}${srt.th("gas", "Gas", true)}</tr></thead>
+    <thead><tr>${srt.th("contract", "Contract")}${srt.th("deployer", "Deployer")}${srt.th("deployed", "Deployed (topo)", true)}${srt.th("invokes", "Invokes", true)}${srt.th("gas", "Gas (XEL)", true)}</tr></thead>
     <tbody>${body}</tbody></table></div>
     ${pager(pagerBase, page, totalPages)}
   </div>`;
@@ -174,7 +174,7 @@ contracts.get("/contracts/:id", async (c) => {
     </div>
     <div class="cards blk-cards">
       ${statCard("Invokes", invokeCount > 0 ? fmtInt(invokeCount) : "—", "indexed contract calls")}
-      ${statCard("Gas Total", gasTotal > 0 ? fmtInt(gasTotal) : "—", "sum of max_gas across invokes")}
+      ${statCard("Gas Total", gasTotal > 0 ? `${atomic(gasTotal)} XEL` : "—", "sum of max_gas across invokes")}
       ${statCard("Deployer", shownDeployer ? `<a class="mono" href="/account/${esc(shownDeployer)}">${shortHash(shownDeployer, 8)}</a>` : "—", shownDeployer && !deployer ? "resolved on-chain" : "account that deployed")}
       ${statCard("Deployed", deployTopo > 0 ? `<a href="/block/${deployTopo}">#${fmtInt(deployTopo)}</a>` : "—", "deploy tx block")}
       ${statCard("Last Invoke", lastTs ? ago(lastTs) : "—", lastTs ? fmtTime(lastTs) : "not observed")}
@@ -188,7 +188,7 @@ contracts.get("/contracts/:id", async (c) => {
     ${codeSize ? `<tr><td>Module code</td><td><span class="mono">~${fmtInt(codeSize)} bytes (serialized)</span></td></tr>` : ""}
     ${deployFee ? `<tr><td>Deploy fee</td><td>${atomic(deployFee, 6)} XEL</td></tr>` : ""}
     <tr><td>Invokes seen</td><td>${invokeCount > 0 ? fmtInt(invokeCount) : "—"}</td></tr>
-    <tr><td>Gas total</td><td>${gasTotal > 0 ? fmtInt(gasTotal) : "—"}</td></tr>
+    <tr><td>Gas total</td><td>${gasTotal > 0 ? `${atomic(gasTotal)} XEL` : "—"}</td></tr>
     ${num(ct.events_count) ? `<tr><td>Events seen</td><td>${fmtInt(ct.events_count as number)}</td></tr>` : ""}
     ${balances.length ? `<tr><td>Assets held</td><td>${fmtInt(balances.length)}</td></tr>` : ""}
     ${entries.length ? `<tr><td>Storage entries</td><td><a href="#storage">${storageMore ? `${fmtInt(entries.length)}+` : fmtInt(entries.length)}</a></td></tr>` : ""}
