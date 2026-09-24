@@ -121,7 +121,7 @@ api.get("/api/node-versions", async (c) => {
 
 api.get("/api/peers", async (c) => {
   try {
-    const [latest, versions, tags, prefixes] = await Promise.all([
+    const [latest, versions, tags, prefixes, countries] = await Promise.all([
       c.env.DB.prepare("SELECT * FROM peer_snapshots ORDER BY ts DESC LIMIT 1").first<Row>(),
       c.env.DB.prepare(
         "SELECT version, peer_count, pruned_count FROM node_versions WHERE date = (SELECT MAX(date) FROM node_versions) ORDER BY peer_count DESC LIMIT 20"
@@ -132,14 +132,18 @@ api.get("/api/peers", async (c) => {
       c.env.DB.prepare(
         "SELECT prefix, peers FROM daily_peer_prefixes WHERE date = (SELECT MAX(date) FROM daily_peer_prefixes) ORDER BY peers DESC LIMIT 10"
       ).all().then((r) => r.results),
+      c.env.DB.prepare(
+        "SELECT country, country_code, peers FROM daily_peer_countries WHERE date = (SELECT MAX(date) FROM daily_peer_countries) ORDER BY peers DESC LIMIT 10"
+      ).all().then((r) => r.results),
     ]);
     return c.json({
       snapshot: latest ? { ...latest, ts: Number(latest.ts) } : null,
       versions,
       tags,
       prefixes,
+      countries,
     });
   } catch {
-    return c.json({ snapshot: null, versions: [], tags: [], prefixes: [] });
+    return c.json({ snapshot: null, versions: [], tags: [], prefixes: [], countries: [] });
   }
 });

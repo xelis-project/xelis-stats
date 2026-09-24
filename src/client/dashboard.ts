@@ -168,7 +168,13 @@ const CATALOG: CatalogItem[] = [
   { key: "chart-peer-lag", kind: "chart", metric: "peer-lag", label: "Peer sync lag", desc: "Average topoheight lag vs our tip", range: "7d", interval: "day", w: 6, h: 5 },
   { key: "chart-peers-stale", kind: "chart", metric: "peers-stale", label: "Stale peers", desc: "No ping for over an hour", range: "7d", interval: "day", w: 6, h: 5 },
   { key: "chart-peer-age", kind: "chart", metric: "peer-age", label: "Connection age", desc: "Average peer connection age (s)", range: "7d", interval: "day", w: 6, h: 5 },
+  { key: "chart-peers-hidden", kind: "chart", metric: "peers-hidden", label: "Hidden peers", desc: "Peers hidden from our view", range: "7d", interval: "day", w: 6, h: 5 },
+  { key: "chart-peers-lagging", kind: "chart", metric: "peers-lagging", label: "Lagging peers", desc: "Peers 50+ blocks behind our tip", range: "7d", interval: "day", w: 6, h: 5 },
+  { key: "chart-peers-new", kind: "chart", metric: "peers-new", label: "New connections", desc: "Peers connected within the last hour", range: "7d", interval: "day", w: 6, h: 5 },
+  { key: "chart-peer-view", kind: "chart", metric: "peer-view", label: "Peer view", desc: "Average peers each peer reports", range: "7d", interval: "day", w: 6, h: 5 },
   { key: "compare-peers-divergent", kind: "compare", metrics: ["peers", "peers-divergent"], label: "Peers vs divergent", desc: "Connected peers against divergent tips", range: "7d", interval: "day", w: 6, h: 5 },
+  { key: "compare-peers-lagging", kind: "compare", metrics: ["peers", "peers-lagging"], label: "Peers vs lagging", desc: "Connected peers against lagging peers", range: "7d", interval: "day", w: 6, h: 5 },
+  { key: "compare-peer-traffic", kind: "compare", metrics: ["peer-traffic-in", "peer-traffic-out"], label: "Peer traffic", desc: "Cumulative bytes received vs sent", range: "7d", interval: "day", w: 6, h: 5 },
 
   { key: "compare-price-volume", kind: "compare", metrics: ["price", "quote-volume"], log: true, label: "Price vs volume", desc: "Median price against USDT volume", range: "30d", interval: "day", w: 6, h: 5 },
   { key: "compare-txs-accounts", kind: "compare", metrics: ["txs", "active-accounts"], label: "Txs vs senders", desc: "Transactions against active senders", range: "90d", interval: "day", w: 6, h: 5 },
@@ -189,6 +195,8 @@ const CATALOG: CatalogItem[] = [
   { key: "list-exchanges", kind: "list", src: "exchanges", limit: 10, label: "Exchanges", desc: "Per-exchange price, spread and volume", w: 6, h: 5 },
   { key: "list-peers", kind: "list", src: "peers", limit: 10, label: "Node versions", desc: "Peer count by node version", w: 6, h: 5 },
   { key: "list-peer-tags", kind: "list", src: "peer-tags", limit: 10, label: "Peer tags", desc: "Tagged peers by tag", w: 6, h: 5 },
+  { key: "list-peer-prefixes", kind: "list", src: "peer-prefixes", limit: 10, label: "Peer prefixes", desc: "Top peer IP prefixes (/24, /32)", w: 6, h: 5 },
+  { key: "list-peer-countries", kind: "list", src: "peer-countries", limit: 10, label: "Peer countries", desc: "Connected peers by country (GeoIP)", w: 6, h: 5 },
 ];
 
 const byKey = new Map(CATALOG.map((c) => [c.key, c]));
@@ -240,8 +248,14 @@ const EXPLAIN: Record<string, string> = {
   "chart-peer-lag": "Average topoheight lag of connected peers compared with our own chain tip. A high value means peers are behind.",
   "chart-peers-stale": "Peers that have not responded to a ping for over an hour and may be unreachable.",
   "chart-peer-age": "Average age, in seconds, of the current peer connections.",
+  "chart-peers-hidden": "Peers that do not advertise themselves to us (hidden_peers), which peers report but our node cannot enumerate.",
+  "chart-peers-lagging": "Peers whose topoheight is more than 50 blocks behind our tip.",
+  "chart-peers-new": "Peers whose connection was established within the last hour, a rough churn indicator.",
+  "chart-peer-view": "Average number of other peers each of our peers reports, an estimate of how well-connected the network graph is.",
   // comparisons
   "compare-peers-divergent": "Connected peers overlaid with the subset reporting a divergent chain tip. Divergence usually points at a fork or lag.",
+  "compare-peers-lagging": "Total connected peers against the subset that is lagging behind our tip.",
+  "compare-peer-traffic": "Cumulative bytes received and sent across peer connections, showing the balance of inbound versus outbound traffic.",
   "compare-price-volume": "Median price and summed USDT volume on one chart. The y-axis is logarithmic because trading volume dwarfs the price.",
   "compare-txs-accounts": "Transaction count and active sender count over the same buckets, to compare activity with breadth of participation.",
   "compare-hashrate-miners": "Hashrate and unique-miner count overlaid on a logarithmic axis to show whether hashrate growth tracks miner count.",
@@ -315,6 +329,8 @@ const DEFAULT_TABS: Array<{ name: string; widgets: Array<[string, number, number
       ["chart-peer-lag", 6, 2, 6, 5],
       ["list-peers", 0, 7, 6, 5],
       ["list-peer-tags", 6, 7, 6, 5],
+      ["chart-peers-lagging", 0, 12, 6, 5],
+      ["list-peer-countries", 6, 12, 6, 5],
     ],
   },
 ];
@@ -736,6 +752,14 @@ function listRow(src: string, r: Record<string, unknown>): Array<[string, string
   if (src === "peer-tags") {
     return [["tag", `<td>${esc(r.tag)}</td>`], ["peers", `<td class="num">${fmtInt(Number(r.peers))}</td>`]];
   }
+  if (src === "peer-prefixes") {
+    return [["prefix", `<td class="mono">${esc(r.prefix)}</td>`], ["peers", `<td class="num">${fmtInt(Number(r.peers))}</td>`]];
+  }
+  if (src === "peer-countries") {
+    const code = String(r.country_code ?? "");
+    const label = code ? `${esc(r.country)} <span class="badge">${esc(code)}</span>` : esc(r.country);
+    return [["country", `<td>${label}</td>`], ["peers", `<td class="num">${fmtInt(Number(r.peers))}</td>`]];
+  }
   if (src === "txs") {
     const hash = String(r.hash ?? "");
     const type = String(r.tx_type ?? "?");
@@ -789,6 +813,14 @@ const LIST_COLS: Record<string, Array<{ key: string; label: string; num?: boolea
   ],
   "peer-tags": [
     { key: "tag", label: "Tag" },
+    { key: "peers", label: "Peers", num: true },
+  ],
+  "peer-prefixes": [
+    { key: "prefix", label: "Prefix" },
+    { key: "peers", label: "Peers", num: true },
+  ],
+  "peer-countries": [
+    { key: "country", label: "Country" },
     { key: "peers", label: "Peers", num: true },
   ],
 };
@@ -1007,7 +1039,7 @@ async function mountTable(w: Widget): Promise<void> {
         ? `/api/accounts?limit=${limit}${sp}`
         : item.src === "exchanges"
           ? "/api/market"
-          : item.src === "peer-tags"
+          : item.src === "peer-tags" || item.src === "peer-prefixes" || item.src === "peer-countries"
             ? "/api/peers"
             : item.src === "peers"
               ? "/api/node-versions"
@@ -1017,7 +1049,11 @@ async function mountTable(w: Widget): Promise<void> {
     const j = await fetch(url).then((r) => r.json()) as Record<string, unknown[]>;
     const rows = (item.src === "peer-tags"
       ? j.tags
-      : j.rows ?? j.blocks ?? j.transactions ?? j.accounts ?? j.tickers ?? j.versions ?? j.tags ?? []) as Record<string, unknown>[];
+      : item.src === "peer-prefixes"
+        ? j.prefixes
+        : item.src === "peer-countries"
+          ? j.countries
+          : j.rows ?? j.blocks ?? j.transactions ?? j.accounts ?? j.tickers ?? j.versions ?? j.tags ?? []) as Record<string, unknown>[];
     setLoading(w, false);
     body.innerHTML = rows.length ? tableHtml(item, rows, o) : '<p class="w-empty">No data available yet.</p>';
     wireSortClicks(w, body);

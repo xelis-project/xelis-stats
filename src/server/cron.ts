@@ -7,13 +7,55 @@ import { syncAssetRegistry } from "./asset-registry";
 /**
  * Cron: every 2 min — market snapshot, mempool snapshot, chain size snapshot,
  * peer network snapshot.
- * Cron: hourly — node version/pruned counts, tag + prefix concentration, daily rollup.
+ * Cron: hourly — node version/pruned counts, tag + prefix + country concentration, daily rollup.
  */
 
 // A peer is "lagging" when its topoheight falls this far behind ours.
 const LAG_BLOCKS = 50;
 // A peer is "stale" when we haven't heard a ping in over an hour.
 const STALE_S = 3600;
+
+// GeoIP lookup service (aggregate country only). It requires an Origin header
+// matching the allowed front-end, so a plain server-side fetch is rejected.
+const GEOIP_URL = "https://geoip.xelis.io/";
+
+interface GeoIpEntry {
+  success?: boolean;
+  country?: string;
+  country_code?: string;
+}
+
+// Extract the bare host from a peer address, handling "host:port" and
+// "[ipv6]:port" forms.
+function hostOf(addr: string | undefined): string {
+  const a = addr ?? "";
+  if (a.startsWith("[")) {
+    const end = a.indexOf("]");
+    return end > 0 ? a.slice(1, end) : a;
+  }
+  const colon = a.indexOf(":");
+  return colon > 0 ? a.slice(0, colon) : a;
+}
+
+// Resolve a batch of peer hosts to countries. Returns only successful hits;
+// unresolved hosts are bucketed as "Unknown" by the caller.
+async function resolveCountries(hosts: string[]): Promise<Map<string, { country: string; code: string }>> {
+  const out = new Map<string, { country: string; code: string }>();
+  if (!hosts.length) return out;
+  try {
+    const res = await fetch(`${GEOIP_URL}?ips=${encodeURIComponent(hosts.join(","))}`, {
+      headers: { Origin: "https://xelis.io", Accept: "application/json" },
+    });
+    if (!res.ok) return out;
+    const data = await res.json<Record<string, GeoIpEntry>>();
+    for (const [ip, v] of Object.entries(data)) {
+      if (v?.success && v.country) out.set(ip, { country: v.country, code: v.country_code ?? "" });
+    }
+  } catch (err) {
+    console.error("geoip:", (err as Error).message);
+  }
+  return out;
+}
 
 export interface PeerEntry {
   addr?: string;
@@ -83,7 +125,7 @@ export async function snapshotPeers(
       const prefixes = new Map<string, number>();
       for (const p of peers) {
         if (p.tag) tags.set(p.tag, (tags.get(p.tag) ?? 0) + 1);
-        const host = (p.addr ?? "").split(":")[0];
+        const host = hostOf(p.addr);
         if (!host) continue;
         const prefix = host.includes(".") ? host.split(".").slice(0, 2).join(".") : host.split(":").slice(0, 2).join(":");
         prefixes.set(prefix, (prefixes.get(prefix) ?? 0) + 1);
@@ -94,7 +136,22 @@ export async function snapshotPeers(
       const prefixStmts = [...prefixes.entries()].filter(([, n]) => n >= 2).map(([prefix, n]) =>
         env.DB.prepare("INSERT OR REPLACE INTO daily_peer_prefixes (date, prefix, peers) VALUES (?, ?, ?)").bind(date, prefix.slice(0, 64), n)
       );
-      if (tagStmts.length || prefixStmts.length) await env.DB.batch([...tagStmts, ...prefixStmts]);
+
+      // country concentration from GeoIP (aggregate only)
+      const hosts = [...new Set(peers.map((p) => hostOf(p.addr)).filter(Boolean))];
+      const geo = await resolveCountries(hosts);
+      const countries = new Map<string, { code: string; peers: number }>();
+      for (const p of peers) {
+        const g = geo.get(hostOf(p.addr));
+        const name = g?.country ?? "Unknown";
+        const e = countries.get(name) ?? { code: g?.code ?? "", peers: 0 };
+        e.peers += 1;
+        countries.set(name, e);
+      }
+      const countryStmts = [...countries.entries()].map(([country, e]) =>
+        env.DB.prepare("INSERT OR REPLACE INTO daily_peer_countries (date, country, country_code, peers) VALUES (?, ?, ?, ?)").bind(date, country.slice(0, 64), e.code.slice(0, 8), e.peers)
+      );
+      if (tagStmts.length || prefixStmts.length || countryStmts.length) await env.DB.batch([...tagStmts, ...prefixStmts, ...countryStmts]);
     }
   } catch (err) {
     console.error("peers cron:", (err as Error).message);

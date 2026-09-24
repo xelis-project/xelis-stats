@@ -12,7 +12,7 @@ const ENDPOINTS: Array<[string, string, string]> = [
   ["GET", "/api/transactions?before=&type=&limit=&sort=&dir=", "Transactions (D1). ?sort over the full dataset: block|time|type|sender|fee|executed"],
   ["GET", "/api/accounts?sort=&dir=&limit=", "Observed senders. ?sort: address|first|last|txs (legacy active|txs)"],
   ["GET", "/api/node-versions", "Peer count + pruned count by node version (latest hourly snapshot)"],
-  ["GET", "/api/peers", "Latest peer network snapshot (counts, lag, staleness, divergence, tags, prefixes) + node versions"],
+  ["GET", "/api/peers", "Latest peer network snapshot (counts, lag, staleness, divergence, tags, prefixes, GeoIP countries) + node versions"],
   ["GET", "/api/history/:metric?range=7d|30d|90d|1y|all&interval=day|week|month|year&format=json|csv", "Time-series. Metrics: txs, transfers, accounts, active-accounts, miners, hashrate, fees, fee-p90, supply, burned-supply, market-cap, miner-rev-usd, miner-revenue, orphans, block-time, nakamoto, gini, encrypted, block-types, price, quote-volume, mempool, chain-size, peers, peers-hidden, peers-pruned, peers-lagging, peers-stale, peers-divergent, peers-new, peer-lag, peer-view, peer-age, peer-traffic-in, peer-traffic-out"],
   ["GET", "/api/top/:kind?period=day|week|month|all&date=&limit=&sort=&dir=", "Rankings: miners, senders, burners, assets, contracts (date defaults to latest indexed day)"],
   ["GET", "/api/tx/:hash", "Transaction detail"],
