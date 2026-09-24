@@ -140,13 +140,30 @@ function baseScales(log: boolean): uPlot.Options["scales"] {
   return log ? { x: { time: true }, y: { distr: 3, log: 10 } } : { x: { time: true } };
 }
 
-// uPlot needs numeric x values: ISO date strings would coerce to NaN and the
-// series silently never draws (axes render, line doesn't). Feed unix seconds
-// and format tick labels as dates instead.
+// Bucket labels come in several shapes from /api/history depending on the
+// interval: "YYYY-MM-DD" (day), "YYYY-Www" (week), "YYYY-MM" (month),
+// "YYYY" (year) and "YYYY-MM-DD-type" (block types). Date.parse rejects most
+// of them, so normalize each shape to a UTC timestamp; unparseable values map
+// to null and fall back to their index.
+function bucketToMs(d: string): number | null {
+  if (/^\d{4}-\d{2}-\d{2}/.test(d)) return Date.parse(`${d.slice(0, 10)}T00:00:00Z`);
+  if (/^\d{4}-\d{2}$/.test(d)) return Date.parse(`${d}-01T00:00:00Z`);
+  if (/^\d{4}$/.test(d)) return Date.parse(`${d}-01-01T00:00:00Z`);
+  const w = /^(\d{4})-W(\d{2})$/.exec(d);
+  if (w) {
+    // Mirror the server's Monday-based week index: week N starts N*7 days
+    // after Jan 1 (± a few days when Jan 1 precedes the first Monday).
+    const jan1 = Date.UTC(Number(w[1]), 0, 1);
+    return jan1 + Number(w[2]) * 7 * 86400_000;
+  }
+  const t = Date.parse(d);
+  return Number.isFinite(t) ? t : null;
+}
+
 function xValues(dates: string[]): number[] {
   return dates.map((d, i) => {
-    const t = Date.parse(d.length === 10 ? `${d}T00:00:00Z` : d);
-    return Number.isFinite(t) ? Math.round(t / 1000) : i;
+    const t = bucketToMs(d);
+    return t === null ? i : Math.round(t / 1000);
   });
 }
 
