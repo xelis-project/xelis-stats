@@ -1186,6 +1186,10 @@ function popoverId(id: string): string {
   return `w-pop-${id}`;
 }
 
+// Tracks the active listener wiring per settings popover so a re-render can
+// abort the stale one instead of stacking duplicate handlers.
+const panelWiring = new WeakMap<HTMLElement, AbortController>();
+
 function popoverOf(w: Widget): HTMLElement | null {
   return document.getElementById(popoverId(w.id));
 }
@@ -1403,6 +1407,16 @@ function wireSettings(w: Widget, el: HTMLElement, panel: HTMLElement, mode: SetM
   const item = byKey.get(w.key);
   const customRow = panel.querySelector<HTMLElement>("[data-custom]");
 
+  // Several handlers rebuild panel.innerHTML and call wireSettings again on the
+  // same element, but assigning innerHTML keeps listeners attached to the panel
+  // itself. Abort the previous wiring first so handlers don't stack (which made
+  // the accent toggle cancel itself out after a chart-type change).
+  const prev = panelWiring.get(panel);
+  if (prev) prev.abort();
+  const signal = new AbortController();
+  panelWiring.set(panel, signal);
+  const opts = { signal: signal.signal };
+
   const apply = (refetch: boolean): void => {
     persist();
     applyChrome(w, el);
@@ -1421,7 +1435,7 @@ function wireSettings(w: Widget, el: HTMLElement, panel: HTMLElement, mode: SetM
       applyChrome(w, el);
       persist();
     }
-  });
+  }, opts);
 
   panel.addEventListener("change", (ev) => {
     const t = ev.target as HTMLInputElement | HTMLSelectElement;
@@ -1474,7 +1488,7 @@ function wireSettings(w: Widget, el: HTMLElement, panel: HTMLElement, mode: SetM
     }
     setOpt(w, opt, opt === "limit" ? Number((t as HTMLSelectElement).value) : (t as HTMLInputElement).value.trim());
     apply(true);
-  });
+  }, opts);
 
   panel.addEventListener("click", (ev) => {
     const sw = (ev.target as HTMLElement).closest<HTMLElement>("[data-accent]");
@@ -1504,7 +1518,7 @@ function wireSettings(w: Widget, el: HTMLElement, panel: HTMLElement, mode: SetM
     if ((ev.target as HTMLElement).closest("[data-act=settings-close]")) {
       closeSettings(w, el);
     }
-  });
+  }, opts);
 
   attachDatePickers(panel);
 }
