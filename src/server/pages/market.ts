@@ -32,7 +32,7 @@ market.get("/market", async (c) => {
   const historyRow = `<div class="grid-2">${priceHistoryPanel}${volumeHistoryPanel}</div>${retiredPanel ? `<div class="grid-2" style="margin-top:2rem">${retiredPanel}</div>` : ""}`;
   const content = `
     <div class="panel"><h2>XEL Markets</h2>
-      <div id="market-cards" class="cards">${Array.from({ length: 5 }, () =>
+      <div id="market-cards" class="cards">${Array.from({ length: 6 }, () =>
         '<div class="card sk-card"><span class="sk-bar sk-cl"></span><span class="sk-bar sk-cv"></span></div>').join("")}</div>
       <div class="tablewrap"><table id="market-table">
         <thead><tr><th>Exchange</th><th>Market</th><th class="num">Last</th><th class="num">24h %</th><th class="num">High</th><th class="num">Low</th><th class="num">Bid</th><th class="num">Ask</th><th class="num">Vol (XEL)</th><th class="num">Vol (USDT)</th><th>Updated</th></tr></thead>

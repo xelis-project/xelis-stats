@@ -205,6 +205,7 @@ function initMarket(): void {
       const res = await fetch("/api/market");
       const agg = (await res.json()) as {
         price?: number; changePct24h?: number | null; totalQuoteVolume?: number;
+        high24h?: number | null; low24h?: number | null;
         bestBid?: { exchange: string; price: number } | null; bestAsk?: { exchange: string; price: number } | null;
         spreadPct?: number | null; divergencePct?: number; tickers?: Ticker[]; timestamp?: number;
       };
@@ -213,12 +214,15 @@ function initMarket(): void {
         const chg = agg.changePct24h;
         const bb = agg.bestBid, ba = agg.bestAsk, spread = agg.spreadPct;
         const div = agg.divergencePct;
+        const hi = agg.high24h, lo = agg.low24h;
+        const rangePos = hi != null && lo != null && hi > lo ? ((agg.price - lo) / (hi - lo)) * 100 : null;
         cards.innerHTML = `
           <div class="card"><div class="label">XEL Price</div><div class="value">$${agg.price.toFixed(4)}</div><div class="sub">aggregate across exchanges</div></div>
           <div class="card"><div class="label">24h Change</div><div class="value" style="color:${(chg ?? 0) >= 0 ? "var(--mint)" : "var(--danger)"}">${chg !== null && chg !== undefined ? (chg >= 0 ? "+" : "") + chg.toFixed(2) + "%" : "—"}</div><div class="sub">volume-weighted</div></div>
           <div class="card"><div class="label">24h Volume</div><div class="value">$${fmtAuto(agg.totalQuoteVolume ?? 0)}</div><div class="sub">all tracked markets</div></div>
           <div class="card"><div class="label">Best Bid / Ask</div><div class="value small">$${bb ? bb.price.toFixed(4) : "—"} / $${ba ? ba.price.toFixed(4) : "—"}</div><div class="sub">${bb && ba ? `${bb.exchange} → ${ba.exchange} · spread ${spread !== null && spread !== undefined ? spread.toFixed(2) + "%" : "—"}` : "no quotes"}</div></div>
-          <div class="card"><div class="label">Price Divergence</div><div class="value" style="color:${(div ?? 0) > 5 ? "var(--danger)" : "var(--mint)"}">${div != null && Number.isFinite(div) ? div.toFixed(2) + "%" : "—"}</div><div class="sub">max-min across exchanges</div></div>`;
+          <div class="card"><div class="label">Price Divergence</div><div class="value" style="color:${(div ?? 0) > 5 ? "var(--danger)" : "var(--mint)"}">${div != null && Number.isFinite(div) ? div.toFixed(2) + "%" : "—"}</div><div class="sub">max-min across exchanges</div></div>
+          <div class="card"><div class="label">24h Range</div><div class="value small">$${lo != null ? lo.toFixed(4) : "—"} – $${hi != null ? hi.toFixed(4) : "—"}</div><div class="sub">${rangePos !== null ? `${Math.max(0, Math.min(100, rangePos)).toFixed(0)}% of range` : "across exchanges"}</div></div>`;
       }
       if (!agg.tickers) return;
       loaded = true;
