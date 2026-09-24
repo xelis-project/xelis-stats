@@ -349,6 +349,55 @@ export async function pagedRaw(
   return out;
 }
 
+/**
+ * Keyset-paginated list over hot + sealed shards, oldest first.
+ * Mirror of {@link pagedRaw} for the "newer" direction: `after` is the
+ * exclusive lower cursor; rows are returned ascending so callers can reverse
+ * them to render the page above a known row. Enables stateless Prev links.
+ */
+export async function pagedRawAsc(
+  env: Env,
+  opts: {
+    table: string;
+    cursorCol: string;
+    select: string;
+    after: number;
+    limit: number;
+    extra?: { sql: string; binds: (string | number)[] };
+  },
+): Promise<Row[]> {
+  const shards = await getShards(env);
+  const floor = hotFloor(shards);
+  const segments: Array<{ t: RawTarget; hi: number; lo: number }> = shards
+    .filter((s) => s.sealed && s.first_topo != null && s.last_topo != null)
+    .map((s) => ({ t: { kind: "shard" as const, dbId: s.db_id }, hi: s.last_topo!, lo: s.first_topo }));
+  segments.push({ t: { kind: "hot" }, hi: Number.MAX_SAFE_INTEGER, lo: floor + 1 });
+  segments.sort((a, b) => a.lo - b.lo);
+
+  const out: Row[] = [];
+  let cursor = opts.after;
+  for (const seg of segments) {
+    if (out.length >= opts.limit) break;
+    // skippable only if the whole segment sits at or below the cursor
+    if (seg.hi <= cursor) continue;
+    const lower = Math.max(cursor, seg.lo - 1);
+    const conds: string[] = [`${opts.cursorCol} > ?`];
+    const binds: (string | number)[] = [lower];
+    if (opts.extra) { conds.push(`(${opts.extra.sql})`); binds.push(...opts.extra.binds); }
+    const rows = await runOn(
+      env, seg.t,
+      `SELECT ${opts.select} FROM ${opts.table} WHERE ${conds.join(" AND ")} ORDER BY ${opts.cursorCol} ASC LIMIT ?`,
+      [...binds, opts.limit - out.length],
+    );
+    if (!rows.length) { cursor = seg.hi; continue; }
+    out.push(...rows);
+    const last = Number((rows[rows.length - 1] as Record<string, unknown>)[opts.cursorCol]);
+    if (!Number.isFinite(last) || last >= seg.hi) { cursor = seg.hi; continue; }
+    cursor = last;
+  }
+  return out;
+}
+
 // ---------- cross-shard fan-out helpers (SSR pages) ----------
 
 function cmpVal(a: unknown, b: unknown): number {

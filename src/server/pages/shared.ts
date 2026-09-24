@@ -27,6 +27,27 @@ export function pager(base: string, page: number, totalPages: number): string {
   </div>`;
 }
 
+// Cursor-based pager for keyset pagination: any depth is an index seek, so
+// there are no page numbers, only First/Prev/Next/Last by cursor.
+export function cursorPager(opts: {
+  first?: string | null;
+  prev?: string | null;
+  next?: string | null;
+  last?: string | null;
+  info: string;
+}): string {
+  const dim = (label: string) => `<span class="btn ghost disabled" aria-disabled="true">${label}</span>`;
+  const nav = (href: string | null | undefined, label: string) =>
+    href ? `<a class="btn ghost" href="${href}">${label}</a>` : dim(label);
+  return `<div class="pager">
+    ${nav(opts.first, `${icons.chevronsLeft} First`)}
+    ${nav(opts.prev, `${icons.chevronLeft} Prev`)}
+    ${nav(opts.next, `Next ${icons.chevronRight}`)}
+    ${nav(opts.last, `Last ${icons.chevronsRight}`)}
+    <span class="pager-info">${opts.info}</span>
+  </div>`;
+}
+
 export const esc = (v: unknown): string =>
   String(v ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] as string));
 
