@@ -16,6 +16,7 @@
     "import:history": "node --experimental-strip-types scripts/import_history.mts"
   },
   "dependencies": {
+    "bad-words": "^4.1.5",
     "flatpickr": "^4.6.13",
     "hono": "^4.6.0",
     "undici": "^7.29.1"

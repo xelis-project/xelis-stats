@@ -4,7 +4,7 @@ import { layout, notFound } from "../../client/layout";
 import { fmtInt, shortHash } from "../../client/format";
 import { srvSort } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
-import { esc } from "./shared";
+import { esc, flaggedText } from "./shared";
 import { PAGE_SIZE, pager } from "./shared";
 import { fetchBlock, fetchTx } from "../shards";
 
@@ -55,8 +55,8 @@ assets.get("/assets", async (c) => {
   const body = rows.length
     ? rows.map((a) => `<tr>
         <td><span class="mono">${shortHash(a.asset_id as string, 8)}</span></td>
-        <td>${(a.name as string) ?? "—"}</td>
-        <td>${(a.symbol as string) ?? "—"}</td>
+        <td>${a.name ? flaggedText(a.name) : "—"}</td>
+        <td>${a.symbol ? flaggedText(a.symbol) : "—"}</td>
         <td class="num">${fmtInt(a.decimals as number)}</td>
         <td class="num">${fmtInt(a.first_seen_topo as number)}</td>
       </tr>`).join("")

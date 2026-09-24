@@ -1,6 +1,7 @@
 import { renderChart, renderCompare, cumulativePoints, ACCENTS, accentHex, type SeriesPoint, type LineWidth } from "./charts";
 import { fmt, fmtInt, fmtPct, fmtBytes, shortHash, atomic, ago } from "./format";
 import { icons, gripIcon } from "./icons";
+import { containsBadWord } from "./badwords";
 import { refreshSort } from "./sortable";
 import { attachDatePickers } from "./datepicker";
 import type uPlot from "uplot";
@@ -687,6 +688,14 @@ function esc(v: unknown): string {
   return String(v ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] ?? ch);
 }
 
+// User-supplied text (asset symbols, peer tags) that trips the bad-word check
+// is hidden until the header eye toggle (html.reveal-flags) is switched on.
+function flagText(v: unknown): string {
+  const text = String(v ?? "");
+  if (!containsBadWord(text)) return esc(text);
+  return `<span class="flagwrap"><span class="flag-hid" title="Filtered content · use the eye toggle in the header to reveal">${icons.eyeOff} filtered</span><span class="flag-shown">${esc(text)}</span></span>`;
+}
+
 function normSecs(ts: number | undefined): number {
   if (!ts || !Number.isFinite(ts)) return 0;
   return ts > 1e12 ? ts / 1000 : ts;
@@ -712,7 +721,7 @@ function rankRow(src: string, r: Record<string, unknown>, i: number): Array<[str
     case "assets": {
       const sym = String(r.symbol ?? "");
       const id = String(r.asset_id ?? "");
-      return [rank, ["asset", `<td title="${esc(id)}">${esc(sym || shortHash(id, 8))}</td>`], ["txs", `<td class="num">${fmtInt(Number(r.tx_count))}</td>`], ["transfers", `<td class="num">${fmtInt(Number(r.transfers))}</td>`]];
+      return [rank, ["asset", `<td title="${esc(id)}">${sym ? flagText(sym) : esc(shortHash(id, 8))}</td>`], ["txs", `<td class="num">${fmtInt(Number(r.tx_count))}</td>`], ["transfers", `<td class="num">${fmtInt(Number(r.transfers))}</td>`]];
     }
     case "contracts": {
       const id = String(r.contract_id ?? "");
@@ -750,7 +759,7 @@ function listRow(src: string, r: Record<string, unknown>): Array<[string, string
     ];
   }
   if (src === "peer-tags") {
-    return [["tag", `<td>${esc(r.tag)}</td>`], ["peers", `<td class="num">${fmtInt(Number(r.peers))}</td>`]];
+    return [["tag", `<td>${flagText(r.tag)}</td>`], ["peers", `<td class="num">${fmtInt(Number(r.peers))}</td>`]];
   }
   if (src === "peer-prefixes") {
     return [["prefix", `<td class="mono">${esc(r.prefix)}</td>`], ["peers", `<td class="num">${fmtInt(Number(r.peers))}</td>`]];

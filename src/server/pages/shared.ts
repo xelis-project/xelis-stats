@@ -1,5 +1,6 @@
 import { fmtInt } from "../../client/format";
 import { icons } from "../../client/icons";
+import { containsBadWord } from "../../client/badwords";
 import { knownEntity } from "../entities";
 
 export const PAGE_SIZE = 25;
@@ -54,6 +55,15 @@ export const esc = (v: unknown): string =>
 export const entityTag = (address: string): string => {
   const e = knownEntity(address);
   return e ? ` <span class="badge entity ${esc(e.kind)}">${esc(e.label)}</span>` : "";
+};
+
+// User-supplied text (asset names/symbols, peer tags) that trips the bad-word
+// check is hidden by default; the header eye toggle (html.reveal-flags)
+// reveals it. Both variants are emitted, so the switch works without a reload.
+export const flaggedText = (value: unknown): string => {
+  const text = String(value ?? "");
+  if (!containsBadWord(text)) return esc(text);
+  return `<span class="flagwrap"><span class="flag-hid" title="Filtered content · use the eye toggle in the header to reveal">${icons.eyeOff} filtered</span><span class="flag-shown">${esc(text)}</span></span>`;
 };
 
 // executed is 1 (executed ok), 0 (not executed) or NULL (not recorded, legacy rows)

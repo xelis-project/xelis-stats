@@ -5,7 +5,7 @@ import { icons } from "../../client/icons";
 import { fmt, fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/format";
 import { rpc } from "../xelis";
 import { fetchTx, getShards, targetForTopo, runOn, type RawTarget } from "../shards";
-import { esc, entityTag, blkCopyScript, num } from "./shared";
+import { esc, entityTag, blkCopyScript, num, flaggedText } from "./shared";
 
 export const txDetail = new Hono<{ Bindings: Env }>();
 
@@ -187,7 +187,7 @@ txDetail.get("/tx/:hash", async (c) => {
   const burnRow = burnAsset ? assetRows.find((a) => a.asset_id === burnAsset) : undefined;
   const burnDecimals = burnRow?.decimals !== null && burnRow?.decimals !== undefined ? Number(burnRow.decimals) : 8;
   const burnSymbol = burnRow?.symbol || "XEL";
-  const burnLabel = `${fmt(burnAmount / 10 ** burnDecimals, 2)} ${esc(burnSymbol)}`;
+  const burnLabel = `${fmt(burnAmount / 10 ** burnDecimals, 2)} ${flaggedText(burnSymbol)}`;
   const isBurn = txType === "burn";
 
   const conf = maxTopo !== null && topo > 0 ? fmtInt(Math.max(0, maxTopo - topo)) : "—";
@@ -300,8 +300,8 @@ txDetail.get("/tx/:hash", async (c) => {
 
   const assetRowsHtml = assetRows.map((a) => `<tr>
     <td><span class="mono">${shortHash(a.asset_id, 10)}</span> <button class="copybtn" type="button" onclick="blkCopy('${esc(a.asset_id)}', this)">copy</button></td>
-    <td>${a.name ? esc(a.name) : "—"}</td>
-    <td>${a.symbol ? esc(a.symbol) : "—"}</td>
+    <td>${a.name ? flaggedText(a.name) : "—"}</td>
+    <td>${a.symbol ? flaggedText(a.symbol) : "—"}</td>
     <td class="num">${a.decimals !== null && a.decimals !== undefined ? fmtInt(a.decimals) : "—"}</td>
   </tr>`).join("");
 

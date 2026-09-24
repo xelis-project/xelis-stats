@@ -397,6 +397,17 @@ label.chk input:focus-visible,
 .badge.entity.pool { color: var(--mint); border-color: rgba(2, 255, 207, 0.3); }
 .badge.entity.miscellaneous { color: var(--text-dim2); border-style: dashed; }
 
+/* Bad-word filtered content: hidden until the header eye toggle is switched on */
+.flagwrap { font-style: italic; letter-spacing: 0.01em; }
+.flag-hid { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--text-dim2); font-size: 1.1rem; }
+.flag-shown { display: none; }
+html.reveal-flags .flag-hid { display: none; }
+html.reveal-flags .flag-shown { display: inline; }
+.flag-toggle .flag-ic-on { display: none; }
+html.reveal-flags .flag-toggle > .ic { display: none; }
+html.reveal-flags .flag-toggle .flag-ic-on { display: inline-flex; }
+html.reveal-flags .flag-toggle { color: var(--gold); border-color: rgba(245, 217, 95, 0.35); }
+
 /* KV tables (detail pages) */
 .kv { width: 100%; font-size: 1.35rem; }
 .kv td { padding: 0.8rem; border-bottom: 1px solid hsla(0, 0%, 100%, 0.05); }
