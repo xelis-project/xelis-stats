@@ -1128,9 +1128,9 @@ function widgetEl(w: Widget, s: Slot): HTMLElement {
       <span class="w-grip" aria-hidden="true">${gripIcon}</span>
       <h3 class="w-title">${esc(w.opts?.title || item?.label || w.key)}</h3>
       <span class="w-spacer"></span>
-      ${item?.desc ? `<button class="w-btn" data-act="info" aria-label="About ${esc(item?.label ?? "panel")}" title="About this panel">${icons.info}</button>` : ""}
       ${hasFilters ? `<button class="w-btn" data-act="filters" aria-label="Data filters" title="Data filters">${icons.filter}</button>` : ""}
       <button class="w-btn" data-act="panel" aria-label="Panel options" title="Panel options">${icons.settings}</button>
+      ${item?.desc ? `<button class="w-btn" data-act="info" aria-label="About ${esc(item?.label ?? "panel")}" title="About this panel">${icons.info}</button>` : ""}
       <button class="w-btn" data-act="remove" aria-label="Remove widget" title="Remove">${icons.close}</button>
     </header>
     <div class="w-body">
