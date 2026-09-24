@@ -641,6 +641,15 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
   }
 }
 .tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+/* capped-height variant: scrolls vertically, header stays visible */
+.tablewrap.scroll-y { max-height: 24rem; overflow-y: auto; }
+.tablewrap.scroll-y th { position: sticky; top: 0; z-index: 1; background: rgba(8, 14, 17, 0.97); }
+/* tx transfers table: click-to-expand encrypted payload (native <details>) */
+.payload-toggle summary { cursor: pointer; }
+.payload-toggle summary::-webkit-details-marker { display: none; }
+.payload-toggle summary:hover { color: var(--mint); }
+.payload-toggle[open] summary { margin-bottom: 0.4rem; }
+.payload-value { display: block; max-width: 30rem; font-size: 1.15rem; line-height: 1.5; color: var(--text-dim); white-space: normal; word-break: break-all; }
 
 /* ---------- Table page filter button + popup ---------- */
 

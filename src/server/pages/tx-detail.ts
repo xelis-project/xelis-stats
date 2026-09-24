@@ -12,7 +12,7 @@ export const txDetail = new Hono<{ Bindings: Env }>();
 // Transfers: the destination address and asset of each transfer are plaintext
 // tx-payload fields; amounts are homomorphically encrypted on-chain (only a
 // ciphertext commitment is public), so the amount column always shows "hidden".
-type TransferEntry = { destination: string; asset: string; payload: boolean };
+type TransferEntry = { destination: string; asset: string; extra: number[] };
 const XEL_ASSET_ID = "0".repeat(64);
 type AssetMeta = { name: string | null; symbol: string | null; decimals: number | null };
 
@@ -21,7 +21,7 @@ const parseTransfers = (data: Record<string, unknown>): TransferEntry[] =>
     .map((tr) => ({
       destination: typeof tr.destination === "string" ? tr.destination : "",
       asset: typeof tr.asset === "string" ? tr.asset : "",
-      payload: tr.extra_data != null,
+      extra: Array.isArray(tr.extra_data) ? (tr.extra_data as unknown[]).filter((b): b is number => typeof b === "number") : [],
     }));
 
 // asset cell: native XEL is a plain badge; tokens use the registered symbol
@@ -34,6 +34,17 @@ const assetCellHtml = (assetId: string, meta: Map<string, AssetMeta>): string =>
   return `<a class="mono" href="/assets?q=${esc(assetId)}">${label}</a>`;
 };
 
+// extra_data arrives as a byte array from the node; render printable UTF-8 as
+// text and hex otherwise, expandable in place (native <details>, no JS)
+const payloadCellHtml = (bytes: number[]): string => {
+  if (!bytes.length) return '<span style="color:var(--text-dim)">—</span>';
+  const hex = bytes.map((b) => b.toString(16).padStart(2, "0")).join("");
+  let text = "";
+  try { text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(new Uint8Array(bytes)); } catch { text = ""; }
+  const printable = text.length > 0 && [...text].every((ch) => ch.charCodeAt(0) >= 32 && ch.charCodeAt(0) !== 127);
+  return `<details class="payload-toggle"><summary class="badge priv" title="${printable ? `hex: ${esc(hex)}` : "Encrypted transfer payload"}">payload</summary><code class="mono payload-value">${esc(printable ? text : hex)}</code></details>`;
+};
+
 const transfersPanelHtml = (list: TransferEntry[], meta: Map<string, AssetMeta> = new Map()): string => {
   if (!list.length) return "";
   const rows = list.map((tr, i) => `<tr>
@@ -42,11 +53,12 @@ const transfersPanelHtml = (list: TransferEntry[], meta: Map<string, AssetMeta> 
       ? `<a class="mono" href="/account/${esc(tr.destination)}">${shortHash(tr.destination, 10)}</a>${entityTag(tr.destination)}`
       : '<span style="color:var(--text-dim)">—</span>'}</td>
     <td>${assetCellHtml(tr.asset, meta)}</td>
-    <td><span class="badge priv" title="Amount is encrypted on-chain">hidden</span>${tr.payload ? ' <span class="badge priv" title="Encrypted transfer payload attached">payload</span>' : ""}</td>
+    <td><span class="badge priv" title="Amount is encrypted on-chain">hidden</span></td>
+    <td>${payloadCellHtml(tr.extra)}</td>
   </tr>`).join("");
-  return `<div class="panel"><h2>Transfers <span style="color:var(--text-dim)">${fmtInt(list.length)} · receivers public, amounts encrypted</span></h2>
-    <div class="tablewrap"><table>
-      <thead><tr><th class="num">#</th><th>Destination</th><th>Asset</th><th>Amount</th></tr></thead>
+  return `<div class="panel"><h2>Transfers <span style="color:var(--text-dim)">${fmtInt(list.length)}</span></h2>
+    <div class="tablewrap scroll-y"><table>
+      <thead><tr><th class="num">#</th><th>Destination</th><th>Asset</th><th>Amount</th><th>Payload</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div></div>`;
 };
