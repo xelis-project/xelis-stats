@@ -172,21 +172,33 @@ export async function rollupDailyStats(env: Env, date: string): Promise<void> {
         (SELECT SUM(CASE WHEN block_type='Side' THEN 1 ELSE 0 END) FROM blocks WHERE date(ts/1000,'unixepoch') = ?) AS orphan_count,
         (SELECT SUM(fee_total) FROM blocks WHERE date(ts/1000,'unixepoch') = ?) AS fee_total_sum,
         (SELECT SUM(miner_reward+dev_reward) FROM blocks WHERE date(ts/1000,'unixepoch') = ?) AS miner_revenue,
+        (SELECT SUM(burned) FROM blocks WHERE date(ts/1000,'unixepoch') = ?) AS burned_day,
         (SELECT SUM(peer_count) FROM node_versions WHERE date = ?) AS peer_count
-    `).bind(date, date, date, date, date, date, date, date, date, date, date).first<Record<string, unknown>>();
+    `).bind(date, date, date, date, date, date, date, date, date, date, date, date).first<Record<string, unknown>>();
 
     if (!row || (row.tx_count === 0 && row.active_accounts === 0 && (row.miner_revenue ?? 0) === 0 && (row.peer_count ?? 0) === 0)) return;
 
+    // supply is cumulative: continue from the last stored day, adding today's
+    // emitted (block rewards) and burned (block fees burned) amounts.
+    const prev = await env.DB.prepare(
+      "SELECT (SELECT COALESCE(SUM(miner_revenue),0) FROM daily_stats WHERE date < ?) AS emitted, (SELECT burned_supply FROM daily_stats WHERE date < ? ORDER BY date DESC LIMIT 1) AS burned"
+    ).bind(date, date).first<{ emitted: number | null; burned: number | null }>();
+    const emittedSupply = Number(prev?.emitted ?? 0) + Number(row.miner_revenue ?? 0);
+    const burnedSupply = Number(prev?.burned ?? 0) + Number(row.burned_day ?? 0);
+    const circulatingSupply = emittedSupply - burnedSupply;
+
     await env.DB.prepare(`INSERT OR REPLACE INTO daily_stats
-      (date, active_accounts, new_accounts, tx_count, avg_fee, transfer_count, hashrate, unique_miners, orphan_count, fee_total_sum, miner_revenue, peer_count)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (date, active_accounts, new_accounts, tx_count, avg_fee, transfer_count, hashrate, unique_miners, orphan_count, fee_total_sum, miner_revenue, peer_count, emitted_supply, burned_supply, circulating_supply)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(date) DO UPDATE SET
         active_accounts = excluded.active_accounts, new_accounts = excluded.new_accounts,
         tx_count = excluded.tx_count, avg_fee = excluded.avg_fee, transfer_count = excluded.transfer_count,
         hashrate = excluded.hashrate, unique_miners = excluded.unique_miners, orphan_count = excluded.orphan_count,
         fee_total_sum = excluded.fee_total_sum, miner_revenue = excluded.miner_revenue,
+        emitted_supply = excluded.emitted_supply, burned_supply = excluded.burned_supply,
+        circulating_supply = excluded.circulating_supply,
         peer_count = COALESCE(excluded.peer_count, peer_count)`)
-      .bind(date, row.active_accounts, row.new_accounts, row.tx_count, row.avg_fee, row.transfer_count, row.hashrate, row.unique_miners, row.orphan_count, row.fee_total_sum, row.miner_revenue, row.peer_count).run();
+      .bind(date, row.active_accounts, row.new_accounts, row.tx_count, row.avg_fee, row.transfer_count, row.hashrate, row.unique_miners, row.orphan_count, row.fee_total_sum, row.miner_revenue, row.peer_count, emittedSupply, burnedSupply, circulatingSupply).run();
   } catch (err) {
     console.error("rollupDailyStats:", (err as Error).message);
   }

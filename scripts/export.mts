@@ -151,23 +151,36 @@ function dumpJsonl(table: string, keyCol: string, chunkRows: number, dir: string
 
 console.log("Exporting aggregates (D1)…");
 const AGG_JOBS: Array<[string, string, string[], string]> = [
-  ["daily_stats", "daily_stats", ["date", "active_accounts", "new_accounts", "tx_count", "avg_fee", "hashrate", "unique_miners", "orphan_count", "miner_revenue", "fee_total_sum", "fees_vs_rewards_pct"],
+  ["daily_stats", "daily_stats", ["date", "active_accounts", "new_accounts", "tx_count", "avg_fee", "hashrate", "unique_miners", "orphan_count", "miner_revenue", "fee_total_sum", "fees_vs_rewards_pct", "emitted_supply", "burned_supply", "circulating_supply"],
     `WITH per_day AS (
       SELECT date(ts/1000,'unixepoch') AS date, COUNT(*) blocks_found,
              AVG(difficulty)/5.0 hashrate_raw, COUNT(DISTINCT miner_address) unique_miners,
              SUM(tx_count) tx_count, SUM(CASE WHEN block_type != 'Normal' THEN 1 ELSE 0 END) orphan_count,
-             SUM(fee_total) fee_total_sum, SUM(miner_reward+dev_reward) rewards_sum
+             SUM(fee_total) fee_total_sum, SUM(miner_reward+dev_reward) rewards_sum,
+             SUM(burned) block_burned
       FROM blocks GROUP BY 1),
      tx_day AS (
       SELECT date(ts/1000,'unixepoch') AS date, COUNT(*) txs, AVG(fee) avg_fee,
              COUNT(DISTINCT sender) active_accounts
       FROM tx_index GROUP BY 1),
      acct_day AS (
-      SELECT date(first_seen/1000,'unixepoch') AS date, COUNT(*) new_accounts FROM accounts GROUP BY 1)
-     SELECT p.date, a.active_accounts, n.new_accounts, p.tx_count, a.avg_fee, p.hashrate_raw hashrate,
-            p.unique_miners, p.orphan_count, p.rewards_sum miner_revenue, p.fee_total_sum,
-            CASE WHEN p.rewards_sum > 0 THEN (a.avg_fee * a.txs * 100.0 / p.rewards_sum) ELSE NULL END fees_vs_rewards_pct
-     FROM per_day p LEFT JOIN tx_day a USING(date) LEFT JOIN acct_day n USING(date) ORDER BY p.date`],
+      SELECT date(first_seen/1000,'unixepoch') AS date, COUNT(*) new_accounts FROM accounts GROUP BY 1),
+     combined AS (
+      SELECT p.date, a.active_accounts, n.new_accounts, p.tx_count, a.avg_fee, p.hashrate_raw hashrate,
+             p.unique_miners, p.orphan_count, p.rewards_sum miner_revenue, p.fee_total_sum, p.block_burned,
+             CASE WHEN p.rewards_sum > 0 THEN (a.avg_fee * a.txs * 100.0 / p.rewards_sum) ELSE NULL END fees_vs_rewards_pct
+      FROM per_day p LEFT JOIN tx_day a USING(date) LEFT JOIN acct_day n USING(date)),
+     cumulative AS (
+      SELECT date, active_accounts, new_accounts, tx_count, avg_fee, hashrate, unique_miners,
+             orphan_count, miner_revenue, fee_total_sum, fees_vs_rewards_pct,
+             SUM(miner_revenue) OVER (ORDER BY date) emitted_supply,
+             SUM(COALESCE(block_burned, 0)) OVER (ORDER BY date) burned_supply
+      FROM combined)
+     SELECT date, active_accounts, new_accounts, tx_count, avg_fee, hashrate, unique_miners,
+            orphan_count, miner_revenue, fee_total_sum, fees_vs_rewards_pct,
+            emitted_supply, burned_supply,
+            emitted_supply - burned_supply AS circulating_supply
+     FROM cumulative ORDER BY date`],
   ["daily_miners", "daily_miners", ["date", "address", "blocks_found", "rewards_earned"],
     `SELECT date(ts/1000,'unixepoch') date, miner_address address, COUNT(*) blocks_found,
             SUM(miner_reward) rewards_earned FROM blocks WHERE miner_address != '' GROUP BY 1,2 ORDER BY 1`],
