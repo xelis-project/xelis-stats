@@ -36,10 +36,15 @@ txDetail.get("/tx/:hash", async (c) => {
         const burnAssetId = burnData && typeof burnData.asset === "string" ? burnData.asset : "";
         const burnLabel = burnAssetId ? `${atomic(burnAmt)} ${shortHash(burnAssetId, 4)}` : `${atomic(burnAmt)} XEL`;
         const type = esc(Object.keys(data)[0] ?? "unknown");
-        // deploy contract ids are the deploy tx hash itself
-        const isDeploy = type === "deploy_contract";
-        const contractLink = isDeploy
-          ? `<a class="mono" href="/contracts/${esc(hash)}">${shortHash(hash, 12)}</a> <button class="copybtn" type="button" onclick="blkCopy('${esc(hash)}', this)">copy</button>`
+        // contract ids are the deploy tx hash or the invoked contract's id
+        const invokeData = (data.invoke_contract ?? null) as Record<string, unknown> | null;
+        const contractId = type === "deploy_contract"
+          ? hash
+          : type === "invoke_contract" && typeof invokeData?.contract === "string"
+            ? invokeData.contract
+            : "";
+        const contractLink = contractId
+          ? `<a class="mono" href="/contracts/${esc(contractId)}">${shortHash(contractId, 12)}</a> <button class="copybtn" type="button" onclick="blkCopy('${esc(contractId)}', this)">copy</button>`
           : "";
         const fee = num(t.fee_paid ?? t.fee);
         const size = num(t.size);
@@ -67,7 +72,7 @@ txDetail.get("/tx/:hash", async (c) => {
                 <button class="copybtn" type="button" onclick="blkCopy('${esc(hash)}', this)">copy</button>
               </div>
             </div>
-            ${isDeploy ? `<div class="blk-nav"><a class="btn ghost" href="/contracts/${esc(hash)}" title="Open deployed contract">Contract ›</a></div>` : ""}
+            ${contractId ? `<div class="blk-nav"><a class="btn ghost" href="/contracts/${esc(contractId)}" title="Open contract">Contract ›</a></div>` : ""}
           </div>
           <div class="cards blk-cards">
             ${statCard("Fee", atomic(fee, 6) + " XEL", size ? `${atomic((fee * 1024) / size, 5)} XEL / kB fee rate` : "network fee")}
@@ -79,7 +84,7 @@ txDetail.get("/tx/:hash", async (c) => {
 
         const overview = `<div class="panel"><h2>Overview</h2><table class="kv">
           <tr><td>Type</td><td><span class="badge ${type.toLowerCase()}">${type}</span></td></tr>
-          ${isDeploy ? `<tr><td>Contract</td><td>${contractLink}</td></tr>` : ""}
+          ${contractId ? `<tr><td>Contract</td><td>${contractLink}</td></tr>` : ""}
           <tr><td>Sender</td><td>${source ? `<a class="mono" href="/account/${esc(source)}">${shortHash(source, 10)}</a>${entityTag(source)} <button class="copybtn" type="button" onclick="blkCopy('${esc(source)}', this)">copy</button>` : "—"}</td></tr>
           <tr><td>Block</td><td>${blockTopo > 0 ? `<a href="/block/${blockTopo}"><span class="mint">#${fmtInt(blockTopo)}</span></a>` : blockHash ? `<a class="mono" href="/block/${esc(blockHash)}">${shortHash(blockHash, 10)}</a>` : '<span class="badge">unconfirmed</span>'}</td></tr>
           ${burnData ? `<tr><td>Burned</td><td><span class="mint">${esc(burnLabel)}</span> <span style="color:var(--text-dim)">public burn amount</span></td></tr>` : ""}
@@ -217,7 +222,7 @@ txDetail.get("/tx/:hash", async (c) => {
           <button class="copybtn" type="button" onclick="blkCopy('${esc(tx.hash as string)}', this)">copy</button>
         </div>
       </div>
-      ${topo > 0 || (txType === "deploy_contract" && contractId) ? `<div class="blk-nav">${txType === "deploy_contract" && contractId ? `<a class="btn ghost" href="/contracts/${esc(contractId)}" title="Open deployed contract">Contract ›</a>` : ""}${topo > 0 ? `<a class="btn ghost" href="/block/${topo}" title="Open containing block">Block ›</a>` : ""}</div>` : ""}
+      ${topo > 0 || contractId ? `<div class="blk-nav">${contractId ? `<a class="btn ghost" href="/contracts/${esc(contractId)}" title="Open contract">Contract ›</a>` : ""}${topo > 0 ? `<a class="btn ghost" href="/block/${topo}" title="Open containing block">Block ›</a>` : ""}</div>` : ""}
     </div>
     <div class="cards blk-cards">
       ${statCard("Fee", atomic(fee, 6) + " XEL", feeRate ? `${feeRate} fee rate` : "network fee")}
