@@ -5,6 +5,28 @@ import { layout } from "../../client/layout";
 export const market = new Hono<{ Bindings: Env }>();
 
 market.get("/market", async (c) => {
+  let retired: { name: string; url: string; addedTs: number | null; retiredTs: number | null }[] = [];
+  try {
+    const rows = await c.env.DB.prepare(
+      "SELECT name, url, added_ts, retired_ts FROM exchanges WHERE status = 'inactive' ORDER BY name",
+    ).all<{ name: string; url: string | null; added_ts: number | null; retired_ts: number | null }>();
+    retired = (rows.results ?? []).map((r) => ({ name: r.name, url: r.url ?? "", addedTs: r.added_ts, retiredTs: r.retired_ts }));
+  } catch { /* db not ready */ }
+  const fmtDay = (ts: number | null) => (ts ? new Date(ts).toISOString().slice(0, 10) : "");
+  const retiredRows = retired.map((r) => {
+    const span = r.addedTs
+      ? `${fmtDay(r.addedTs)} → ${fmtDay(r.retiredTs) || "present"}`
+      : "no historical data";
+    const label = r.url ? `<a href="${r.url}" target="_blank" rel="noopener">${r.name}</a>` : r.name;
+    return `<tr><td>${label}</td><td>${span}</td></tr>`;
+  }).join("");
+  const retiredHtml = retired.length
+    ? `<h3 class="sub-h">Retired exchanges</h3>
+       <div class="tablewrap"><table id="retired-table">
+         <thead><tr><th>Exchange</th><th>Tracked period</th></tr></thead>
+         <tbody>${retiredRows}</tbody>
+       </table></div>`
+    : "";
   const content = `
     <div class="panel"><h2>XEL Markets</h2>
       <div id="market-cards" class="cards">${Array.from({ length: 5 }, () =>
@@ -17,6 +39,7 @@ market.get("/market", async (c) => {
       <h3 class="sub-h">Volume share</h3>
       <div id="market-volshare" class="volshare"></div>
       <div id="market-volshare-legend" class="volshare-legend"></div>
+      ${retiredHtml}
     </div>
     <div class="panel"><h2>Price history</h2><div id="u-price-history" style="min-height:260px"><div class="w-skel sk-chart">${[42, 66, 38, 74, 55, 84, 61, 90, 70, 52, 78, 46].map((h) => `<span class="sk-bar sk-col" style="height:${h}%"></span>`).join("")}</div></div></div>`;
   return c.html(layout("Market", content, "/market"));
