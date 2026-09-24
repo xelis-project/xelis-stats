@@ -454,7 +454,7 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
 }
 
 /* ---------- Contract storage ---------- */
-.stg-list { display: flex; flex-direction: column; gap: 0.8rem; }
+.stg-list { display: flex; flex-direction: column; gap: 0.8rem; max-height: 60rem; overflow-y: auto; }
 .stg-batch { display: contents; }
 .stg-item {
   display: flex; flex-direction: column; gap: 0.5rem;
