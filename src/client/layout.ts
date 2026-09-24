@@ -45,8 +45,6 @@ export function layout(title: string, content: string, active: string, bodyClass
       <nav class="footer-links">
         <a href="/api/docs">API</a>
         <a href="/status">Status</a>
-        <a href="/charts">Charts</a>
-        <a href="/miners">Miners</a>
       </nav>
       <div class="footer-copy">© ${new Date().getFullYear()} Xelis Stats · Data from the Xelis network</div>
     </footer>
