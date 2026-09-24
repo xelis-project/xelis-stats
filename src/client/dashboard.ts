@@ -129,14 +129,9 @@ const CATALOG: CatalogItem[] = [
   { key: "stat-assets", kind: "stat", field: "assets", label: "Assets", desc: "Registered assets", w: 3, h: 2 },
   { key: "stat-node", kind: "stat", field: "node", label: "Node", desc: "Node version and network", w: 3, h: 2 },
   { key: "stat-height", kind: "stat", field: "height", label: "Block height", desc: "Linear chain height", w: 3, h: 2 },
-  { key: "stat-stable", kind: "stat", field: "stable", label: "Stable boundary", desc: "Stable topoheight vs tip", w: 3, h: 2 },
-  { key: "stat-difficulty", kind: "stat", field: "difficulty", label: "Difficulty", desc: "Current block difficulty", w: 3, h: 2 },
-  { key: "stat-emitted", kind: "stat", field: "emitted", label: "Emitted supply", desc: "Total XEL emitted so far", w: 3, h: 2 },
-  { key: "stat-max", kind: "stat", field: "max", label: "Max supply", desc: "Emission cap and % minted", w: 3, h: 2 },
   { key: "stat-quote-vol", kind: "stat", field: "quotevol", label: "24h volume", desc: "USDT quote volume, all exchanges", w: 3, h: 2 },
   { key: "stat-exchanges", kind: "stat", field: "exchanges", label: "Exchanges", desc: "Active market feeds", w: 3, h: 2 },
   { key: "stat-reward", kind: "stat", field: "reward", label: "Block reward", desc: "Miner + dev reward per block", w: 3, h: 2 },
-  { key: "stat-target", kind: "stat", field: "target", label: "Target block time", desc: "Node emission target", w: 3, h: 2 },
   { key: "stat-peers", kind: "stat", field: "peers", label: "Peers", desc: "Connected peers (2-min snapshot)", w: 3, h: 2 },
 
   { key: "chart-txs", kind: "chart", metric: "txs", label: "Transactions / day", desc: "Daily transaction count", range: "90d", interval: "day", w: 6, h: 5 },
@@ -148,13 +143,9 @@ const CATALOG: CatalogItem[] = [
   { key: "chart-supply", kind: "chart", metric: "supply", label: "Supply", desc: "Circulating supply", range: "1y", interval: "week", w: 6, h: 5 },
   { key: "chart-market-cap", kind: "chart", metric: "market-cap", label: "Market cap", desc: "Supply x price where covered", range: "1y", interval: "week", w: 6, h: 5 },
   { key: "chart-transfers", kind: "chart", metric: "transfers", label: "Transfers", desc: "Transfer outputs per bucket", range: "90d", interval: "day", w: 6, h: 5 },
-  { key: "chart-orphans", kind: "chart", metric: "orphans", label: "Non-Normal blocks", desc: "Side/Sync block counts", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-new-accounts", kind: "chart", metric: "accounts", label: "New accounts", desc: "Newly observed senders per day", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-miner-revenue", kind: "chart", metric: "miner-revenue", label: "Miner revenue", desc: "Rewards emitted per day (XEL)", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-quote-volume", kind: "chart", metric: "quote-volume", label: "Quote volume", desc: "USDT volume across exchanges", range: "30d", interval: "day", w: 6, h: 5 },
-  { key: "chart-fee-p90", kind: "chart", metric: "fee-p90", label: "Fee P90", desc: "90th percentile fee per bucket", range: "90d", interval: "day", w: 6, h: 5 },
-  { key: "chart-fees-median", kind: "chart", metric: "fees-median", label: "Median fee", desc: "Median fee per transaction", range: "90d", interval: "day", w: 6, h: 5 },
-  { key: "chart-fees-p99", kind: "chart", metric: "fees-p99", label: "Fee P99", desc: "99th percentile fee per bucket", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-block-time", kind: "chart", metric: "block-time", label: "Block time", desc: "Average block interval per day", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-gini", kind: "chart", metric: "gini", label: "Production Gini", desc: "Block production concentration", range: "1y", interval: "week", w: 6, h: 5 },
   { key: "chart-nakamoto", kind: "chart", metric: "nakamoto", label: "Nakamoto coefficient", desc: "Miner decentralization estimate", range: "1y", interval: "week", w: 6, h: 5 },
@@ -170,7 +161,6 @@ const CATALOG: CatalogItem[] = [
   { key: "chart-peers-stale", kind: "chart", metric: "peers-stale", label: "Stale peers", desc: "No ping for over an hour", range: "7d", interval: "day", w: 6, h: 5 },
   { key: "chart-peer-age", kind: "chart", metric: "peer-age", label: "Connection age", desc: "Average peer connection age (s)", range: "7d", interval: "day", w: 6, h: 5 },
   { key: "chart-peers-hidden", kind: "chart", metric: "peers-hidden", label: "Hidden peers", desc: "Peers hidden from our view", range: "7d", interval: "day", w: 6, h: 5 },
-  { key: "chart-peers-lagging", kind: "chart", metric: "peers-lagging", label: "Lagging peers", desc: "Peers 50+ blocks behind our tip", range: "7d", interval: "day", w: 6, h: 5 },
   { key: "chart-peers-new", kind: "chart", metric: "peers-new", label: "New connections", desc: "Peers connected within the last hour", range: "7d", interval: "day", w: 6, h: 5 },
   { key: "chart-peer-view", kind: "chart", metric: "peer-view", label: "Peer view", desc: "Average peers each peer reports", range: "7d", interval: "day", w: 6, h: 5 },
   { key: "compare-peers-divergent", kind: "compare", metrics: ["peers", "peers-divergent"], label: "Peers vs divergent", desc: "Connected peers against divergent tips", range: "7d", interval: "day", w: 6, h: 5 },
@@ -214,8 +204,6 @@ const EXPLAIN: Record<string, string> = {
   "stat-chainsize": "Total on-disk size of the node's chain database, from the node's get_size_on_disk RPC. This is the blockchain size as stored by a full node.",
   "stat-burned": "Total XEL provably burned through public burn addresses and transactions.",
   "stat-blocktime": "Recent average interval between blocks compared with the protocol target, so you can see whether the network is running fast or slow.",
-  "stat-difficulty": "The current proof-of-work difficulty required for a block.",
-  "stat-max": "The maximum XEL supply cap together with the percentage that has been minted so far.",
   "stat-reward": "Total reward paid per block, split between the miner reward and the developer reward.",
   "stat-peers": "Connected peers counted from the periodic peer snapshot, refreshed roughly every two minutes.",
   // charts
@@ -228,13 +216,9 @@ const EXPLAIN: Record<string, string> = {
   "chart-supply": "Circulating XEL supply in whole XEL. This is a cumulative value maintained by the ingestion pipeline.",
   "chart-market-cap": "Circulating supply multiplied by the latest price on each day that has market coverage.",
   "chart-transfers": "Number of transfer outputs seen in the transaction index, summed per bucket.",
-  "chart-orphans": "Blocks that are not of the Normal type (Side or Sync blocks), summed per bucket. Spikes usually mean network or timing instability.",
   "chart-new-accounts": "Sender addresses observed for the first time in the period, summed per bucket.",
   "chart-miner-revenue": "Block rewards emitted to miners per day, in XEL, summed across the bucket.",
   "chart-quote-volume": "Summed USDT quote volume across all tracked exchanges.",
-  "chart-fee-p90": "The 90th-percentile transaction fee (the fee level 90% of transactions fall below), averaged across the bucket.",
-  "chart-fees-median": "The median transaction fee, less sensitive to outliers than the average fee.",
-  "chart-fees-p99": "The 99th-percentile transaction fee, showing the cost of the most expensive 1% of transactions.",
   "chart-block-time": "Computed directly from blocks as (latest timestamp - earliest timestamp) / (block count - 1): the mean seconds between consecutive blocks in the bucket.",
   "chart-gini": "Gini coefficient of per-miner daily block counts, measuring block-production concentration. 0 means every miner produced an equal share; 1 means a single miner produced everything. Daily values are averaged within the bucket.",
   "chart-nakamoto": "The smallest number of miners whose combined blocks exceed 50% of a day's blocks. Lower is more concentrated: 1 means one miner produced the majority of that day's blocks. Daily values are averaged within the bucket.",
@@ -250,7 +234,6 @@ const EXPLAIN: Record<string, string> = {
   "chart-peers-stale": "Peers that have not responded to a ping for over an hour and may be unreachable.",
   "chart-peer-age": "Average age, in seconds, of the current peer connections.",
   "chart-peers-hidden": "Peers that do not advertise themselves to us (hidden_peers), which peers report but our node cannot enumerate.",
-  "chart-peers-lagging": "Peers whose topoheight is more than 50 blocks behind our tip.",
   "chart-peers-new": "Peers whose connection was established within the last hour, a rough churn indicator.",
   "chart-peer-view": "Average number of other peers each of our peers reports, an estimate of how well-connected the network graph is.",
   // comparisons
@@ -330,7 +313,7 @@ const DEFAULT_TABS: Array<{ name: string; widgets: Array<[string, number, number
       ["chart-peer-lag", 6, 2, 6, 5],
       ["list-peers", 0, 7, 6, 5],
       ["list-peer-tags", 6, 7, 6, 5],
-      ["chart-peers-lagging", 0, 12, 6, 5],
+      ["chart-peers-stale", 0, 12, 6, 5],
       ["list-peer-countries", 6, 12, 6, 5],
     ],
   },
@@ -601,25 +584,9 @@ function statValue(field: string | undefined, s: Summary): { value: string; sub:
     case "assets": return { value: fmtInt(s.counts?.assets ?? NaN), sub: "registered assets" };
     case "node": return { value: s.node_version ?? "—", sub: s.network ?? "network unknown" };
     case "height": return { value: fmtInt(s.height ?? NaN), sub: `topoheight ${fmtInt(s.topoheight ?? NaN)}` };
-    case "stable": {
-      const gap = s.topoheight !== undefined && s.stable_topoheight !== undefined ? s.topoheight - s.stable_topoheight : NaN;
-      return { value: fmtInt(s.stable_topoheight ?? NaN), sub: Number.isFinite(gap) ? `${fmtInt(gap)} blocks behind tip` : "" };
-    }
-    case "difficulty": return { value: fmt(s.difficulty ?? NaN), sub: s.difficulty && s.block_time_s ? `≈ ${fmt(s.difficulty / s.block_time_s)} H/s` : "estimated hashrate unavailable" };
-    case "emitted": {
-      const em = (s.supply?.emitted ?? 0) / 1e8;
-      const max = (s.supply?.max ?? 0) / 1e8;
-      return { value: `${fmt(em)} XEL`, sub: max ? `${((em / max) * 100).toFixed(1)}% of max emitted` : "max unknown" };
-    }
-    case "max": {
-      const max = (s.supply?.max ?? 0) / 1e8;
-      const circ = (s.supply?.circulating ?? 0) / 1e8;
-      return { value: max ? `${fmt(max)} XEL` : "—", sub: max ? `${((circ / max) * 100).toFixed(1)}% circulating` : "" };
-    }
     case "quotevol": return { value: s.market?.quote_volume_24h ? `$${fmt(s.market.quote_volume_24h)}` : "—", sub: "USDT quoted, all exchanges" };
     case "exchanges": return { value: s.market ? fmtInt(s.market.exchanges ?? NaN) : "—", sub: s.market ? "active market feeds" : "market unavailable" };
     case "reward": return { value: s.block_reward ? `${atomic(s.block_reward)} XEL` : "—", sub: "miner + dev reward per block" };
-    case "target": return { value: s.block_time_target_s ? `${s.block_time_target_s.toFixed(0)}s` : "—", sub: "node emission target" };
     default: return { value: "—", sub: "" };
   }
 }
@@ -1106,8 +1073,18 @@ function mountChart(w: Widget): void {
     .catch(() => { setLoading(w, false); body.innerHTML = '<p class="w-empty">Failed to load series.</p>'; });
 }
 
+// Human labels for history metrics that no longer have a dedicated catalog
+// widget but are still referenced by compare widgets (e.g. fee-p90).
+const METRIC_LABELS: Record<string, string> = {
+  "fee-p90": "Fee P90",
+  "peers-lagging": "Lagging peers",
+  "peers-divergent": "Divergent tips",
+  "peer-traffic-in": "Bytes received",
+  "peer-traffic-out": "Bytes sent",
+};
+
 function metricLabel(m: string): string {
-  return CATALOG.find((c) => c.metric === m)?.label ?? m;
+  return CATALOG.find((c) => c.metric === m)?.label ?? METRIC_LABELS[m] ?? m;
 }
 
 async function mountCompare(w: Widget): Promise<void> {

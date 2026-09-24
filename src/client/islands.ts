@@ -270,31 +270,6 @@ function initMarket(): void {
   setInterval(load, 60_000);
 }
 
-// ---------- recent blocks (dashboard) ----------
-
-function initRecentBlocks(): void {
-  const tbody = document.getElementById("recent-blocks");
-  if (!tbody) return;
-  async function load(): Promise<void> {
-    try {
-      const res = await fetch("/api/blocks?limit=10");
-      const json = (await res.json()) as { blocks?: Array<{ topoheight: number; hash: string; ts: number; tx_count: number; miner_reward: number }> };
-      if (!json.blocks) return;
-      tbody!.innerHTML = json.blocks.map((b) => `<tr>
-        <td><a href="/block/${b.topoheight}"><span class="mint">${b.topoheight.toLocaleString()}</span></a></td>
-        <td><span class="hash">${b.hash.slice(0, 10)}…${b.hash.slice(-6)}</span></td>
-        <td>${new Date(b.ts).toISOString().slice(11, 19)} UTC</td>
-        <td class="num">${b.tx_count}</td>
-        <td class="num">${fmtAuto(b.miner_reward / 1e8)}</td>
-      </tr>`).join("");
-      const tbl = tbody!.closest("table");
-      if (tbl) refreshSort(tbl);
-    } catch { /* keep loading state */ }
-  }
-  load();
-  setInterval(load, 10_000);
-}
-
 // ---------- miner profile ----------
 
 function initMinerProfile(): void {
@@ -333,5 +308,4 @@ if (path.startsWith("/embed/")) {
 }
 if (path === "/charts") initChartsHub();
 if (path === "/market") initMarket();
-if (path === "/") initRecentBlocks();
 if (path.startsWith("/miner/")) initMinerProfile();
