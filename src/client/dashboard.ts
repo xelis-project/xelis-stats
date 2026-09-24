@@ -1047,6 +1047,7 @@ function widgetEl(w: Widget, s: Slot): HTMLElement {
       <span class="w-grip" aria-hidden="true">⠿</span>
       <h3 class="w-title">${esc(w.opts?.title || item?.label || w.key)}</h3>
       <span class="w-spacer"></span>
+      ${item?.desc ? `<button class="w-btn" data-act="info" aria-label="About ${esc(item?.label ?? "panel")}" title="About this panel">ⓘ</button>` : ""}
       ${hasFilters ? `<button class="w-btn" data-act="filters" aria-label="Data filters" title="Data filters">▽</button>` : ""}
       <button class="w-btn" data-act="panel" aria-label="Panel options" title="Panel options">⚙</button>
       <button class="w-btn" data-act="remove" aria-label="Remove widget" title="Remove">×</button>
@@ -1077,6 +1078,10 @@ function widgetEl(w: Widget, s: Slot): HTMLElement {
     ev.stopPropagation();
     toggleSettings(w, el, "panel");
   });
+  el.querySelector<HTMLElement>("[data-act=info]")?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    toggleSettings(w, el, "info");
+  });
 
   el.querySelector<HTMLElement>(".w-head")?.addEventListener("pointerdown", (ev) => startDrag(ev, w, el));
   el.querySelector<HTMLElement>(".w-head")?.addEventListener("keydown", (ev) => onWidgetKey(ev, w, el));
@@ -1087,7 +1092,7 @@ function widgetEl(w: Widget, s: Slot): HTMLElement {
 
 // ---------- per-widget settings ----------
 
-type SetMode = "filters" | "panel";
+type SetMode = "filters" | "panel" | "info";
 
 function setOpt(w: Widget, field: keyof WidgetOpts, value: unknown): void {
   if (!w.opts) w.opts = {};
@@ -1112,7 +1117,7 @@ function removePopover(id: string): void {
 
 function closeSettings(w: Widget, el: HTMLElement): void {
   popoverOf(w)?.remove();
-  el.querySelectorAll<HTMLElement>(".w-btn[data-act=filters], .w-btn[data-act=panel]").forEach((b) => b.classList.remove("on"));
+  el.querySelectorAll<HTMLElement>(".w-btn[data-act=filters], .w-btn[data-act=panel], .w-btn[data-act=info]").forEach((b) => b.classList.remove("on"));
 }
 
 // Anchor the popover to the widget header and clamp it to the viewport, so
@@ -1160,13 +1165,28 @@ function toggleSettings(w: Widget, el: HTMLElement, mode: SetMode): void {
   wireSettings(w, el, panel, mode);
   panel.hidden = false;
   placePopover(el, panel);
-  el.querySelectorAll<HTMLElement>(".w-btn[data-act=filters], .w-btn[data-act=panel]").forEach((b) =>
+  el.querySelectorAll<HTMLElement>(".w-btn[data-act=filters], .w-btn[data-act=panel], .w-btn[data-act=info]").forEach((b) =>
     b.classList.toggle("on", b.dataset.act === mode));
 }
 
 function settingsHtml(w: Widget, mode: SetMode): string {
   const item = byKey.get(w.key);
   const o = w.opts ?? {};
+
+  if (mode === "info") {
+    const kind = item?.kind === "stat" ? "Live stat" : item?.kind === "chart" ? "Time-series chart" : item?.kind === "compare" ? "Comparison chart" : item?.kind === "rank" ? "Ranking table" : item?.kind === "list" ? "List table" : "Panel";
+    return `
+      <div class="w-set-group">
+        <span class="w-set-group-t">About this panel</span>
+        <p class="w-info-title">${esc(w.opts?.title || item?.label || w.key)}</p>
+        <p class="w-info-desc">${esc(item?.desc || "No description available.")}</p>
+        <p class="w-info-kind">${kind}</p>
+      </div>
+      <div class="w-set-actions">
+        <button type="button" class="w-btn" data-act="settings-close">done</button>
+      </div>`;
+  }
+
   const sel = (cur: string, vals: string[], opt: string): string =>
     `<select data-opt="${opt}">${vals.map((v) => `<option value="${v}" ${cur === v ? "selected" : ""}>${v || "all"}</option>`).join("")}</select>`;
 
@@ -1941,7 +1961,7 @@ export function initDashboard(): void {
   };
   document.addEventListener("pointerdown", (ev) => {
     const t = ev.target as HTMLElement;
-    if (t.closest(".w-settings") || t.closest(".w-btn[data-act=filters]") || t.closest(".w-btn[data-act=panel]")) return;
+    if (t.closest(".w-settings") || t.closest(".w-btn[data-act=filters]") || t.closest(".w-btn[data-act=panel]") || t.closest(".w-btn[data-act=info]")) return;
     closeAllPopovers();
   });
   window.addEventListener("keydown", (ev) => {

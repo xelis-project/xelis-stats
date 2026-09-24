@@ -812,6 +812,13 @@ tr.sk-tr .sk-row { justify-content: center; }
   letter-spacing: 0.12em; color: var(--text-dim);
 }
 .w-set-none { color: var(--text-dim); margin: 0; }
+.w-info-title { margin: 0; font-size: 1.25rem; font-weight: 700; color: var(--text); }
+.w-info-desc { margin: 0; color: var(--text-dim); line-height: 1.45; }
+.w-info-kind {
+  margin: 0; align-self: flex-start;
+  padding: 0.15rem 0.6rem; border-radius: 0.5rem;
+  border: 1px solid var(--border); font-size: 0.98rem; color: var(--text-dim2);
+}
 .w-settings .w-set-row { display: flex; gap: 0.7rem; align-items: center; flex-wrap: wrap; }
 .w-settings .w-set-row[hidden] { display: none; }
 .w-settings label { display: flex; flex-direction: column; gap: 0.25rem; color: var(--text-dim); }
