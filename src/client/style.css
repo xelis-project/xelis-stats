@@ -397,16 +397,13 @@ label.chk input:focus-visible,
 .badge.entity.pool { color: var(--mint); border-color: rgba(2, 255, 207, 0.3); }
 .badge.entity.miscellaneous { color: var(--text-dim2); border-style: dashed; }
 
-/* Bad-word filtered content: hidden until the header eye toggle is switched on */
+/* Bad-word filtered content: hidden until "Show filtered names and tags" is
+   enabled on the Settings page (html.reveal-flags) */
 .flagwrap { font-style: italic; letter-spacing: 0.01em; }
 .flag-hid { display: inline-flex; align-items: center; gap: 0.4rem; color: var(--text-dim2); font-size: 1.1rem; }
 .flag-shown { display: none; }
 html.reveal-flags .flag-hid { display: none; }
 html.reveal-flags .flag-shown { display: inline; }
-.flag-toggle .flag-ic-on { display: none; }
-html.reveal-flags .flag-toggle > .ic { display: none; }
-html.reveal-flags .flag-toggle .flag-ic-on { display: inline-flex; }
-html.reveal-flags .flag-toggle { color: var(--gold); border-color: rgba(245, 217, 95, 0.35); }
 
 /* KV tables (detail pages) */
 .kv { width: 100%; font-size: 1.35rem; }
@@ -1029,4 +1026,57 @@ span.flatpickr-weekday { color: var(--text-dim); font-weight: 700; }
 @media (max-width: 620px) {
   .dash-toolbar .dash-hint { display: none; }
   .widget .w-resize { display: none; }
+}
+
+/* ---------- Header icon button (Settings gear) ---------- */
+
+header.site .icon-btn { padding: 0.7rem; line-height: 0; }
+header.site .icon-btn .ic { width: 1.6rem; height: 1.6rem; }
+
+/* ---------- Settings page ---------- */
+
+.settings-page { max-width: 78rem; }
+.settings-head { margin-bottom: 2rem; }
+.settings-head h2 { font-size: 2.2rem; text-transform: uppercase; letter-spacing: 0.12em; }
+.settings-note { color: var(--text-dim); font-size: 1.3rem; margin-top: 0.5rem; }
+.settings-group .sub-h { margin-top: 0; }
+.setting-row { display: flex; align-items: center; gap: 2rem; padding: 1.3rem 0; border-top: 1px solid hsla(0, 0%, 100%, 0.05); }
+.setting-row:first-of-type { border-top: none; }
+.setting-info { flex: 1; min-width: 0; }
+.setting-name { font-size: 1.45rem; font-weight: 700; }
+.setting-desc { font-size: 1.2rem; color: var(--text-dim); margin-top: 0.3rem; max-width: 52rem; }
+
+/* Toggle switch */
+.switch { position: relative; flex: none; display: inline-flex; cursor: pointer; }
+.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch-track {
+  width: 4.4rem; height: 2.4rem; border-radius: 99rem;
+  background: hsla(0, 0%, 100%, 0.08); border: 1px solid hsla(0, 0%, 100%, 0.18);
+  display: inline-flex; align-items: center; padding: 0.2rem;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.switch-thumb {
+  width: 1.8rem; height: 1.8rem; border-radius: 50%;
+  background: var(--text-dim); transition: transform 0.15s, background 0.15s;
+}
+.switch input:checked + .switch-track {
+  background: rgba(2, 255, 207, 0.16); border-color: var(--border-hover); box-shadow: 0 0 12px var(--mint-glow);
+}
+.switch input:checked + .switch-track .switch-thumb { transform: translateX(2rem); background: var(--mint); }
+.switch input:focus-visible + .switch-track { outline: 1px solid var(--mint); outline-offset: 2px; }
+
+/* ---------- Preference-driven display modes ---------- */
+
+html.density-compact td,
+html.density-compact th { padding-top: 0.4rem; padding-bottom: 0.4rem; }
+html.density-compact .kv td { padding-top: 0.45rem; padding-bottom: 0.45rem; }
+html.density-compact .panel { padding: 1.3rem; }
+
+html.reduce-motion *,
+html.reduce-motion *::before,
+html.reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
 }

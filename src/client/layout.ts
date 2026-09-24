@@ -26,7 +26,7 @@ export function layout(title: string, content: string, active: string, bodyClass
   <title>${title} · Xelis Stats</title>
   <meta name="description" content="Xelis blockchain statistics, market data and explorer" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <script>try{if(localStorage.getItem("xelis:reveal-flags")==="1")document.documentElement.classList.add("reveal-flags");}catch(e){}</script>
+  <script>try{var s=localStorage,d=document.documentElement;if(s.getItem("xelis:reveal-flags")==="1")d.classList.add("reveal-flags");if(s.getItem("xelis:density")==="compact")d.classList.add("density-compact");if(s.getItem("xelis:reduce-motion")==="1")d.classList.add("reduce-motion");}catch(e){}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Jura:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
@@ -39,7 +39,7 @@ export function layout(title: string, content: string, active: string, bodyClass
       <a class="logo" href="/"><svg width="22" height="21" viewBox="0 0 778 743" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M388.909 742.872L777.817 353.964L424.056 0.202599L478.809 132.737L700.036 353.964L388.909 665.091L77.7817 353.964L299.507 129.121L353.964 0L0 353.964L388.909 742.872Z"/><path d="M388.909 665.091L353.964 0L299.507 129.121L388.909 665.091Z"/><path d="M424.056 0.202599L388.909 665.091L478.809 132.737L424.056 0.202599Z"/></svg><span>XELIS&nbsp;<span style="color:var(--mint)">STATS</span></span></a>
       <nav>${nav}</nav>
       <button class="searchbox" type="button" onclick="openSearch()" aria-label="Search">${icons.search}<span>Search</span><kbd>Ctrl K</kbd></button>
-      <button class="btn ghost flag-toggle" id="flag-toggle" type="button" aria-pressed="false" title="Show filtered names and tags">${icons.eyeOff}<span class="flag-ic-on">${icons.eye}</span><span class="flag-toggle-label">Filtered</span></button>
+      <a class="btn ghost icon-btn" href="/settings" title="Settings" aria-label="Settings">${icons.settings}</a>
       <div class="status connecting" id="ws-status"><span class="dot" id="ws-dot"></span><span id="ws-label">connecting</span></div>
     </header>
     <main id="main">${content}</main>
@@ -48,6 +48,7 @@ export function layout(title: string, content: string, active: string, bodyClass
       <nav class="footer-links">
         <a href="/api/docs">API</a>
         <a href="/status">Status</a>
+        <a href="/settings">Settings</a>
       </nav>
       <div class="footer-copy">© ${new Date().getFullYear()} Xelis Stats · Data from the Xelis network</div>
     </footer>
@@ -81,21 +82,6 @@ export function layout(title: string, content: string, active: string, bodyClass
     document.getElementById("search-overlay").addEventListener("click", function (e) {
       if (e.target === this) closeSearch();
     });
-    (function () {
-      var btn = document.getElementById("flag-toggle");
-      if (!btn) return;
-      var sync = function (on) {
-        btn.setAttribute("aria-pressed", on ? "true" : "false");
-        btn.title = on ? "Hide filtered names and tags" : "Show filtered names and tags";
-      };
-      sync(document.documentElement.classList.contains("reveal-flags"));
-      btn.addEventListener("click", function () {
-        var on = !document.documentElement.classList.contains("reveal-flags");
-        document.documentElement.classList.toggle("reveal-flags", on);
-        try { localStorage.setItem("xelis:reveal-flags", on ? "1" : "0"); } catch (e) {}
-        sync(on);
-      });
-    })();
     function handleSearch(e) {
       e.preventDefault();
       var q = document.getElementById("global-search").value.trim();

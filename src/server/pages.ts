@@ -12,6 +12,7 @@ import { minerDetail } from "./pages/miner-detail";
 import { charts } from "./pages/charts";
 import { assets } from "./pages/assets";
 import { contracts } from "./pages/contracts";
+import { settings } from "./pages/settings";
 import { search } from "./pages/assets";
 
 export const pages = new Hono<{ Bindings: Env }>();
@@ -28,4 +29,5 @@ pages.route("/", minerDetail);
 pages.route("/", charts);
 pages.route("/", assets);
 pages.route("/", contracts);
+pages.route("/", settings);
 pages.route("/", search);
