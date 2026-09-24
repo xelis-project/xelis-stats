@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { layout } from "../client/layout";
+import { icons } from "../client/icons";
 import { pages } from "./pages";
 import { history } from "./history";
 import { docs } from "./docs";
@@ -46,14 +47,14 @@ app.get("/", (c) => {
       <h2>Dashboard</h2>
       <span class="dash-hint">Drag a header to dock a widget · drag the corner to resize · Alt + arrows to nudge · rearrange on a wide window</span>
       <span class="dash-spacer"></span>
-      <button class="btn" id="btn-add-widget">+ Add widget</button>
+      <button class="btn" id="btn-add-widget">${icons.plus} Add widget</button>
       <div class="dash-menu" id="dash-menu">
-        <button class="btn ghost" id="dash-menu-toggle" title="Layout actions" aria-haspopup="menu" aria-expanded="false" aria-label="Layout actions">⋯</button>
+        <button class="btn ghost" id="dash-menu-toggle" title="Layout actions" aria-haspopup="menu" aria-expanded="false" aria-label="Layout actions">${icons.more}</button>
         <div class="dash-menu-items" id="dash-menu-items" role="menu" hidden>
-          <button class="btn ghost" id="btn-auto-arrange" role="menuitem" title="Tidy the layout into rows">▦ Auto-arrange</button>
-          <button class="btn ghost" id="btn-export" role="menuitem" title="Download the layout as JSON">↧ Export</button>
-          <button class="btn ghost" id="btn-import" role="menuitem" title="Load a layout JSON file">↥ Import</button>
-          <button class="btn ghost" id="btn-reset" role="menuitem" title="Reset the dashboard to the default layout">↺ Reset</button>
+          <button class="btn ghost" id="btn-auto-arrange" role="menuitem" title="Tidy the layout into rows">${icons.layout} Auto-arrange</button>
+          <button class="btn ghost" id="btn-export" role="menuitem" title="Download the layout as JSON">${icons.download} Export</button>
+          <button class="btn ghost" id="btn-import" role="menuitem" title="Load a layout JSON file">${icons.upload} Import</button>
+          <button class="btn ghost" id="btn-reset" role="menuitem" title="Reset the dashboard to the default layout">${icons.reset} Reset</button>
         </div>
       </div>
     </div>
@@ -63,7 +64,7 @@ app.get("/", (c) => {
       <div class="palette-sheet" role="dialog" aria-modal="true" aria-label="Add widget">
         <div class="palette-head">
           <h2>Add a widget</h2>
-          <button class="w-btn" id="palette-close" aria-label="Close">×</button>
+          <button class="w-btn" id="palette-close" aria-label="Close">${icons.close}</button>
         </div>
         <input type="search" id="palette-search" class="palette-search" placeholder="Search widgets…" aria-label="Search widgets" autocomplete="off" />
         <div class="palette-grid" id="palette-list"></div>
@@ -133,7 +134,7 @@ app.route("/", pages);
 
 // 404
 app.notFound((c) => c.html(layout("Not found",
-  `<div class="err404"><h1>404</h1><p style="margin-top:1rem;color:var(--text-dim)">Page not found</p><p style="margin-top:2rem"><a class="btn" href="/">← Dashboard</a></p></div>`, ""), 404));
+  `<div class="err404"><h1>404</h1><p style="margin-top:1rem;color:var(--text-dim)">Page not found</p><p style="margin-top:2rem"><a class="btn" href="/">${icons.arrowLeft} Dashboard</a></p></div>`, ""), 404));
 
 // Rankings (period leaderboards)
 app.route("/", top);

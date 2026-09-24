@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout, notFound, statCard } from "../../client/layout";
+import { icons } from "../../client/icons";
 import { fmt, fmtInt, fmtPct, shortHash, fmtTime, ago, atomic, atomicPrecise } from "../../client/format";
 import { rpc } from "../xelis";
 import { fetchBlock, runOn, type RawTarget } from "../shards";
@@ -97,8 +98,8 @@ blockDetail.get("/block/:id", async (c) => {
 
   const dim = (label: string) => `<span class="btn ghost disabled" aria-disabled="true">${label}</span>`;
   const nav = `<div class="blk-nav">
-    ${view.topo > 0 ? `<a class="btn ghost" href="/block/${view.topo - 1}" title="Previous block">‹ Prev</a>` : dim("‹ Prev")}
-    ${maxTopo === null || view.topo < maxTopo ? `<a class="btn ghost" href="/block/${view.topo + 1}" title="Next block">Next ›</a>` : dim("Next ›")}
+    ${view.topo > 0 ? `<a class="btn ghost" href="/block/${view.topo - 1}" title="Previous block">${icons.chevronLeft} Prev</a>` : dim(`${icons.chevronLeft} Prev`)}
+    ${maxTopo === null || view.topo < maxTopo ? `<a class="btn ghost" href="/block/${view.topo + 1}" title="Next block">Next ${icons.chevronRight}</a>` : dim(`Next ${icons.chevronRight}`)}
   </div>`;
 
   const typeBadge = `<span class="badge ${view.type.toLowerCase()}">${view.type}</span>${view.orphan ? ' <span class="badge fail">orphan</span>' : ""}`;

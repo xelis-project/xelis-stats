@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout } from "../../client/layout";
+import { icons } from "../../client/icons";
 
 // metrics with special filters
 const FEE_METRICS: Record<string, string> = { fees: "avg", "fees-median": "median", "fee-p90": "p90", "fees-p99": "p99" };
@@ -66,7 +67,7 @@ charts.get("/charts", async (c) => {
         <select id="sel-feestat" title="Fee statistic" ${FEE_METRICS[metric] ? "" : "hidden"}>${feeStatOpts}</select>
         <select id="sel-range" title="Period">${rangeOpts}</select>
         <input type="text" class="period" data-datepicker id="inp-from" value="${from}" aria-label="Period start" ${custom ? "" : "hidden"} />
-        <span aria-hidden="true" id="period-sep" ${custom ? "" : "hidden"}>→</span>
+        <span id="period-sep" aria-hidden="true" style="color:var(--text-dim)" ${custom ? "" : "hidden"}>${icons.arrowRight}</span>
         <input type="text" class="period" data-datepicker id="inp-to" value="${to}" aria-label="Period end" ${custom ? "" : "hidden"} />
         <select id="sel-interval" title="Bucket interval">${intervalOpts}</select>
         <select id="sel-exchange" title="Exchange" ${MARKET_METRICS.has(metric) ? "" : "hidden"}>${exchangeOpts}</select>

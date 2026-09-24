@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout, notFound, statCard } from "../../client/layout";
+import { icons } from "../../client/icons";
 import { fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/format";
 import { srvSort } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
@@ -169,7 +170,7 @@ contracts.get("/contracts/:id", async (c) => {
           <button class="copybtn" type="button" onclick="blkCopy('${esc(deployHash)}', this)">copy</button>
         </div>
       </div>
-      <div class="blk-nav"><a class="btn ghost" href="/contracts" title="All indexed contracts">Contracts ›</a></div>
+      <div class="blk-nav"><a class="btn ghost" href="/contracts" title="All indexed contracts">Contracts ${icons.chevronRight}</a></div>
     </div>
     <div class="cards blk-cards">
       ${statCard("Invokes", invokeCount > 0 ? fmtInt(invokeCount) : "—", "indexed contract calls")}

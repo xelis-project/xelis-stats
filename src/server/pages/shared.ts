@@ -1,4 +1,5 @@
 import { fmtInt } from "../../client/format";
+import { icons } from "../../client/icons";
 import { knownEntity } from "../entities";
 
 export const PAGE_SIZE = 25;
@@ -13,15 +14,15 @@ export function pager(base: string, page: number, totalPages: number): string {
   }
   const dim = (label: string) => `<span class="btn ghost disabled" aria-disabled="true">${label}</span>`;
   return `<div class="pager">
-    ${page > 1 ? `<a class="btn ghost" href="${href(1)}">« First</a>` : dim("« First")}
-    ${page > 1 ? `<a class="btn ghost" href="${href(page - 1)}">‹ Prev</a>` : dim("‹ Prev")}
+    ${page > 1 ? `<a class="btn ghost" href="${href(1)}">${icons.chevronsLeft} First</a>` : dim(`${icons.chevronsLeft} First`)}
+    ${page > 1 ? `<a class="btn ghost" href="${href(page - 1)}">${icons.chevronLeft} Prev</a>` : dim(`${icons.chevronLeft} Prev`)}
     ${nums.map((p) => p === "…"
       ? `<span class="pager-dots">…</span>`
       : p === page
         ? `<span class="btn mint" aria-current="page">${p}</span>`
         : `<a class="btn ghost" href="${href(p)}">${p}</a>`).join("")}
-    ${page < totalPages ? `<a class="btn ghost" href="${href(page + 1)}">Next ›</a>` : dim("Next ›")}
-    ${page < totalPages ? `<a class="btn ghost" href="${href(totalPages)}">Last »</a>` : dim("Last »")}
+    ${page < totalPages ? `<a class="btn ghost" href="${href(page + 1)}">Next ${icons.chevronRight}</a>` : dim(`Next ${icons.chevronRight}`)}
+    ${page < totalPages ? `<a class="btn ghost" href="${href(totalPages)}">Last ${icons.chevronsRight}</a>` : dim(`Last ${icons.chevronsRight}`)}
     <span class="pager-info">Page ${fmtInt(page)} of ${fmtInt(totalPages)}</span>
   </div>`;
 }

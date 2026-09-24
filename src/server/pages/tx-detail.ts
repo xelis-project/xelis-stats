@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout, notFound, statCard } from "../../client/layout";
+import { icons } from "../../client/icons";
 import { fmt, fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/format";
 import { rpc } from "../xelis";
 import { fetchTx, getShards, targetForTopo, runOn, type RawTarget } from "../shards";
@@ -72,7 +73,7 @@ txDetail.get("/tx/:hash", async (c) => {
                 <button class="copybtn" type="button" onclick="blkCopy('${esc(hash)}', this)">copy</button>
               </div>
             </div>
-            ${contractId ? `<div class="blk-nav"><a class="btn ghost" href="/contracts/${esc(contractId)}" title="Open contract">Contract ›</a></div>` : ""}
+            ${contractId ? `<div class="blk-nav"><a class="btn ghost" href="/contracts/${esc(contractId)}" title="Open contract">Contract ${icons.chevronRight}</a></div>` : ""}
           </div>
           <div class="cards blk-cards">
             ${statCard("Fee", atomic(fee, 6) + " XEL", size ? `${atomic((fee * 1024) / size, 5)} XEL / kB fee rate` : "network fee")}
@@ -222,7 +223,7 @@ txDetail.get("/tx/:hash", async (c) => {
           <button class="copybtn" type="button" onclick="blkCopy('${esc(tx.hash as string)}', this)">copy</button>
         </div>
       </div>
-      ${topo > 0 || contractId ? `<div class="blk-nav">${contractId ? `<a class="btn ghost" href="/contracts/${esc(contractId)}" title="Open contract">Contract ›</a>` : ""}${topo > 0 ? `<a class="btn ghost" href="/block/${topo}" title="Open containing block">Block ›</a>` : ""}</div>` : ""}
+      ${topo > 0 || contractId ? `<div class="blk-nav">${contractId ? `<a class="btn ghost" href="/contracts/${esc(contractId)}" title="Open contract">Contract ${icons.chevronRight}</a>` : ""}${topo > 0 ? `<a class="btn ghost" href="/block/${topo}" title="Open containing block">Block ${icons.chevronRight}</a>` : ""}</div>` : ""}
     </div>
     <div class="cards blk-cards">
       ${statCard("Fee", atomic(fee, 6) + " XEL", feeRate ? `${feeRate} fee rate` : "network fee")}
@@ -327,7 +328,7 @@ txDetail.get("/tx/:hash", async (c) => {
              <td>${s.executed === 1 ? '<span class="badge ok">executed</span>' : s.executed === 0 ? '<span class="badge fail">unexecuted</span>' : '<span style="color:var(--text-dim)">—</span>'}</td>
            </tr>`; }).join("")}
          </tbody></table></div>
-       ${otherInBlock && otherInBlock > siblings.length ? `<p class="tx-more"><a href="/block/${topo}">View block #${fmtInt(topo)} for all ${fmtInt(otherInBlock + 1)} transactions →</a></p>` : ""}
+       ${otherInBlock && otherInBlock > siblings.length ? `<p class="tx-more"><a href="/block/${topo}">View block #${fmtInt(topo)} for all ${fmtInt(otherInBlock + 1)} transactions ${icons.arrowRight}</a></p>` : ""}
        </div>`
     : "";
 

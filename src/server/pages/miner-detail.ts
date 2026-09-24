@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout, statCard } from "../../client/layout";
+import { icons } from "../../client/icons";
 import { fmt, fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/format";
 import { srvSort, BLOCK_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
@@ -172,13 +173,13 @@ minerDetail.get("/miner/:address", async (c) => {
             <button class="copybtn" type="button" onclick="blkCopy('${addr}', this)">copy</button>
           </div>
         </div>
-        <div class="blk-nav"><a class="btn ghost" href="/account/${addr}" title="Sender activity for this address">Account ›</a></div>
+        <div class="blk-nav"><a class="btn ghost" href="/account/${addr}" title="Sender activity for this address">Account ${icons.chevronRight}</a></div>
       </div>
     </div>
     <div class="panel"><h2>No Mining Activity</h2>
       <p style="color:var(--text-dim)">No blocks indexed for this address. It may be a regular sender account, or it mined before the indexed window/backfill covered this period.</p>
       ${acct ? `<table class="kv">${acctKv}</table>` : ""}
-      <p style="margin-top:1rem"><a class="btn ghost" href="/miners">Back to miner leaderboard →</a></p>
+      <p style="margin-top:1rem"><a class="btn ghost" href="/miners">Back to miner leaderboard ${icons.arrowRight}</a></p>
     </div>
     ${copyNote}`;
     return c.html(layout(`Miner ${shortHash(address, 8)}`, content, "/miners"));
@@ -271,8 +272,8 @@ minerDetail.get("/miner/:address", async (c) => {
         </div>
       </div>
       <div class="blk-nav">
-        <a class="btn ghost" href="/account/${addr}" title="Sender activity for this address">Account ›</a>
-        <a class="btn ghost" href="/miners" title="Miner leaderboard">Leaderboard ›</a>
+        <a class="btn ghost" href="/account/${addr}" title="Sender activity for this address">Account ${icons.chevronRight}</a>
+        <a class="btn ghost" href="/miners" title="Miner leaderboard">Leaderboard ${icons.chevronRight}</a>
       </div>
     </div>
     ${share30 !== null ? `<div class="miner-share" title="Share of blocks produced in the last 30 days">
@@ -323,7 +324,7 @@ minerDetail.get("/miner/:address", async (c) => {
     ${acct
       ? `<table class="kv">${acctRows}</table>`
       : `<p style="color:var(--text-dim)">This address has not been observed sending transactions in the indexed data — miners can stay payment-only for a long time.</p>`}
-    <p style="margin-top:1rem"><a href="/account/${addr}">Full account page →</a></p>
+    <p style="margin-top:1rem"><a href="/account/${addr}">Full account page ${icons.arrowRight}</a></p>
   </div>`;
 
   pageRows = pageRows.slice(0, PAGE_SIZE);

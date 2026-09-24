@@ -1,5 +1,6 @@
 import { renderChart, renderCompare, cumulativePoints, ACCENTS, accentHex, type SeriesPoint, type LineWidth } from "./charts";
 import { fmt, fmtInt, fmtPct, fmtBytes, shortHash, atomic, ago } from "./format";
+import { icons, gripIcon } from "./icons";
 import { refreshSort } from "./sortable";
 import { attachDatePickers } from "./datepicker";
 import type uPlot from "uplot";
@@ -1124,13 +1125,13 @@ function widgetEl(w: Widget, s: Slot): HTMLElement {
   const hasFilters = item?.kind !== "stat";
   el.innerHTML = `
     <header class="w-head" tabindex="0" role="button" aria-label="${item?.label ?? "widget"} — drag to move">
-      <span class="w-grip" aria-hidden="true">⠿</span>
+      <span class="w-grip" aria-hidden="true">${gripIcon}</span>
       <h3 class="w-title">${esc(w.opts?.title || item?.label || w.key)}</h3>
       <span class="w-spacer"></span>
-      ${item?.desc ? `<button class="w-btn" data-act="info" aria-label="About ${esc(item?.label ?? "panel")}" title="About this panel">ⓘ</button>` : ""}
-      ${hasFilters ? `<button class="w-btn" data-act="filters" aria-label="Data filters" title="Data filters">▽</button>` : ""}
-      <button class="w-btn" data-act="panel" aria-label="Panel options" title="Panel options">⚙</button>
-      <button class="w-btn" data-act="remove" aria-label="Remove widget" title="Remove">×</button>
+      ${item?.desc ? `<button class="w-btn" data-act="info" aria-label="About ${esc(item?.label ?? "panel")}" title="About this panel">${icons.info}</button>` : ""}
+      ${hasFilters ? `<button class="w-btn" data-act="filters" aria-label="Data filters" title="Data filters">${icons.filter}</button>` : ""}
+      <button class="w-btn" data-act="panel" aria-label="Panel options" title="Panel options">${icons.settings}</button>
+      <button class="w-btn" data-act="remove" aria-label="Remove widget" title="Remove">${icons.close}</button>
     </header>
     <div class="w-body">
       <div class="w-main">${item?.kind === "stat" ? '<div class="w-stat"></div>' : item?.kind === "rank" || item?.kind === "list" ? '<div class="w-table"></div>' : '<div class="w-chart"></div>'}</div>
@@ -1394,8 +1395,8 @@ function settingsHtml(w: Widget, mode: SetMode): string {
       ${body}
     </div>
     <div class="w-set-actions">
-      <button type="button" class="w-btn" data-act="settings-duplicate" title="Add a copy of this widget">⧉ duplicate</button>
-      <button type="button" class="w-btn" data-act="settings-reset" title="Reset all widget options">↺ reset</button>
+      <button type="button" class="w-btn" data-act="settings-duplicate" title="Add a copy of this widget">${icons.copy} duplicate</button>
+      <button type="button" class="w-btn" data-act="settings-reset" title="Reset all widget options">${icons.reset} reset</button>
       <button type="button" class="w-btn" data-act="settings-close">done</button>
     </div>`;
 }
@@ -1813,9 +1814,9 @@ function renderTabs(): void {
   strip.innerHTML = tabs.map((t) => `
     <div class="dash-tab${t.id === activeTab ? " active" : ""}" data-tab="${t.id}" role="tab" tabindex="0" aria-selected="${t.id === activeTab}">
       <span class="dash-tab-name">${esc(t.name)}</span>
-      <button class="dash-tab-btn" data-act="rename" aria-label="Rename tab" title="Rename">✎</button>
-      ${tabs.length > 1 ? `<button class="dash-tab-btn" data-act="close" aria-label="Close tab" title="Close tab">×</button>` : ""}
-    </div>`).join("") + `<button class="dash-tab-add" id="btn-add-tab" aria-label="New tab" title="New tab">+</button>`;
+      <button class="dash-tab-btn" data-act="rename" aria-label="Rename tab" title="Rename">${icons.edit}</button>
+      ${tabs.length > 1 ? `<button class="dash-tab-btn" data-act="close" aria-label="Close tab" title="Close tab">${icons.close}</button>` : ""}
+    </div>`).join("") + `<button class="dash-tab-add" id="btn-add-tab" aria-label="New tab" title="New tab">${icons.plus}</button>`;
 }
 
 function switchTab(id: string): void {
@@ -1904,7 +1905,7 @@ function renderPalette(query: string): void {
   const section = (title: string, kind: Kind): string => {
     const items = CATALOG.filter((c) => c.kind === kind && matches(c)).map((c) => {
       const used = counts.get(c.key) ?? 0;
-      const tag = used === 0 ? "" : used === 1 ? '<span class="used-tag">✓ Added</span>' : `<span class="used-tag">✓ ${used}× on board</span>`;
+      const tag = used === 0 ? "" : used === 1 ? `<span class="used-tag">${icons.check} Added</span>` : `<span class="used-tag">${icons.check} ${used}× on board</span>`;
       return `<button class="palette-item${used ? " is-used" : ""}" data-key="${c.key}" aria-pressed="${used > 0}">
         <span class="pt"><span>${c.label}</span>${tag}</span>
         <span class="pd">${c.desc}</span>

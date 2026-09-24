@@ -1,4 +1,5 @@
 import { XEL_LOGO } from "./format";
+import { icons } from "./icons";
 import appCss from "./style.css?inline";
 import flatpickrCss from "flatpickr/dist/flatpickr.min.css?inline";
 
@@ -36,7 +37,7 @@ export function layout(title: string, content: string, active: string, bodyClass
     <header class="site">
       <a class="logo" href="/"><svg width="22" height="21" viewBox="0 0 778 743" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M388.909 742.872L777.817 353.964L424.056 0.202599L478.809 132.737L700.036 353.964L388.909 665.091L77.7817 353.964L299.507 129.121L353.964 0L0 353.964L388.909 742.872Z"/><path d="M388.909 665.091L353.964 0L299.507 129.121L388.909 665.091Z"/><path d="M424.056 0.202599L388.909 665.091L478.809 132.737L424.056 0.202599Z"/></svg><span>XELIS&nbsp;<span style="color:var(--mint)">STATS</span></span></a>
       <nav>${nav}</nav>
-      <button class="searchbox" type="button" onclick="openSearch()" aria-label="Search"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" xmlns="http://www.w3.org/2000/svg"><circle cx="11" cy="11" r="7"/><line x1="16.5" y1="16.5" x2="21" y2="21"/></svg><span>Search</span><kbd>Ctrl K</kbd></button>
+      <button class="searchbox" type="button" onclick="openSearch()" aria-label="Search">${icons.search}<span>Search</span><kbd>Ctrl K</kbd></button>
       <div class="status connecting" id="ws-status"><span class="dot" id="ws-dot"></span><span id="ws-label">connecting</span></div>
     </header>
     <main id="main">${content}</main>
@@ -52,7 +53,7 @@ export function layout(title: string, content: string, active: string, bodyClass
       <div class="search-pop" role="dialog" aria-modal="true">
         <form class="searchbox" onsubmit="return handleSearch(event)">
           <input id="global-search" placeholder="Search block / tx / address…" autocomplete="off" />
-          <button type="button" class="search-close" onclick="closeSearch()" aria-label="Close">✕</button>
+          <button type="button" class="search-close" onclick="closeSearch()" aria-label="Close">${icons.close}</button>
         </form>
         <div class="search-hint">Press <kbd>Enter</kbd> to search — block height, hash or address</div>
       </div>
@@ -96,7 +97,7 @@ export function statCard(label: string, value: string, sub = "", small = false, 
 }
 
 export function notFound(what: string): string {
-  return `<div class="err404"><h1>404</h1><p style="margin-top:1rem;color:var(--text-dim)">${what} not found</p><p style="margin-top:2rem"><a class="btn" href="/">← Dashboard</a></p></div>`;
+  return `<div class="err404"><h1>404</h1><p style="margin-top:1rem;color:var(--text-dim)">${what} not found</p><p style="margin-top:2rem"><a class="btn" href="/">${icons.arrowLeft} Dashboard</a></p></div>`;
 }
 
 export { XEL_LOGO };

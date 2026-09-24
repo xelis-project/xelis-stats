@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout, statCard } from "../../client/layout";
+import { icons } from "../../client/icons";
 import { fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/format";
 import { knownEntity } from "../entities";
 import { srvSort, TX_COLS } from "../sort";
@@ -111,8 +112,8 @@ account.get("/account/:address", async (c) => {
         </div>
       </div>
       <div class="blk-nav">
-        ${minedTotal > 0 ? `<a class="btn ghost" href="/miner/${esc(address)}" title="Mining profile for this address">Miner ›</a>` : ""}
-        <a class="btn ghost" href="/accounts" title="All observed accounts">Accounts ›</a>
+        ${minedTotal > 0 ? `<a class="btn ghost" href="/miner/${esc(address)}" title="Mining profile for this address">Miner ${icons.chevronRight}</a>` : ""}
+        <a class="btn ghost" href="/accounts" title="All observed accounts">Accounts ${icons.chevronRight}</a>
       </div>
     </div>
     <div class="cards blk-cards">
