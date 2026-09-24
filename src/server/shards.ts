@@ -418,6 +418,12 @@ export async function countRaw(
   return n;
 }
 
+// Ceiling on rows fetched per database when merging across shards. A Worker
+// cannot materialize an arbitrary OFFSET across multiple DBs in memory, so
+// offsets deeper than this degrade to an empty page instead of an OOM crash
+// (which the dev proxy surfaces as a bare "fetch failed").
+const MAX_MERGE_FETCH = 10_000;
+
 /**
  * Top-N over hot + all sealed shards for arbitrary ORDER BY / OFFSET pages:
  * each segment returns its own top (skip+limit) rows, merged and re-sorted in
@@ -437,19 +443,37 @@ export async function topNRaw(
 ): Promise<Row[]> {
   const shards = await getShards(env);
   const floor = hotFloor(shards);
-  const need = (opts.skip ?? 0) + opts.limit;
+  const skip = Math.max(0, opts.skip ?? 0);
+  const need = skip + opts.limit;
   const where = opts.extra ? `WHERE ${opts.extra.sql}` : "";
-  const per = await Promise.all(allTargets(shards).map(async (t) => {
-    let w = where;
-    const binds = [...(opts.extra?.binds ?? [])];
-    if (t.kind === "hot" && floor >= 0 && opts.floorCol) {
-      w = where ? `${where} AND ${hotFloorBound(opts.floorCol, floor)}` : `WHERE ${hotFloorBound(opts.floorCol, floor)}`;
-    }
-    return runOn(env, t, `SELECT ${opts.select} FROM ${opts.table} ${w} ORDER BY ${opts.order} LIMIT ${need}`, binds);
+  const binds = [...(opts.extra?.binds ?? [])];
+  const targets = allTargets(shards);
+
+  // Single database (hot only): push OFFSET into SQL. A deep page then returns
+  // just `limit` rows instead of every preceding row, which is what previously
+  // exhausted Worker memory on pages like `?page=361742`.
+  if (targets.length === 1) {
+    return runOn(
+      env, targets[0],
+      `SELECT ${opts.select} FROM ${opts.table} ${where} ORDER BY ${opts.order} LIMIT ? OFFSET ?`,
+      [...binds, opts.limit, skip],
+    );
+  }
+
+  let hotWhere = where;
+  if (floor >= 0 && opts.floorCol) {
+    hotWhere = where ? `${where} AND ${hotFloorBound(opts.floorCol, floor)}` : `WHERE ${hotFloorBound(opts.floorCol, floor)}`;
+  }
+  const fetch = Math.min(need, MAX_MERGE_FETCH);
+  const per = await Promise.all(targets.map(async (t) => {
+    // beyond the addressable window the global offset cannot be resolved
+    if (skip >= MAX_MERGE_FETCH) return [] as Row[];
+    const w = t.kind === "hot" ? hotWhere : where;
+    return runOn(env, t, `SELECT ${opts.select} FROM ${opts.table} ${w} ORDER BY ${opts.order} LIMIT ${fetch}`, binds);
   }));
   const merged = per.flat();
   merged.sort(cmpBy(opts.order));
-  return merged.slice(opts.skip ?? 0, need);
+  return merged.slice(skip, need);
 }
 
 /**
