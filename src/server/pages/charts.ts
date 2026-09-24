@@ -23,11 +23,13 @@ charts.get("/charts", async (c) => {
   const chartType = c.req.query("type") === "bar" ? "bar" : "line";
 
   const metrics: Array<[string, string]> = [
-    ["txs", "Transactions/day"], ["accounts", "Accounts growth"], ["miners", "Miners"],
-    ["hashrate", "Hashrate"], ["transfers", "Transfers"], ["fees", "Fees"],
-    ["supply", "Supply"], ["chain-size", "Blockchain size"], ["market-cap", "Market Cap"], ["block-types", "Block types"],
-    ["fees-rewards", "Fees vs rewards"], ["decentralization", "Decentralization"],
-    ["peers", "Peer count"], ["peers-pruned", "Pruned peers"],
+    ["txs", "Transactions/day"], ["accounts", "Accounts growth"], ["active-accounts", "Active accounts"], ["miners", "Miners"],
+    ["hashrate", "Hashrate"], ["transfers", "Transfers"], ["fees", "Fees"], ["supply", "Supply"],
+    ["burned-supply", "Burned supply"], ["chain-size", "Blockchain size"], ["market-cap", "Market Cap"], ["block-types", "Block types"],
+    ["price", "XEL price"], ["quote-volume", "Quote volume"],
+    ["miner-revenue", "Miner revenue"], ["miner-rev-usd", "Miner revenue (USDT)"],
+    ["block-time", "Block time"], ["nakamoto", "Nakamoto coefficient"], ["gini", "Production Gini"], ["encrypted", "Encrypted txs"],
+    ["mempool", "Mempool"], ["peers", "Peer count"], ["peers-pruned", "Pruned peers"],
   ];
   const metricOpts = metrics.map(([m, name]) => `<option value="${m}" ${metric === m ? "selected" : ""}>${name}</option>`).join("");
   const rangeOpts = ["7d", "30d", "90d", "1y", "all", "custom"].map((r) => `<option value="${r}" ${range === r ? "selected" : ""}>${r === "custom" ? "custom period" : r}</option>`).join("");
