@@ -1,14 +1,17 @@
-import { PREF_KEYS, getDensity, getPref, isLiveEnabled, setPref } from "./prefs";
+import { PREF_KEYS, getDensity, getNumberFormat, getPref, getTimezone, getTimeStyle, isLiveEnabled, setPref } from "./prefs";
 
 // Wires the controls on /settings. Preferences persist in localStorage and are
 // applied live so the page reflects changes without a reload.
 export function initSettings(): void {
   const reveal = document.getElementById("pref-reveal-flags") as HTMLInputElement | null;
   const density = document.getElementById("pref-density") as HTMLSelectElement | null;
+  const numberFormat = document.getElementById("pref-number-format") as HTMLSelectElement | null;
+  const timezone = document.getElementById("pref-timezone") as HTMLSelectElement | null;
+  const timeStyle = document.getElementById("pref-time-style") as HTMLSelectElement | null;
   const motion = document.getElementById("pref-reduce-motion") as HTMLInputElement | null;
   const live = document.getElementById("pref-live") as HTMLInputElement | null;
   const reset = document.getElementById("pref-reset") as HTMLButtonElement | null;
-  if (!reveal && !density && !motion && !live) return;
+  if (!reveal && !density && !numberFormat && !timezone && !timeStyle && !motion && !live) return;
 
   const root = document.documentElement;
   const syncReveal = (on: boolean): void => { root.classList.toggle("reveal-flags", on); };
@@ -28,6 +31,34 @@ export function initSettings(): void {
       const value = density.value === "compact" ? "compact" : "comfortable";
       setPref(PREF_KEYS.density, value);
       root.classList.toggle("density-compact", value === "compact");
+    });
+  }
+
+  const syncFormat = (): void => {
+    window.dispatchEvent(new CustomEvent("xelis:format-change"));
+  };
+
+  if (numberFormat) {
+    numberFormat.value = getNumberFormat();
+    numberFormat.addEventListener("change", () => {
+      setPref(PREF_KEYS.numberFormat, numberFormat.value === "plain" ? "plain" : "compact");
+      syncFormat();
+    });
+  }
+
+  if (timezone) {
+    timezone.value = getTimezone();
+    timezone.addEventListener("change", () => {
+      setPref(PREF_KEYS.timezone, timezone.value === "local" ? "local" : "utc");
+      syncFormat();
+    });
+  }
+
+  if (timeStyle) {
+    timeStyle.value = getTimeStyle();
+    timeStyle.addEventListener("change", () => {
+      setPref(PREF_KEYS.timeStyle, timeStyle.value === "12" ? "12" : "24");
+      syncFormat();
     });
   }
 
@@ -60,6 +91,10 @@ export function initSettings(): void {
       if (reveal) reveal.checked = false;
       if (motion) motion.checked = false;
       if (density) density.value = "comfortable";
+      if (numberFormat) numberFormat.value = "compact";
+      if (timezone) timezone.value = "utc";
+      if (timeStyle) timeStyle.value = "24";
+      syncFormat();
       if (live) {
         live.checked = true;
         window.dispatchEvent(new CustomEvent("xelis:live-change", { detail: { enabled: true } }));

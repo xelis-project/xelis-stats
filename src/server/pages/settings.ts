@@ -38,6 +38,36 @@ settings.get("/settings", (c) => {
           <option value="compact">Compact</option>
         </select>
       </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Number format</div>
+          <div class="setting-desc">Compact abbreviates large values (1.23M); full shows every digit with separators (1,234,567).</div>
+        </div>
+        <select id="pref-number-format" aria-label="Number format">
+          <option value="compact">Compact</option>
+          <option value="plain">Full</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Time zone</div>
+          <div class="setting-desc">Show timestamps in UTC or your browser's local time zone.</div>
+        </div>
+        <select id="pref-timezone" aria-label="Time zone">
+          <option value="utc">UTC</option>
+          <option value="local">Local</option>
+        </select>
+      </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Time style</div>
+          <div class="setting-desc">Show the clock in 24-hour time or 12-hour time with AM/PM.</div>
+        </div>
+        <select id="pref-time-style" aria-label="Time style">
+          <option value="24">24-hour</option>
+          <option value="12">12-hour</option>
+        </select>
+      </div>
       ${toggleRow("pref-reduce-motion", "Reduce motion", "Disable animations and transitions for a calmer, lower-motion interface.")}
     </div>
 

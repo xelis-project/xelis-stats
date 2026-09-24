@@ -9,9 +9,15 @@ export const PREF_KEYS = {
   density: "xelis:density",
   reduceMotion: "xelis:reduce-motion",
   live: "xelis:live",
+  numberFormat: "xelis:number-format",
+  timezone: "xelis:timezone",
+  timeStyle: "xelis:time-style",
 } as const;
 
 export type Density = "comfortable" | "compact";
+export type NumberFormat = "compact" | "plain";
+export type Timezone = "utc" | "local";
+export type TimeStyle = "24" | "12";
 
 export function getPref(key: string, fallback = ""): string {
   try {
@@ -37,8 +43,26 @@ export function isLiveEnabled(): boolean {
   return getPref(PREF_KEYS.live, "1") !== "0";
 }
 
-export function applyPrefs(root: HTMLElement = document.documentElement): void {
-  root.classList.toggle("reveal-flags", getPref(PREF_KEYS.revealFlags) === "1");
-  root.classList.toggle("density-compact", getDensity() === "compact");
-  root.classList.toggle("reduce-motion", getPref(PREF_KEYS.reduceMotion) === "1");
+export function getNumberFormat(): NumberFormat {
+  return getPref(PREF_KEYS.numberFormat, "compact") === "plain" ? "plain" : "compact";
+}
+
+export function getTimezone(): Timezone {
+  return getPref(PREF_KEYS.timezone, "utc") === "local" ? "local" : "utc";
+}
+
+export function getTimeStyle(): TimeStyle {
+  return getPref(PREF_KEYS.timeStyle, "12") === "12" ? "12" : "24";
+}
+
+// Minimal structural type so this module stays importable from the Worker
+// build (no DOM lib). The caller passes <html>; absent one, look it up.
+type ClassRoot = { classList: { toggle(token: string, force?: boolean): void } };
+
+export function applyPrefs(root?: ClassRoot): void {
+  const el = root ?? (globalThis as { document?: { documentElement: ClassRoot } }).document?.documentElement;
+  if (!el) return;
+  el.classList.toggle("reveal-flags", getPref(PREF_KEYS.revealFlags) === "1");
+  el.classList.toggle("density-compact", getDensity() === "compact");
+  el.classList.toggle("reduce-motion", getPref(PREF_KEYS.reduceMotion) === "1");
 }

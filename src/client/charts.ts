@@ -1,5 +1,6 @@
 import uPlot from "uplot";
 import "uplot/dist/uPlot.min.css";
+import { getNumberFormat } from "./prefs";
 
 export interface SeriesPoint { date: string; value: number }
 
@@ -438,6 +439,7 @@ export function renderCompare(el: HTMLElement, series: Array<{ label: string; po
 
 export function fmtAuto(v: number): string {
   if (!Number.isFinite(v)) return "—";
+  if (getNumberFormat() === "plain") return v.toLocaleString("en-US", { maximumFractionDigits: 2 });
   if (Math.abs(v) >= 1e12) return (v / 1e12).toFixed(2) + "T";
   if (Math.abs(v) >= 1e9) return (v / 1e9).toFixed(2) + "B";
   if (Math.abs(v) >= 1e6) return (v / 1e6).toFixed(2) + "M";
