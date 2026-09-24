@@ -10,7 +10,7 @@ export const history = new Hono<{ Bindings: Env }>();
 // market_snapshots), transfers, fee percentiles and encrypted (tx_index).
 // supply/burned-supply read the pipeline-populated cumulative daily_stats
 // columns (emitted/burned), reported in whole XEL.
-const METRICS: Record<string, { table: string; col: string; agg?: "sum" | "avg" }> = {
+const METRICS: Record<string, { table: string; col: string; agg?: "sum" | "avg"; div?: number }> = {
   txs: { table: "daily_stats", col: "tx_count", agg: "sum" },
   transfers: { table: "tx_transfers", col: "", agg: "sum" },
   accounts: { table: "daily_stats", col: "new_accounts", agg: "sum" },
@@ -25,7 +25,8 @@ const METRICS: Record<string, { table: string; col: string; agg?: "sum" | "avg" 
   "burned-supply": { table: "supply-stored", col: "burned_supply", agg: "avg" },
   "market-cap": { table: "market-cap", col: "", agg: "avg" },
   "miner-rev-usd": { table: "miner-rev-usd", col: "", agg: "sum" },
-  "miner-revenue": { table: "daily_stats", col: "miner_revenue", agg: "sum" },
+  // daily_stats.miner_revenue holds atomic XEL; report whole XEL
+  "miner-revenue": { table: "daily_stats", col: "miner_revenue", agg: "sum", div: 1e8 },
   orphans: { table: "daily_stats", col: "orphan_count", agg: "sum" },
   "block-time": { table: "blocks", col: "", agg: "avg" },
   "nakamoto": { table: "daily_miners", col: "nakamoto", agg: "avg" },
@@ -334,6 +335,11 @@ history.get("/api/history/:metric", async (c) => {
       // D1 not imported yet — empty series
       rows = [];
     }
+  }
+
+  // metrics stored in atomic units are reported in whole XEL
+  if (spec.div && spec.div !== 1) {
+    rows = rows.map((r) => ({ bucket: r.bucket, value: Number(r.value) / spec.div! }));
   }
 
   if (format === "csv") {
