@@ -39,7 +39,7 @@ const transfersPanelHtml = (list: TransferEntry[], meta: Map<string, AssetMeta> 
   const rows = list.map((tr, i) => `<tr>
     <td class="num">${i + 1}</td>
     <td>${tr.destination
-      ? `<a class="mono" href="/account/${esc(tr.destination)}">${shortHash(tr.destination, 10)}</a>${entityTag(tr.destination)} <button class="copybtn" type="button" onclick="blkCopy('${esc(tr.destination)}', this)">copy</button>`
+      ? `<a class="mono" href="/account/${esc(tr.destination)}">${shortHash(tr.destination, 10)}</a>${entityTag(tr.destination)}`
       : '<span style="color:var(--text-dim)">—</span>'}</td>
     <td>${assetCellHtml(tr.asset, meta)}</td>
     <td><span class="badge priv" title="Amount is encrypted on-chain">hidden</span>${tr.payload ? ' <span class="badge priv" title="Encrypted transfer payload attached">payload</span>' : ""}</td>
