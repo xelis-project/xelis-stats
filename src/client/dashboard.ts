@@ -188,6 +188,73 @@ const CATALOG: CatalogItem[] = [
 
 const byKey = new Map(CATALOG.map((c) => [c.key, c]));
 
+// Longer, human explanations shown in a panel's info popover. Where an entry
+// is missing, explainItem() derives a description from the catalog metadata.
+const EXPLAIN: Record<string, string> = {
+  // stats
+  "stat-topoheight": "The tip's topoheight (number of blocks in the DAG chain) alongside the stable boundary, the topoheight below which blocks are considered irreversible.",
+  "stat-price": "Median USDT quote across all connected exchanges, shown with its 24-hour percentage change. Days without market coverage are excluded.",
+  "stat-hashrate": "Estimated from the current network difficulty divided by the observed block time. It is a statistical estimate rather than a direct measurement of mining power.",
+  "stat-marketcap": "Circulating XEL supply multiplied by the latest price. Only shown once a price is available.",
+  "stat-mempool": "Number of transactions currently waiting in the mempool, taken from the latest snapshot.",
+  "stat-burned": "Total XEL provably burned through public burn addresses and transactions.",
+  "stat-blocktime": "Recent average interval between blocks compared with the protocol target, so you can see whether the network is running fast or slow.",
+  "stat-difficulty": "The current proof-of-work difficulty required for a block.",
+  "stat-max": "The maximum XEL supply cap together with the percentage that has been minted so far.",
+  "stat-reward": "Total reward paid per block, split between the miner reward and the developer reward.",
+  "stat-peers": "Connected peers counted from the periodic peer snapshot, refreshed roughly every two minutes.",
+  // charts
+  "chart-txs": "Every indexed transaction is counted per day and summed across the bucket.",
+  "chart-price": "Median USDT quote across connected exchanges. Buckets with no market coverage are omitted rather than zero-filled.",
+  "chart-active-accounts": "Distinct sender addresses that signed at least one transaction in the day, averaged within the bucket.",
+  "chart-hashrate": "Estimated from network difficulty and observed block time, then averaged. Read it as a trend, not an exact hashrate.",
+  "chart-miners": "How many distinct mining addresses produced at least one block in the day, averaged across the bucket. A rising line means mining is spreading out.",
+  "chart-fees": "Mean fee paid per transaction, averaged within the bucket.",
+  "chart-supply": "Circulating XEL supply in whole XEL. This is a cumulative value maintained by the ingestion pipeline.",
+  "chart-market-cap": "Circulating supply multiplied by the latest price on each day that has market coverage.",
+  "chart-transfers": "Number of transfer outputs seen in the transaction index, summed per bucket.",
+  "chart-orphans": "Blocks that are not of the Normal type (Side or Sync blocks), summed per bucket. Spikes usually mean network or timing instability.",
+  "chart-new-accounts": "Sender addresses observed for the first time in the period, summed per bucket.",
+  "chart-miner-revenue": "Block rewards emitted to miners per day, in XEL, summed across the bucket.",
+  "chart-quote-volume": "Summed USDT quote volume across all tracked exchanges.",
+  "chart-fee-p90": "The 90th-percentile transaction fee (the fee level 90% of transactions fall below), averaged across the bucket.",
+  "chart-fees-median": "The median transaction fee, less sensitive to outliers than the average fee.",
+  "chart-fees-p99": "The 99th-percentile transaction fee, showing the cost of the most expensive 1% of transactions.",
+  "chart-block-time": "Computed directly from blocks as (latest timestamp - earliest timestamp) / (block count - 1): the mean seconds between consecutive blocks in the bucket.",
+  "chart-gini": "Gini coefficient of per-miner daily block counts, measuring block-production concentration. 0 means every miner produced an equal share; 1 means a single miner produced everything. Daily values are averaged within the bucket.",
+  "chart-nakamoto": "The smallest number of miners whose combined blocks exceed 50% of a day's blocks. Lower is more concentrated: 1 means one miner produced the majority of that day's blocks. Daily values are averaged within the bucket.",
+  "chart-encrypted": "Share of transactions carrying encrypted payloads, derived from the transaction index.",
+  "chart-miner-rev-usd": "Daily miner revenue valued in USDT using the market price where coverage exists.",
+  "chart-burned": "Cumulative publicly burned XEL read from the burned-supply column.",
+  "chart-block-types": "Daily counts of Normal, Side and Sync blocks, so you can see the mix of block types over time.",
+  "chart-mempool": "Average pending transaction count from periodic mempool snapshots.",
+  "chart-peers": "Average number of connected peers from periodic peer snapshots.",
+  "chart-peers-pruned": "Average number of peers advertising pruned mode (they do not retain full history).",
+  "chart-peer-lag": "Average topoheight lag of connected peers compared with our own chain tip. A high value means peers are behind.",
+  "chart-peers-stale": "Peers that have not responded to a ping for over an hour and may be unreachable.",
+  "chart-peer-age": "Average age, in seconds, of the current peer connections.",
+  // comparisons
+  "compare-peers-divergent": "Connected peers overlaid with the subset reporting a divergent chain tip. Divergence usually points at a fork or lag.",
+  "compare-price-volume": "Median price and summed USDT volume on one chart. The y-axis is logarithmic because trading volume dwarfs the price.",
+  "compare-txs-accounts": "Transaction count and active sender count over the same buckets, to compare activity with breadth of participation.",
+  "compare-hashrate-miners": "Hashrate and unique-miner count overlaid on a logarithmic axis to show whether hashrate growth tracks miner count.",
+  "compare-fee-p90-txs": "Average transaction fee against the 90th-percentile fee, highlighting how far high fees sit above the mean.",
+};
+
+// Build the explanation shown in the info popover. Custom notes above win;
+// otherwise describe the widget from its catalog metadata.
+function explainItem(it: CatalogItem | undefined): string {
+  if (!it) return "No explanation available.";
+  const custom = EXPLAIN[it.key];
+  if (custom) return custom;
+  if (it.kind === "stat") return `${it.desc}. This is a live value refreshed with the rest of the dashboard.`;
+  if (it.kind === "chart") return `Time series of the "${it.metric}" metric over the selected range, bucketed by interval. Change period, interval, chart type, log scale or cumulative mode from the filters button.`;
+  if (it.kind === "compare") return `Overlays ${(it.metrics ?? []).join(" and ")} from the history API across the same buckets.${it.log ? " The y-axis is logarithmic." : ""}`;
+  if (it.kind === "rank") return `Ranks the top ${it.limit} ${it.src} over the trailing ${it.period}.`;
+  return `The ${it.limit} most recent ${it.src} rows, newest first.`;
+}
+
+
 // Default tabs: overview (network + chain), mining, and market. Each groups
 // widgets that read naturally together.
 const DEFAULT_TABS: Array<{ name: string; widgets: Array<[string, number, number, number, number]> }> = [
@@ -1181,6 +1248,10 @@ function settingsHtml(w: Widget, mode: SetMode): string {
         <p class="w-info-title">${esc(w.opts?.title || item?.label || w.key)}</p>
         <p class="w-info-desc">${esc(item?.desc || "No description available.")}</p>
         <p class="w-info-kind">${kind}</p>
+      </div>
+      <div class="w-set-group">
+        <span class="w-set-group-t">Explanation</span>
+        <p class="w-info-desc">${esc(explainItem(item))}</p>
       </div>
       <div class="w-set-actions">
         <button type="button" class="w-btn" data-act="settings-close">done</button>
