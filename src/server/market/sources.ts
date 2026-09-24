@@ -1,5 +1,6 @@
 export interface Ticker {
   exchange: string;
+  url: string;
   market: string;
   last: number;
   bid: number | null;
@@ -43,6 +44,7 @@ async function mexc(): Promise<Ticker> {
   const t = await json<MexcTicker>("https://api.mexc.com/api/v3/ticker/24hr?symbol=XELUSDT");
   return {
     exchange: "MEXC",
+    url: "https://www.mexc.com/",
     market: "XEL/USDT",
     last: +t.lastPrice,
     bid: +t.bidPrice,
@@ -67,6 +69,7 @@ async function coinex(): Promise<Ticker> {
   const open = +t.open;
   return {
     exchange: "CoinEx",
+    url: "https://www.coinex.com",
     market: "XEL/USDT",
     last: +t.last,
     bid: null,
@@ -92,6 +95,7 @@ async function nonkyc(): Promise<Ticker> {
   if (!t) throw new Error("NonKyc: XEL market not found");
   return {
     exchange: "NonKyc",
+    url: "https://nonkyc.io/",
     market: `${t.base_currency}/${t.target_currency}`,
     last: +t.last_price,
     bid: +t.bid,

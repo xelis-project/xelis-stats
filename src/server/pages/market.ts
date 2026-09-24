@@ -5,20 +5,19 @@ import { layout } from "../../client/layout";
 export const market = new Hono<{ Bindings: Env }>();
 
 market.get("/market", async (c) => {
-  let retired: { name: string; url: string; addedTs: number | null; retiredTs: number | null }[] = [];
+  let retired: { name: string; addedTs: number | null; retiredTs: number | null }[] = [];
   try {
     const rows = await c.env.DB.prepare(
-      "SELECT name, url, added_ts, retired_ts FROM exchanges WHERE status = 'inactive' ORDER BY name",
-    ).all<{ name: string; url: string | null; added_ts: number | null; retired_ts: number | null }>();
-    retired = (rows.results ?? []).map((r) => ({ name: r.name, url: r.url ?? "", addedTs: r.added_ts, retiredTs: r.retired_ts }));
+      "SELECT name, added_ts, retired_ts FROM exchanges WHERE status = 'inactive' ORDER BY name",
+    ).all<{ name: string; added_ts: number | null; retired_ts: number | null }>();
+    retired = (rows.results ?? []).map((r) => ({ name: r.name, addedTs: r.added_ts, retiredTs: r.retired_ts }));
   } catch { /* db not ready */ }
   const fmtDay = (ts: number | null) => (ts ? new Date(ts).toISOString().slice(0, 10) : "");
   const retiredRows = retired.map((r) => {
     const span = r.addedTs
       ? `${fmtDay(r.addedTs)} → ${fmtDay(r.retiredTs) || "present"}`
       : "no historical data";
-    const label = r.url ? `<a href="${r.url}" target="_blank" rel="noopener">${r.name}</a>` : r.name;
-    return `<tr><td>${label}</td><td>${span}</td></tr>`;
+    return `<tr><td>${r.name}</td><td>${span}</td></tr>`;
   }).join("");
   const retiredPanel = retired.length
     ? `<div class="panel"><h2>Retired exchanges</h2>

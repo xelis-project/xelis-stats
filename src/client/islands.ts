@@ -172,7 +172,7 @@ function initMarket(): void {
   if (!table) return;
 
   interface Ticker {
-    exchange: string; market: string; last: number; bid: number | null; ask: number | null;
+    exchange: string; url?: string; market: string; last: number; bid: number | null; ask: number | null;
     high24h: number | null; low24h: number | null; changePct24h: number | null;
     baseVolume: number; quoteVolume: number; timestamp: number;
   }
@@ -212,7 +212,7 @@ function initMarket(): void {
       if (!agg.tickers) return;
       loaded = true;
       table!.innerHTML = agg.tickers.map((t) => `<tr>
-        <td>${t.exchange}</td><td>${t.market}</td>
+        <td>${t.url ? `<a href="${t.url}" target="_blank" rel="noopener">${t.exchange}</a>` : t.exchange}</td><td>${t.market}</td>
         <td class="num">$${t.last.toFixed(4)}</td>
         <td class="num" style="color:${(t.changePct24h ?? 0) >= 0 ? "var(--mint)" : "var(--danger)"}">${t.changePct24h !== null ? (t.changePct24h >= 0 ? "+" : "") + t.changePct24h.toFixed(2) + "%" : "—"}</td>
         <td class="num">${t.high24h?.toFixed(4) ?? "—"}</td>
