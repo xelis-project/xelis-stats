@@ -40,6 +40,7 @@ const SHARD_SCHEMA = [
   "CREATE INDEX IF NOT EXISTS idx_blocks_hash ON blocks(hash)",
   "CREATE INDEX IF NOT EXISTS idx_blocks_ts ON blocks(ts)",
   "CREATE INDEX IF NOT EXISTS idx_blocks_miner ON blocks(miner_address)",
+  "CREATE INDEX IF NOT EXISTS idx_blocks_miner_ts ON blocks(miner_address, ts)",
   // sort indexes mirrored from migrations/0001_init.sql
   "CREATE INDEX IF NOT EXISTS idx_blocks_ts_topo ON blocks(ts, topoheight)",
   "CREATE INDEX IF NOT EXISTS idx_blocks_tx_count_topo ON blocks(tx_count, topoheight)",
