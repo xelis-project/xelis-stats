@@ -934,7 +934,9 @@ async function mountTable(w: Widget): Promise<void> {
   if (!body.querySelector("table")) setLoading(w, true);
   try {
     const j = await fetch(url).then((r) => r.json()) as Record<string, unknown[]>;
-    const rows = (j.rows ?? j.blocks ?? j.transactions ?? j.accounts ?? j.tickers ?? j.versions ?? j.tags ?? []) as Record<string, unknown>[];
+    const rows = (item.src === "peer-tags"
+      ? j.tags
+      : j.rows ?? j.blocks ?? j.transactions ?? j.accounts ?? j.tickers ?? j.versions ?? j.tags ?? []) as Record<string, unknown>[];
     setLoading(w, false);
     body.innerHTML = rows.length ? tableHtml(item, rows, o) : '<p class="w-empty">No data available yet.</p>';
     wireSortClicks(w, body);
