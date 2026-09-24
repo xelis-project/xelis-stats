@@ -3,15 +3,13 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2022"],
-    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
     "isolatedModules": true,
     "resolveJsonModule": true,
-    "types": ["@cloudflare/workers-types", "vite/client", "node"]
+    "types": ["vite/client"]
   },
-  "include": ["src", "scripts"],
-  "exclude": ["src/client"]
+  "include": ["."]
 }

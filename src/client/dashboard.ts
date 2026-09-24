@@ -409,7 +409,8 @@ function sanitizeOpts(raw: unknown, item?: CatalogItem): WidgetOpts {
   if (typeof v.sort === "string" && sortCols?.cols.some((c) => c.key === v.sort)) out.sort = v.sort;
   if (v.dir === "asc" || v.dir === "desc") out.dir = v.dir;
   if (typeof v.txType === "string" && TX_TYPES.includes(v.txType)) out.txType = v.txType;
-  if (typeof v.blockType === "string" && BLOCK_TYPES.some((b) => b.toLowerCase() === v.blockType?.toLowerCase())) out.blockType = v.blockType;
+  const blockType = v.blockType;
+  if (typeof blockType === "string" && BLOCK_TYPES.some((b) => b.toLowerCase() === blockType.toLowerCase())) out.blockType = blockType;
   if (Array.isArray(v.hiddenCols)) {
     const allowed = item ? tableCols(item).map((c) => c.key) : [];
     const hid = v.hiddenCols.filter((k) => typeof k === "string" && allowed.includes(k));

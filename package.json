@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p src/client/tsconfig.json",
     "deploy": "wrangler deploy",
     "preview": "wrangler dev",
     "cf-typegen": "wrangler types",
