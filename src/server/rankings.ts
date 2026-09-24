@@ -31,7 +31,8 @@ function whereFor(period: Period, date: string | null): { dim: string; binds: un
   if (period === "all") return { dim: "", binds: [] };
   if (period === "day") return { dim: "WHERE date = ?", binds: [date || today] };
   if (period === "week") return { dim: "WHERE date > date(?, '-7 days')", binds: [date || today] };
-  return { dim: "WHERE date LIKE ? || '%'", binds: [date || thisMonth] };
+  const month = (date || thisMonth).slice(0, 7);
+  return { dim: "WHERE date LIKE ? || '%'", binds: [month] };
 }
 
 // ORDER BY is injected from the ?sort whitelist in TOP_COLS so every column
