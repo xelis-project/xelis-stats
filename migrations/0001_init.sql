@@ -64,6 +64,7 @@ CREATE INDEX IF NOT EXISTS idx_tx_fee_hash ON tx_index(fee, hash);
 CREATE INDEX IF NOT EXISTS idx_tx_type_hash ON tx_index(tx_type, hash);
 CREATE INDEX IF NOT EXISTS idx_tx_sender_hash ON tx_index(sender, hash);
 CREATE INDEX IF NOT EXISTS idx_tx_executed_hash ON tx_index(executed, hash);
+CREATE INDEX IF NOT EXISTS idx_tx_transfer_count_hash ON tx_index(transfer_count, hash);
 
 -- Public asset involvement per tx (ids only; amounts are encrypted)
 CREATE TABLE IF NOT EXISTS tx_assets (

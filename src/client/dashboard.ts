@@ -726,6 +726,7 @@ function listRow(src: string, r: Record<string, unknown>): Array<[string, string
       ["block", `<td><a href="/block/${topo}"><span class="mint">${fmtInt(topo)}</span></a></td>`],
       ["time", `<td class="num">${ago(normSecs(Number(r.ts)))}</td>`],
       ["fee", `<td class="num">${atomic(Number(r.fee), 6)} XEL</td>`],
+      ["transfers", `<td class="num">${fmtInt(Number(r.transfer_count))}</td>`],
       ["sender", addrCell(r, "sender", 8)],
     ];
   }
@@ -861,6 +862,7 @@ const WIDGET_COLS: Record<string, SortCols> = {
       { key: "block", label: "Block", num: true, def: "desc" },
       { key: "time", label: "Age", num: true, def: "asc" },
       { key: "fee", label: "Fee", num: true, def: "desc" },
+      { key: "transfers", label: "Transfers", num: true, def: "desc" },
       { key: "sender", label: "Sender", def: "asc" },
     ],
   },

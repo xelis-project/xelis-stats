@@ -63,6 +63,7 @@ const SHARD_SCHEMA = [
   "CREATE INDEX IF NOT EXISTS idx_tx_type_hash ON tx_index(tx_type, hash)",
   "CREATE INDEX IF NOT EXISTS idx_tx_sender_hash ON tx_index(sender, hash)",
   "CREATE INDEX IF NOT EXISTS idx_tx_executed_hash ON tx_index(executed, hash)",
+  "CREATE INDEX IF NOT EXISTS idx_tx_transfer_count_hash ON tx_index(transfer_count, hash)",
   "CREATE TABLE IF NOT EXISTS tx_assets (tx_hash TEXT, asset TEXT, PRIMARY KEY (tx_hash, asset))",
   "CREATE INDEX IF NOT EXISTS idx_tx_assets_asset ON tx_assets(asset)",
   "CREATE TABLE IF NOT EXISTS tx_contracts (tx_hash TEXT PRIMARY KEY, contract_id TEXT, max_gas INTEGER)",
