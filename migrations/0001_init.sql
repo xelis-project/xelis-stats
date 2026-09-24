@@ -1,5 +1,5 @@
 -- Xelis Stats — D1 schema (Cloudflare live side)
--- Consolidated init schema (merges former 0001–0006 migrations).
+-- Consolidated init schema (merges former 0001–0007 migrations).
 -- sync state: separate per-stage checkpoints
 CREATE TABLE IF NOT EXISTS sync_state (
   stage TEXT PRIMARY KEY,
@@ -102,8 +102,13 @@ CREATE TABLE IF NOT EXISTS daily_block_types (
   PRIMARY KEY (date, block_type)
 );
 
+-- blocks_found counts every block a miner produced regardless of type
+-- (Normal + Side + Sync); side_count/sync_count break out the non-normal share
+-- so the leaderboard can show it without re-scanning the raw blocks table
+-- (which is sharded once the 10GB cap nears). Normal = blocks_found - side - sync.
 CREATE TABLE IF NOT EXISTS daily_miners (
   date TEXT, address TEXT, blocks_found INTEGER, rewards_earned INTEGER,
+  side_count INTEGER NOT NULL DEFAULT 0, sync_count INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (date, address)
 );
 CREATE INDEX IF NOT EXISTS idx_daily_miners_addr ON daily_miners(address);
