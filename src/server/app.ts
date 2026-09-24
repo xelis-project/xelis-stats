@@ -15,6 +15,11 @@ export interface Env {
   KV: KVNamespace;
   COLLECTOR: DurableObjectNamespace;
   XELIS_NODE: string;
+  // D1 shard rotation (optional; unset secrets = single-DB mode)
+  CLOUDFLARE_ACCOUNT_ID?: string;
+  CLOUDFLARE_API_TOKEN?: string;
+  XELIS_STATS_DB_ID?: string;
+  SHARD_MAX_BYTES?: string;
 }
 
 const app = new Hono<{ Bindings: Env }>();

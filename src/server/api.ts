@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "./app";
 import { parseSort, BLOCK_COLS, TX_COLS, ACCT_COLS } from "./sort";
 import { knownEntity } from "./entities";
+import { fetchBlock, fetchTx, pagedRaw } from "./shards";
 
 type Row = Record<string, unknown>;
 
@@ -26,29 +27,28 @@ api.get("/api/blocks", async (c) => {
       const { order } = parseSort((n) => c.req.query(n), BLOCK_COLS, "topo", "topoheight DESC");
       sql = `SELECT * FROM blocks ${type ? "WHERE UPPER(block_type) = UPPER(?)" : ""} ORDER BY ${order} LIMIT ?`;
       binds = [...(type ? [type] : []), limit];
-    } else {
-      const conds: string[] = [];
-      const cb: (number | string)[] = [];
-      if (before > 0) { conds.push("topoheight < ?"); cb.push(before); }
-      if (type) { conds.push("UPPER(block_type) = UPPER(?)"); cb.push(type); }
-      const cond = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
-      sql = `SELECT * FROM blocks ${cond} ORDER BY topoheight DESC LIMIT ?`;
-      binds = [...cb, limit];
+      const rows = await c.env.DB.prepare(sql).bind(...binds).all().then((r) => r.results);
+      return c.json({ blocks: (rows as Row[]).map((r) => tagAddress(r, "miner_address")) });
     }
-    const rows = await c.env.DB.prepare(sql).bind(...binds).all().then((r) => r.results);
-    return c.json({ blocks: (rows as Row[]).map((r) => tagAddress(r, "miner_address")) });
+    // default topo-desc path walks the hot window and sealed shards
+    const rows = await pagedRaw(c.env, {
+      table: "blocks",
+      cursorCol: "topoheight",
+      select: "*",
+      before,
+      limit,
+      extra: type ? { sql: "UPPER(block_type) = UPPER(?)", binds: [type] } : undefined,
+    });
+    return c.json({ blocks: rows.map((r) => tagAddress(r, "miner_address")) });
   } catch {
     return c.json({ blocks: [] });
   }
 });
 
 api.get("/api/block/:id", async (c) => {
-  const id = c.req.param("id");
   try {
-    const block = /^\d+$/.test(id)
-      ? await c.env.DB.prepare("SELECT * FROM blocks WHERE topoheight = ? OR height = ?").bind(Number(id), Number(id)).first()
-      : await c.env.DB.prepare("SELECT * FROM blocks WHERE hash = ?").bind(id).first();
-    return c.json(block ? tagAddress(block as Row, "miner_address") : { error: "not found" });
+    const found = await fetchBlock(c.env, c.req.param("id"));
+    return c.json(found ? tagAddress(found.row, "miner_address") : { error: "not found" });
   } catch {
     return c.json({ error: "not found" }, 404);
   }
@@ -56,8 +56,8 @@ api.get("/api/block/:id", async (c) => {
 
 api.get("/api/tx/:hash", async (c) => {
   try {
-    const tx = await c.env.DB.prepare("SELECT * FROM tx_index WHERE hash = ?").bind(c.req.param("hash")).first();
-    return c.json(tx ? tagAddress(tx as Row, "sender") : { error: "not found" });
+    const found = await fetchTx(c.env, c.req.param("hash"));
+    return c.json(found ? tagAddress(found.row, "sender") : { error: "not found" });
   } catch {
     return c.json({ error: "not found" }, 404);
   }
@@ -76,17 +76,18 @@ api.get("/api/transactions", async (c) => {
       const { order } = parseSort((n) => c.req.query(n), TX_COLS, "block", "hash");
       sql = `SELECT hash, block_topo, ts, fee, size, tx_type, sender, transfer_count, executed FROM tx_index${type ? " WHERE tx_type = ?" : ""} ORDER BY ${order} LIMIT ?`;
       binds = [...(type ? [type] : []), limit];
-    } else {
-      const conds: string[] = [];
-      const b: (number | string)[] = [];
-      if (before > 0) { conds.push("block_topo < ?"); b.push(before); }
-      if (type) { conds.push("tx_type = ?"); b.push(type); }
-      const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
-      sql = `SELECT hash, block_topo, ts, fee, size, tx_type, sender, transfer_count, executed FROM tx_index ${where} ORDER BY block_topo DESC LIMIT ?`;
-      binds = [...b, limit];
+      const rows = await c.env.DB.prepare(sql).bind(...binds).all().then((r) => r.results);
+      return c.json({ transactions: (rows as Row[]).map((r) => tagAddress(r, "sender")) });
     }
-    const rows = await c.env.DB.prepare(sql).bind(...binds).all().then((r) => r.results);
-    return c.json({ transactions: (rows as Row[]).map((r) => tagAddress(r, "sender")) });
+    const rows = await pagedRaw(c.env, {
+      table: "tx_index",
+      cursorCol: "block_topo",
+      select: "hash, block_topo, ts, fee, size, tx_type, sender, transfer_count, executed",
+      before,
+      limit,
+      extra: type ? { sql: "tx_type = ?", binds: [type] } : undefined,
+    });
+    return c.json({ transactions: rows.map((r) => tagAddress(r, "sender")) });
   } catch {
     return c.json({ transactions: [] });
   }

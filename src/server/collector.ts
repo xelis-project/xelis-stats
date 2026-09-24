@@ -135,6 +135,10 @@ export class StatsCollector {
           this.env.DB.prepare(`INSERT OR REPLACE INTO blocks (topoheight,height,hash,ts,version,nonce,difficulty,size,tx_count,block_type,miner_address,miner_reward,dev_reward,burned,fee_total,cum_difficulty,tips,txs_hashes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
             .bind(Number(b.topoheight), Number(b.height ?? 0), String(b.hash ?? ""), Number(b.timestamp ?? 0), Number(b.version ?? 0), Number(b.nonce ?? 0), Number(b.difficulty ?? 0), Number(b.total_size_in_bytes ?? 0), (b.txs_hashes ?? []).length, String(b.block_type ?? "normal"), String(b.miner ?? ""), Number(b.miner_reward ?? 0), Number(b.dev_reward ?? 0), Number(b.total_fees_burned ?? 0), Number(b.total_fees ?? 0), String(b.cumulative_difficulty ?? ""), JSON.stringify(b.tips ?? []), JSON.stringify(b.txs_hashes ?? []))
         );
+        // hash -> topo routes for point lookups across shard databases
+        for (const b of blocks) {
+          if (b.hash) inserts.push(this.env.DB.prepare("INSERT OR REPLACE INTO block_route (hash, topoheight) VALUES (?, ?)").bind(String(b.hash), Number(b.topoheight)));
+        }
         // also daily aggregates for live continuation
         for (const b of blocks) {
           const day = new Date(Number(b.timestamp)).toISOString().slice(0, 10);
@@ -220,6 +224,9 @@ export class StatsCollector {
         burnAmount, burnAsset
       ),
     ];
+    if (blockTopo > 0) {
+      stmts.push(this.env.DB.prepare("INSERT OR REPLACE INTO tx_route (hash, block_topo) VALUES (?, ?)").bind(hash, blockTopo));
+    }
     for (const tr of transfers) {
       if (tr && typeof tr.asset === "string") {
         stmts.push(this.env.DB.prepare("INSERT OR IGNORE INTO tx_assets (tx_hash, asset) VALUES (?, ?)").bind(hash, tr.asset));

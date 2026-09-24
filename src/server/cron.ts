@@ -1,6 +1,7 @@
 import type { Env } from "./app";
 import { fetchAllTickers, aggregate } from "./market/sources";
 import { rpc } from "./xelis";
+import { rotateShards } from "./shards";
 
 /**
  * Cron: every 2 min — market snapshot, mempool snapshot, peer network snapshot.
@@ -135,6 +136,13 @@ export async function handleCron(env: Env): Promise<void> {
     // daily rollup: recompute today's (and yesterday's) daily_stats row from D1
     await rollupDailyStats(env, new Date().toISOString().slice(0, 10));
     await rollupDailyStats(env, new Date(Date.now() - 86400_000).toISOString().slice(0, 10));
+    // D1 10GB workaround: migrate old raw rows into shard databases
+    try {
+      const result = await rotateShards(env);
+      if (result !== "disabled") console.log("shard rotation:", result);
+    } catch (err) {
+      console.error("shard rotation:", (err as Error).message);
+    }
   }
 }
 

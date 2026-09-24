@@ -3,6 +3,7 @@ import type { Env } from "../app";
 import { layout, notFound, statCard } from "../../client/layout";
 import { fmt, fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/format";
 import { rpc } from "../xelis";
+import { fetchTx, getShards, targetForTopo, runOn, type RawTarget } from "../shards";
 import { esc, entityTag, blkCopyScript, num } from "./shared";
 
 export const txDetail = new Hono<{ Bindings: Env }>();
@@ -12,11 +13,14 @@ txDetail.get("/tx/:hash", async (c) => {
   const db = c.env.DB;
   let tx: Record<string, unknown> | undefined;
   let assets: string[] = [];
+  let txTarget: RawTarget | null = null;
   try {
-    tx = (await db.prepare("SELECT * FROM tx_index WHERE hash = ?").bind(hash).first()) ?? undefined;
-    if (tx) {
-      assets = await db.prepare("SELECT asset FROM tx_assets WHERE tx_hash = ?").bind(hash)
-        .all<{ asset: string }>().then((r) => (r.results ?? []).map((x) => x.asset));
+    const found = await fetchTx(c.env, hash);
+    if (found) {
+      tx = found.row;
+      txTarget = found.target;
+      assets = await runOn(c.env, found.target, "SELECT asset FROM tx_assets WHERE tx_hash = ?", [hash])
+        .then((r) => r.map((x) => String(x.asset)));
     }
   } catch { /* db not ready */ }
 
@@ -131,11 +135,12 @@ txDetail.get("/tx/:hash", async (c) => {
   let siblings: Record<string, unknown>[] = [];
   try {
     if (topo > 0) {
-      const b = await db.prepare("SELECT hash, tx_count FROM blocks WHERE topoheight = ?").bind(topo).first<{ hash: string; tx_count: number }>();
+      const shards = await getShards(c.env);
+      const rawT = txTarget ?? targetForTopo(shards, topo);
+      const b = (await runOn(c.env, rawT, "SELECT hash, tx_count FROM blocks WHERE topoheight = ?", [topo]))[0];
       blockHash = String(b?.hash ?? "");
       blockTxCount = num(b?.tx_count);
-      siblings = await db.prepare("SELECT hash, tx_type, fee, size, executed, sender FROM tx_index WHERE block_topo = ? AND hash != ? ORDER BY ts, hash LIMIT 10")
-        .bind(topo, hash).all<Record<string, unknown>>().then((r) => r.results ?? []);
+      siblings = await runOn(c.env, rawT, "SELECT hash, tx_type, fee, size, executed, sender FROM tx_index WHERE block_topo = ? AND hash != ? ORDER BY ts, hash LIMIT 10", [topo, hash]);
     }
     maxTopo = (await db.prepare("SELECT MAX(topoheight) AS m FROM blocks").first<{ m: number }>())?.m ?? null;
     if (sender) acct = (await db.prepare("SELECT first_seen, last_active, tx_count FROM accounts WHERE address = ?").bind(sender).first()) ?? undefined;
@@ -147,7 +152,9 @@ txDetail.get("/tx/:hash", async (c) => {
       assetRows = assets.map((a) => byId.get(a) ?? { asset_id: a, name: null, symbol: null, decimals: null });
     }
     if (contractId) {
-      maxGas = (await db.prepare("SELECT max_gas FROM tx_contracts WHERE tx_hash = ?").bind(hash).first<{ max_gas: number }>())?.max_gas ?? null;
+      maxGas = txTarget
+        ? Number((await runOn(c.env, txTarget, "SELECT max_gas FROM tx_contracts WHERE tx_hash = ?", [hash]))[0]?.max_gas ?? 0) || null
+        : (await db.prepare("SELECT max_gas FROM tx_contracts WHERE tx_hash = ?").bind(hash).first<{ max_gas: number }>())?.max_gas ?? null;
       contract = (await db.prepare("SELECT deployer, deploy_topo, invoke_count, gas_total FROM contracts WHERE contract_id = ?").bind(contractId).first()) ?? undefined;
     }
   } catch { /* db not ready */ }

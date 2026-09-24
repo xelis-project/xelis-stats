@@ -41,6 +41,8 @@
     "crons": ["*/2 * * * *", "0 * * * *"]
   },
   "vars": {
-    "XELIS_NODE": "https://node.xelis.io"
+    "XELIS_NODE": "https://node.xelis.io",
+    "XELIS_STATS_DB_ID": "TODO_CREATE_WITH_WRANGLER",
+    "SHARD_MAX_BYTES": "8589934592"
   }
 }

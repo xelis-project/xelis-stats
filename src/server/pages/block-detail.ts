@@ -3,6 +3,7 @@ import type { Env } from "../app";
 import { layout, notFound, statCard } from "../../client/layout";
 import { fmt, fmtInt, fmtPct, shortHash, fmtTime, ago, atomic, atomicPrecise } from "../../client/format";
 import { rpc } from "../xelis";
+import { fetchBlock, runOn, type RawTarget } from "../shards";
 import { PAGE_SIZE, pager, esc, entityTag, resultBadge, blkCopyScript, num } from "./shared";
 
 export const blockDetail = new Hono<{ Bindings: Env }>();
@@ -11,12 +12,10 @@ blockDetail.get("/block/:id", async (c) => {
   const id = c.req.param("id");
   const db = c.env.DB;
   let block: Record<string, unknown> | undefined;
+  let blockTarget: RawTarget | null = null;
   try {
-    if (/^\d+$/.test(id)) {
-      block = (await db.prepare("SELECT * FROM blocks WHERE topoheight = ? OR height = ?").bind(Number(id), Number(id)).first()) ?? undefined;
-    } else {
-      block = (await db.prepare("SELECT * FROM blocks WHERE hash = ?").bind(id).first()) ?? undefined;
-    }
+    const found = await fetchBlock(c.env, id);
+    if (found) { block = found.row; blockTarget = found.target; }
   } catch { /* db not ready */ }
 
   let source: "indexed" | "live" = "indexed";
@@ -62,7 +61,14 @@ blockDetail.get("/block/:id", async (c) => {
   let prevTs: number | null = null;
   let maxTopo: number | null = null;
   try {
-    if (view.topo > 0) prevTs = (await db.prepare("SELECT ts FROM blocks WHERE topoheight = ?").bind(view.topo - 1).first<{ ts: number }>())?.ts ?? null;
+    if (view.topo > 0) {
+      if (blockTarget) {
+        const r = (await runOn(c.env, blockTarget, "SELECT ts FROM blocks WHERE topoheight = ?", [view.topo - 1]))[0];
+        prevTs = r && r.ts != null ? Number(r.ts) : null;
+      } else {
+        prevTs = (await db.prepare("SELECT ts FROM blocks WHERE topoheight = ?").bind(view.topo - 1).first<{ ts: number }>())?.ts ?? null;
+      }
+    }
     maxTopo = (await db.prepare("SELECT MAX(topoheight) AS m FROM blocks").first<{ m: number }>())?.m ?? null;
   } catch { /* db unavailable */ }
 
@@ -183,10 +189,11 @@ blockDetail.get("/block/:id", async (c) => {
   try {
     for (let i = 0; i < view.txHashes.length; i += 90) {
       const chunk = view.txHashes.slice(i, i + 90);
-      const rows = await db.prepare(
-        `SELECT hash, tx_type, fee, size, executed, sender FROM tx_index WHERE hash IN (${chunk.map(() => "?").join(",")})`
-      ).bind(...chunk).all<{ hash: string; tx_type: string; fee: number; size: number; executed: number | null; sender: string }>();
-      for (const r of rows.results ?? []) known.set(r.hash, r);
+      const sql = `SELECT hash, tx_type, fee, size, executed, sender FROM tx_index WHERE hash IN (${chunk.map(() => "?").join(",")})`;
+      const rows = blockTarget
+        ? (await runOn(c.env, blockTarget, sql, chunk)) as Array<{ hash: string; tx_type: string; fee: number; size: number; executed: number | null; sender: string }>
+        : (await db.prepare(sql).bind(...chunk).all<{ hash: string; tx_type: string; fee: number; size: number; executed: number | null; sender: string }>().then((r) => r.results ?? []));
+      for (const r of rows) known.set(r.hash, r);
     }
   } catch { /* db unavailable */ }
 
