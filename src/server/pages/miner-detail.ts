@@ -6,7 +6,7 @@ import { fmt, fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/forma
 import { srvSort, BLOCK_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
 import { esc, entityTag, blkCopyScript, num, PAGE_SIZE, pager } from "./shared";
-import { topNRaw, countRaw, mergeAgg, mergeGroups, cmpBy } from "../shards";
+import { topNRaw, countRaw, mergeAgg } from "../shards";
 
 interface MinerTotals {
   blocks: number;
@@ -50,9 +50,6 @@ minerDetail.get("/miner/:address", async (c) => {
   let anchor = today;
   let dailyMiner: Record<string, unknown> | null = null;
   let dailyNet: Record<string, unknown> | null = null;
-  let winMiner: Record<string, unknown> | null = null;
-  let winNet: Record<string, unknown> | null = null;
-  let allTime: Record<string, unknown> | null = null;
   let hash24: Record<string, unknown> | null = null;
   let seriesRows: Record<string, unknown>[] = [];
   let lastBlock: Record<string, unknown> | null = null;
@@ -61,14 +58,6 @@ minerDetail.get("/miner/:address", async (c) => {
   let rank: number | null = null;
   let totalMiners: number | null = null;
 
-  const winAgg = `SUM(CASE WHEN ts > ? THEN 1 ELSE 0 END) b1,
-      SUM(CASE WHEN ts > ? THEN 1 ELSE 0 END) b7,
-      SUM(CASE WHEN ts > ? THEN 1 ELSE 0 END) b30,
-      COUNT(*) ball,
-      SUM(CASE WHEN ts > ? THEN miner_reward ELSE 0 END) r1,
-      SUM(CASE WHEN ts > ? THEN miner_reward ELSE 0 END) r7,
-      SUM(CASE WHEN ts > ? THEN miner_reward ELSE 0 END) r30,
-      SUM(miner_reward) rall`;
   const dayAgg = `SUM(CASE WHEN date = ? THEN blocks_found ELSE 0 END) b1,
       SUM(CASE WHEN date > date(?, '-7 days') THEN blocks_found ELSE 0 END) b7,
       SUM(CASE WHEN date > date(?, '-30 days') THEN blocks_found ELSE 0 END) b30,
@@ -92,24 +81,6 @@ minerDetail.get("/miner/:address", async (c) => {
     ).bind(anchor, anchor, anchor, anchor, anchor, anchor).first();
 
     // SUM(difficulty) instead of AVG: merged in JS as sd/c
-    allTime = await mergeAgg(c.env,
-      "SELECT COUNT(*) c, SUM(miner_reward) r, MIN(ts) f, MAX(ts) l FROM blocks WHERE miner_address = ?",
-      [address], { sum: ["c", "r"], min: "f", max: "l" });
-
-    // window aggregates are additive: merge SUM/COUNT across shards. They are
-    // only used when this address has no daily rollups but does mine, so skip
-    // these full-table scans (winNet scans every block) for everyone else.
-    if (num(dailyMiner?.ball) === 0 && num(allTime?.c) > 0) {
-      winMiner = await mergeAgg(c.env,
-        `SELECT ${winAgg} FROM blocks WHERE miner_address = ?`,
-        [now - DAY, now - 7 * DAY, now - 30 * DAY, now - DAY, now - 7 * DAY, now - 30 * DAY, address],
-        { sum: ["b1", "b7", "b30", "ball", "r1", "r7", "r30", "rall"] });
-      winNet = await mergeAgg(c.env,
-        `SELECT ${winAgg} FROM blocks`,
-        [now - DAY, now - 7 * DAY, now - 30 * DAY, now - DAY, now - 7 * DAY, now - 30 * DAY],
-        { sum: ["b1", "b7", "b30", "ball", "r1", "r7", "r30", "rall"] });
-    }
-
     hash24 = await mergeAgg(c.env,
       "SELECT SUM(difficulty) sd, COUNT(*) c FROM blocks WHERE miner_address = ? AND ts > ?",
       [address, now - DAY], { sum: ["sd", "c"] });
@@ -126,8 +97,8 @@ minerDetail.get("/miner/:address", async (c) => {
     if (bType) { bconds.push("UPPER(block_type) = UPPER(?)"); cbinds.push(bType); }
     if (minTxs) { bconds.push("tx_count >= ?"); cbinds.push(minTxs); }
     const bextra = { sql: bconds.join(" AND "), binds: cbinds };
-    // unfiltered total reuses the all-time count fetched above
-    filteredTotal = bconds.length === 1 ? num(allTime?.c) : await countRaw(c.env, { table: "blocks", extra: bextra, floorCol: "topoheight" });
+    // unfiltered total reuses the all-time rollup count
+    filteredTotal = bconds.length === 1 ? num(dailyMiner?.ball) : await countRaw(c.env, { table: "blocks", extra: bextra, floorCol: "topoheight" });
     pageRows = await topNRaw(c.env, {
       table: "blocks",
       select: "topoheight, hash, ts, tx_count, difficulty, miner_reward, block_type",
@@ -145,9 +116,9 @@ minerDetail.get("/miner/:address", async (c) => {
 
   const dailyBlocks = num(dailyMiner?.ball);
   const dailyRewards = num(dailyMiner?.rall);
-  const blockCount = num(allTime?.c);
-  const useDaily = dailyBlocks > 0;
-  const isMiner = useDaily || blockCount > 0;
+  // a miner is an address with daily rollup rows; raw blocks are never used as
+  // a fallback, so an address absent from daily_miners has no mining activity
+  const isMiner = dailyBlocks > 0;
 
   const copyNote = `<script>${blkCopyScript}</script>`;
   const lockNote = `<div class="tx-note">
@@ -182,7 +153,7 @@ minerDetail.get("/miner/:address", async (c) => {
       </div>
     </div>
     <div class="panel"><h2>No Mining Activity</h2>
-      <p style="color:var(--text-dim)">No blocks indexed for this address. It may be a regular sender account, or it mined before the indexed window/backfill covered this period.</p>
+      <p style="color:var(--text-dim)">No mining activity indexed for this address. It may be a regular sender account, or it mined before daily rollups began.</p>
       ${acct ? `<table class="kv">${acctKv}</table>` : ""}
       <p style="margin-top:1rem"><a class="btn ghost" href="/miners">Back to miner leaderboard ${icons.arrowRight}</a></p>
     </div>
@@ -190,59 +161,32 @@ minerDetail.get("/miner/:address", async (c) => {
     return c.html(layout(`Miner ${shortHash(address, 8)}`, content, "/miners"));
   }
 
-  // ---- period breakdown (daily rollups preferred, recent blocks as fallback) ----
+  // ---- period breakdown from daily rollups ----
   const share = (b: number, net: number): number | null => (net > 0 ? (b / net) * 100 : null);
-  const periods: MinerPeriod[] = useDaily
-    ? [
-        { label: "Last day", blocks: num(dailyMiner?.b1), rewards: num(dailyMiner?.r1), share: share(num(dailyMiner?.b1), num(dailyNet?.b1)) },
-        { label: "Last 7 days", blocks: num(dailyMiner?.b7), rewards: num(dailyMiner?.r7), share: share(num(dailyMiner?.b7), num(dailyNet?.b7)) },
-        { label: "Last 30 days", blocks: num(dailyMiner?.b30), rewards: num(dailyMiner?.r30), share: share(num(dailyMiner?.b30), num(dailyNet?.b30)) },
-        { label: "All-time", blocks: dailyBlocks, rewards: dailyRewards, share: share(dailyBlocks, num(dailyNet?.ball)) },
-      ]
-    : [
-        { label: "Last 24h", blocks: num(winMiner?.b1), rewards: num(winMiner?.r1), share: share(num(winMiner?.b1), num(winNet?.b1)) },
-        { label: "Last 7 days", blocks: num(winMiner?.b7), rewards: num(winMiner?.r7), share: share(num(winMiner?.b7), num(winNet?.b7)) },
-        { label: "Last 30 days", blocks: num(winMiner?.b30), rewards: num(winMiner?.r30), share: share(num(winMiner?.b30), num(winNet?.b30)) },
-        { label: "Indexed window", blocks: num(winMiner?.ball), rewards: num(winMiner?.rall), share: share(num(winMiner?.ball), num(winNet?.ball)) },
-      ];
+  const periods: MinerPeriod[] = [
+    { label: "Last day", blocks: num(dailyMiner?.b1), rewards: num(dailyMiner?.r1), share: share(num(dailyMiner?.b1), num(dailyNet?.b1)) },
+    { label: "Last 7 days", blocks: num(dailyMiner?.b7), rewards: num(dailyMiner?.r7), share: share(num(dailyMiner?.b7), num(dailyNet?.b7)) },
+    { label: "Last 30 days", blocks: num(dailyMiner?.b30), rewards: num(dailyMiner?.r30), share: share(num(dailyMiner?.b30), num(dailyNet?.b30)) },
+    { label: "All-time", blocks: dailyBlocks, rewards: dailyRewards, share: share(dailyBlocks, num(dailyNet?.ball)) },
+  ];
   const share30 = periods[2].share;
-  const totals: MinerTotals = useDaily
-    ? { blocks: dailyBlocks, rewards: dailyRewards }
-    : { blocks: num(winMiner?.ball), rewards: num(winMiner?.rall) };
+  const totals: MinerTotals = { blocks: dailyBlocks, rewards: dailyRewards };
 
   // ---- all-time rank among observed miners ----
   try {
-    if (useDaily) {
-      const r = await db.prepare(
-        "SELECT COUNT(*) AS ahead FROM (SELECT address, SUM(blocks_found) s FROM daily_miners GROUP BY address) WHERE s > ?"
-      ).bind(totals.blocks).first<{ ahead: number }>();
-      const t = await db.prepare("SELECT COUNT(*) AS n FROM (SELECT address FROM daily_miners GROUP BY address)").first<{ n: number }>();
-      rank = num(r?.ahead) + 1;
-      totalMiners = num(t?.n);
-    } else if (blockCount > 0) {
-      const grouped = await mergeGroups(c.env,
-        "SELECT miner_address, COUNT(*) c FROM blocks WHERE miner_address != '' GROUP BY miner_address",
-        [], "miner_address", ["c"]);
-      totalMiners = grouped.length;
-      rank = grouped.filter((r) => num(r.c) > blockCount).length + 1;
-    }
+    const r = await db.prepare(
+      "SELECT COUNT(*) AS ahead FROM (SELECT address, SUM(blocks_found) s FROM daily_miners GROUP BY address) WHERE s > ?"
+    ).bind(totals.blocks).first<{ ahead: number }>();
+    const t = await db.prepare("SELECT COUNT(*) AS n FROM (SELECT address FROM daily_miners GROUP BY address)").first<{ n: number }>();
+    rank = num(r?.ahead) + 1;
+    totalMiners = num(t?.n);
   } catch { /* rank unavailable */ }
 
   // ---- daily series for charts (last 90 days) ----
-  let series: { date: string; blocks: number; rewards: number }[] = seriesRows
+  const series: { date: string; blocks: number; rewards: number }[] = seriesRows
     .map((r) => ({ date: String(r.date ?? ""), blocks: num(r.blocks_found), rewards: num(r.rewards_earned) }))
     .filter((p) => /^\d{4}-\d{2}-\d{2}$/.test(p.date))
     .reverse();
-  if (!series.length) {
-    try {
-      const rows = await db.prepare(
-        `SELECT date(ts/1000,'unixepoch') date, COUNT(*) b, SUM(miner_reward) r
-         FROM blocks WHERE miner_address = ? AND ts > ? GROUP BY 1 ORDER BY 1`
-      ).bind(address, now - 90 * DAY).all<Record<string, unknown>>().then((r) => r.results ?? []);
-      series = rows.map((r) => ({ date: String(r.date ?? ""), blocks: num(r.b), rewards: num(r.r) }))
-        .filter((p) => /^\d{4}-\d{2}-\d{2}$/.test(p.date));
-    } catch { /* series unavailable */ }
-  }
   const seriesBlocks: MinerChartPoint[] = series.map((p) => ({ date: p.date, value: p.blocks }));
   const seriesRewards: MinerChartPoint[] = series.map((p) => ({ date: p.date, value: p.rewards / 1e8 }));
   const hasSeries = seriesBlocks.some((p) => p.value > 0) || seriesRewards.some((p) => p.value > 0);
@@ -251,15 +195,9 @@ minerDetail.get("/miner/:address", async (c) => {
   const hashRate = hashAvg > 0 && num(hash24?.c) > 0 ? (hashAvg * num(hash24?.c)) / 86400 : null;
   const lastTopo = lastBlock ? num(lastBlock.topoheight) : null;
   const lastTs = lastBlock ? num(lastBlock.ts) : (dailyMiner?.d1 ? Date.parse(String(dailyMiner.d1) + "T00:00:00Z") : null);
-  const sinceLabel = useDaily
-    ? (dailyMiner?.d0 ? `since ${String(dailyMiner.d0)}` : "")
-    : (allTime?.f ? `since ${fmtTime(num(allTime.f)).slice(0, 10)}` : "");
-  const blocksSub = useDaily
-    ? `all-time${sinceLabel ? ` · ${sinceLabel}` : ""}`
-    : `indexed window${sinceLabel ? ` · ${sinceLabel}` : ""}`;
-  const sourceNote = useDaily
-    ? `Daily miner rollups anchored on ${anchor}.`
-    : "No daily rollups for this address yet — period figures come from the indexed block window only.";
+  const sinceLabel = dailyMiner?.d0 ? `since ${String(dailyMiner.d0)}` : "";
+  const blocksSub = `all-time${sinceLabel ? ` · ${sinceLabel}` : ""}`;
+  const sourceNote = `Daily miner rollups anchored on ${anchor}.`;
 
   const hero = `<div class="panel blk-hero">
     <div class="blk-head">
