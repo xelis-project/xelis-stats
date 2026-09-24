@@ -260,9 +260,9 @@ contracts.get("/contracts/:id", async (c) => {
   const content = `${hero}
     ${overview}
     ${balancesPanel}
+    ${invokesPanel}
     ${storagePanel}
     ${bytecodePanel}
-    ${invokesPanel}
     ${entries.length ? storageScript(deployHash, entries.length) : ""}
     <script>${blkCopyScript}</script>`;
   return c.html(layout(`Contract ${shortHash(deployHash, 8)}`, content, "/contracts"));
