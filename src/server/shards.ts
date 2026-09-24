@@ -616,12 +616,15 @@ export async function mergeAgg(
   env: Env,
   sql: string,
   binds: unknown[],
-  opts: { sum: string[]; min?: string; max?: string },
+  opts: { sum: string[]; min?: string | string[]; max?: string | string[] },
 ): Promise<Record<string, number>> {
   const shards = await getShards(env);
   const rows = await Promise.all(allTargets(shards).map((t) => runOn(env, t, sql, binds)));
   const out: Record<string, number> = {};
   for (const col of opts.sum) out[col] = 0;
+  const one = (c: string | string[] | undefined): string[] => (c == null ? [] : typeof c === "string" ? [c] : c);
+  const mins = one(opts.min);
+  const maxs = one(opts.max);
   for (const rowsOne of rows) {
     const r = rowsOne[0];
     if (!r) continue;
@@ -629,13 +632,14 @@ export async function mergeAgg(
       const v = r[col];
       if (v != null) out[col] = (out[col] ?? 0) + Number(v);
     }
-    for (const col of [opts.min, opts.max]) {
-      if (!col) continue;
-      const v = r[col];
-      if (v == null) continue;
-      const n = Number(v);
-      if (!Number.isFinite(out[col])) out[col] = n;
-      else out[col] = col === opts.min ? Math.min(out[col], n) : Math.max(out[col], n);
+    for (const [kind, cols] of [["min", mins], ["max", maxs]] as const) {
+      for (const col of cols) {
+        const v = r[col];
+        if (v == null) continue;
+        const n = Number(v);
+        if (!Number.isFinite(out[col])) out[col] = n;
+        else out[col] = kind === "min" ? Math.min(out[col], n) : Math.max(out[col], n);
+      }
     }
   }
   return out;

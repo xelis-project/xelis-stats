@@ -40,38 +40,52 @@ account.get("/account/:address", async (c) => {
   let minedAll = 0;
   let maxTopo: number | null = null;
   try {
-    acct = (await db.prepare("SELECT * FROM accounts WHERE address = ?").bind(address).first()) ?? undefined;
     const conds: string[] = ["sender = ?"];
     const binds: unknown[] = [address];
     if (type) { conds.push("tx_type = ?"); binds.push(type); }
     if (executed === "1") { conds.push("executed = 1"); }
     if (executed === "0") { conds.push("executed = 0"); }
     const histExtra = { sql: conds.join(" AND "), binds };
-    // SUM(fee) instead of AVG(fee): averages are merged across shards in JS
-    histTotal = await countRaw(c.env, { table: "tx_index", extra: histExtra, floorCol: "block_topo" });
-    lastSendTopo = (await mergeAgg(c.env, "SELECT MAX(block_topo) AS m FROM tx_index WHERE sender = ?", [address], { sum: [], max: "m" })).m ?? 0;
-    txs = await topNRaw(c.env, {
-      table: "tx_index",
-      select: "*",
-      order: srt.order,
-      limit: PAGE_SIZE,
-      skip: (page - 1) * PAGE_SIZE,
-      extra: histExtra,
-      floorCol: "block_topo",
-    });
-    agg = await mergeAgg(c.env,
-      `SELECT COUNT(*) c, SUM(fee) fees, MIN(ts) first_tx, MAX(ts) last_tx,
-              SUM(encrypted) enc, SUM(CASE WHEN executed = 1 THEN 1 ELSE 0 END) ok
-       FROM tx_index WHERE sender = ?`,
-      [address], { sum: ["c", "fees", "enc", "ok"], min: "first_tx", max: "last_tx" });
-    types = await mergeGroups(c.env,
-      "SELECT tx_type, COUNT(*) c FROM tx_index WHERE sender = ? GROUP BY tx_type",
-      [address], "tx_type", ["c"]);
+    // The per-address fact queries are independent, so run them concurrently.
+    const [acctRow, histTotalN, txRows, aggRow, typeRows, minedAllRow, maxTopoRow] = await Promise.all([
+      db.prepare("SELECT * FROM accounts WHERE address = ?").bind(address).first<Record<string, unknown>>(),
+      // SUM(fee) instead of AVG(fee): averages are merged across shards in JS
+      countRaw(c.env, { table: "tx_index", extra: histExtra, floorCol: "block_topo" }),
+      topNRaw(c.env, {
+        table: "tx_index",
+        select: "*",
+        order: srt.order,
+        limit: PAGE_SIZE,
+        skip: (page - 1) * PAGE_SIZE,
+        extra: histExtra,
+        floorCol: "block_topo",
+      }),
+      // one scan for the global totals; MAX(block_topo) rides along so the
+      // "last send" fact does not need its own pass over the sender index
+      mergeAgg(c.env,
+        `SELECT COUNT(*) c, SUM(fee) fees, MIN(ts) first_tx, MAX(ts) last_tx, MAX(block_topo) last_topo,
+                SUM(encrypted) enc, SUM(CASE WHEN executed = 1 THEN 1 ELSE 0 END) ok
+         FROM tx_index WHERE sender = ?`,
+        [address], { sum: ["c", "fees", "enc", "ok"], min: "first_tx", max: ["last_tx", "last_topo"] }),
+      mergeGroups(c.env,
+        "SELECT tx_type, COUNT(*) c FROM tx_index WHERE sender = ? GROUP BY tx_type",
+        [address], "tx_type", ["c"]),
+      db.prepare("SELECT SUM(blocks_found) AS c FROM daily_miners WHERE address = ?").bind(address)
+        .first<{ c: number | null }>(),
+      db.prepare("SELECT MAX(topoheight) AS m FROM blocks").first<{ m: number | null }>(),
+    ]);
+    acct = acctRow ?? undefined;
+    histTotal = histTotalN;
+    lastSendTopo = num(aggRow?.last_topo);
+    txs = txRows;
+    agg = aggRow;
+    types = typeRows;
     types.sort((a, b) => num(b.c) - num(a.c));
-    mined = await countRaw(c.env, { table: "blocks", extra: { sql: "miner_address = ?", binds: [address] }, floorCol: "topoheight" });
-    minedAll = await db.prepare("SELECT SUM(blocks_found) AS c FROM daily_miners WHERE address = ?").bind(address)
-      .first<{ c: number | null }>().then((r) => Number(r?.c) || 0);
-    maxTopo = (await db.prepare("SELECT MAX(topoheight) AS m FROM blocks").first<{ m: number | null }>())?.m ?? null;
+    minedAll = Number(minedAllRow?.c) || 0;
+    // Counting a prolific miner's blocks is a large index scan; only fall back
+    // to it when the daily rollup has no rows for this address.
+    mined = minedAll > 0 ? 0 : await countRaw(c.env, { table: "blocks", extra: { sql: "miner_address = ?", binds: [address] }, floorCol: "topoheight" });
+    maxTopo = maxTopoRow?.m ?? null;
   } catch { /* db not ready */ }
   const histPages = Math.max(1, Math.ceil(histTotal / PAGE_SIZE));
 
