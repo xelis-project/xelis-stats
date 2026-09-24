@@ -188,6 +188,7 @@ function initMarket(): void {
   let loaded = false;
   let histLoaded = false;
   let volLoaded = false;
+  let capLoaded = false;
 
   function marketError(): void {
     if (loaded) return;
@@ -198,6 +199,8 @@ function initMarket(): void {
     if (hist && !histLoaded) hist.innerHTML = '<p class="w-empty">Failed to load series.</p>';
     const vol = document.getElementById("u-volume-history");
     if (vol && !volLoaded) vol.innerHTML = '<p class="w-empty">Failed to load series.</p>';
+    const cap = document.getElementById("u-market-cap");
+    if (cap && !capLoaded) cap.innerHTML = '<p class="w-empty">Failed to load series.</p>';
   }
 
   async function load(): Promise<void> {
@@ -273,6 +276,11 @@ function initMarket(): void {
       const vol = await fetch("/api/history/quote-volume?range=30d&interval=day").then((r) => r.json()) as { points: SeriesPoint[] };
       const volEl = document.getElementById("u-volume-history");
       if (volEl && vol.points.length) { volLoaded = true; renderChart(volEl, vol.points, "24h volume", fmtAuto, { type: "bar", accent: "gold" }); }
+
+      // market cap history chart (circulating supply x price)
+      const cap = await fetch("/api/history/market-cap?range=30d&interval=day").then((r) => r.json()) as { points: SeriesPoint[] };
+      const capEl = document.getElementById("u-market-cap");
+      if (capEl && cap.points.length) { capLoaded = true; renderChart(capEl, cap.points, "Market cap (USDT)", fmtAuto, { fill: true }); }
     } catch {
       marketError();
     }

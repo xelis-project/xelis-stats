@@ -29,7 +29,11 @@ market.get("/market", async (c) => {
   const skCols = [42, 66, 38, 74, 55, 84, 61, 90, 70, 52, 78, 46].map((h) => `<span class="sk-bar sk-col" style="height:${h}%"></span>`).join("");
   const priceHistoryPanel = `<div class="panel"><h2>Price history</h2><div id="u-price-history" style="min-height:260px"><div class="w-skel sk-chart">${skCols}</div></div></div>`;
   const volumeHistoryPanel = `<div class="panel"><h2>Volume history</h2><div id="u-volume-history" style="min-height:260px"><div class="w-skel sk-chart">${skCols}</div></div></div>`;
-  const historyRow = `<div class="grid-2">${priceHistoryPanel}${volumeHistoryPanel}</div>${retiredPanel ? `<div class="grid-2" style="margin-top:2rem">${retiredPanel}</div>` : ""}`;
+  const marketCapPanel = `<div class="panel"><h2>Market cap history</h2><div id="u-market-cap" style="min-height:260px"><div class="w-skel sk-chart">${skCols}</div></div></div>`;
+  const secondRow = retiredPanel
+    ? `<div class="grid-2" style="margin-top:2rem">${retiredPanel}${marketCapPanel}</div>`
+    : `<div style="margin-top:2rem">${marketCapPanel}</div>`;
+  const historyRow = `<div class="grid-2">${priceHistoryPanel}${volumeHistoryPanel}</div>${secondRow}`;
   const content = `
     <div class="panel"><h2>XEL Markets</h2>
       <div id="market-cards" class="cards">${Array.from({ length: 6 }, () =>
