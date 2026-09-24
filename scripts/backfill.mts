@@ -251,6 +251,23 @@ async function ensureAsset(assetId: string, firstSeenTopo: number | null): Promi
   upsertAsset.run(assetId, meta.name, meta.symbol, meta.decimals, firstSeenTopo);
 }
 
+// Full asset-registry reconciliation: the tx pass only registers assets seen in
+// a transfer/burn, so pull the daemon's complete registry with metadata instead.
+async function syncAssetRegistry(): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const assets = await rpc<any[]>("get_assets");
+  let n = 0;
+  for (const a of assets ?? []) {
+    if (!a?.asset) continue;
+    const id = String(a.asset);
+    const topo = a.topoheight != null ? Number(a.topoheight) : null;
+    upsertAsset.run(id, String(a.name ?? ""), String(a.ticker ?? ""), Number(a.decimals ?? 8), topo);
+    registeredAssets.add(id);
+    n++;
+  }
+  console.log(`[assets] registry synced: ${n} assets`);
+}
+
 // load known asset ids; re-lookup rows stored without metadata (node was
 // unreachable during a previous pass) so the upsert can fill them in
 for (const r of db.prepare("SELECT asset_id FROM assets").all() as Array<{ asset_id: string }>) registeredAssets.add(r.asset_id);
@@ -622,6 +639,11 @@ async function backfillTxs(): Promise<void> {
 
 async function main(): Promise<void> {
   console.log(`Backfill: node=${NODE} db=${DB_PATH} batch=${BATCH} concurrency=${CONCURRENCY}`);
+  try {
+    await syncAssetRegistry();
+  } catch (err) {
+    console.error(`[assets] registry sync failed: ${(err as Error).message}`);
+  }
   if (TXS_ONLY) {
     await backfillTxs();
   } else {

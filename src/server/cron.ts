@@ -2,6 +2,7 @@ import type { Env } from "./app";
 import { fetchAllTickers, aggregate } from "./market/sources";
 import { rpc } from "./xelis";
 import { rotateShards } from "./shards";
+import { syncAssetRegistry } from "./asset-registry";
 
 /**
  * Cron: every 2 min — market snapshot, mempool snapshot, peer network snapshot.
@@ -129,6 +130,15 @@ export async function handleCron(env: Env): Promise<void> {
 
   // peer network snapshot (every run)
   if (info) await snapshotPeers(env, info.topoheight, info.top_block_hash);
+
+  // reconcile the full asset registry so /assets is complete even for assets
+  // the tx-detail pass never saw in a transfer/burn (cheap when unchanged)
+  try {
+    const written = await syncAssetRegistry(env);
+    if (written) console.log(`asset registry: synced ${written} rows`);
+  } catch (err) {
+    console.error("asset registry cron:", (err as Error).message);
+  }
 
   // hourly tasks (single cron schedule; use minute to distinguish — run when minute === 0)
   const minute = new Date().getUTCMinutes();
