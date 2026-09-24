@@ -1,5 +1,5 @@
 import { renderChart, renderCompare, cumulativePoints, fmtAuto, type ChartOpts, type SeriesPoint } from "./charts";
-import { fmtBytes } from "./format";
+import { metricFormatter, FEE_METRICS } from "./format";
 import { refreshSort } from "./sortable";
 import { attachDatePickers, setDatePickerValue } from "./datepicker";
 
@@ -24,7 +24,6 @@ function initChartsHub(): void {
   attachDatePickers(document);
 
   const chartTarget = chartEl;
-  const FEE_METRICS = new Set(["fees", "fees-median", "fee-p90", "fees-p99"]);
   const MARKET_METRICS = new Set(["price", "quote-volume"]);
 
   // cached series for client-side re-renders (cum/log/type toggles)
@@ -44,9 +43,9 @@ function initChartsHub(): void {
       renderCompare(chartTarget, [
         { label: m, points: useCum ? cumulativePoints(data1) : data1 },
         { label: m2, points: useCum ? cumulativePoints(data2) : data2 },
-      ], o);
+      ], { ...o, fmt: metricFormatter(m) });
     } else {
-      renderChart(chartTarget, useCum ? cumulativePoints(data1) : data1, m, m === "chain-size" ? fmtBytes : fmtAuto, o);
+      renderChart(chartTarget, useCum ? cumulativePoints(data1) : data1, m, metricFormatter(m), o);
     }
   }
 
@@ -320,7 +319,7 @@ if (path.startsWith("/embed/")) {
     const interval = (window as unknown as { EMBED_INTERVAL: string }).EMBED_INTERVAL;
     void fetch(`/api/history/${metric}?range=${range}&interval=${interval}`)
       .then((r) => r.json())
-      .then((j: unknown) => renderChart(el, (j as { points: SeriesPoint[] }).points, metric))
+      .then((j: unknown) => renderChart(el, (j as { points: SeriesPoint[] }).points, metric, metricFormatter(metric)))
       .catch(() => { el.innerHTML = ""; });
   }
 }

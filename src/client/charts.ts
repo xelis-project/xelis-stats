@@ -12,6 +12,8 @@ export interface ChartOpts {
   fill?: boolean;
   points?: boolean;
   lineWidth?: LineWidth;
+  // y-axis/tooltip value formatter for multi-series compare charts
+  fmt?: (v: number) => string;
 }
 
 const LINE_WIDTHS: Record<LineWidth, number> = { thin: 1, normal: 1.6, thick: 2.6 };
@@ -245,14 +247,14 @@ function yPad(axis: uPlot.Axis): number {
   return (t && t.show !== false ? t.size ?? 10 : 0) + (axis.gap ?? 5);
 }
 
-function yAxis(): uPlot.Axis {
+function yAxis(fmt: (v: number) => string = fmtAuto): uPlot.Axis {
   return {
     stroke: AXIS,
     grid: { stroke: GRID },
     ticks: { stroke: GRID },
     values: (u: uPlot, splits: number[], axisIdx: number) => {
       const font = (u.axes[axisIdx].font as unknown as [string, number, number])[0];
-      const full = splits.map((v) => fmtAuto(v));
+      const full = splits.map((v) => fmt(v));
       const gutterFull = widestLabel(font, full) + yPad(u.axes[axisIdx]);
       const budget = Math.max(GUTTER_DEFAULT, u.width * GUTTER_MAX_FRAC);
       return gutterFull > budget ? splits.map((v) => fmtCompact(v)) : full;
@@ -383,7 +385,7 @@ export function renderChart(el: HTMLElement, points: SeriesPoint[], label = "", 
     ],
     axes: [
       dateAxis(),
-      yAxis(),
+      yAxis(fmtVal),
     ],
     legend: { show: false },
     cursor: hoverCursor(seriesOpts.width),
@@ -400,12 +402,13 @@ export function renderCompare(el: HTMLElement, series: Array<{ label: string; po
   el.innerHTML = "";
 
   const type = opts.type ?? "line";
+  const fmt = opts.fmt ?? fmtAuto;
   const firstAccent = accentHex(opts.accent);
   const colors = [firstAccent ?? MINT, GOLD, "#7fa7ff", "#ff9d76", "#c78fff"];
   const xs = xValues(series[0].points.map((p) => p.date));
   const data = [xs, ...series.map((s) => Float64Array.from(s.points.map((p) => p.value)))];
   const seriesOpts = series.map((s, i) => {
-    const base = seriesStyle(colors[i % colors.length], type, s.label, s.points.length, fmtAuto, opts);
+    const base = seriesStyle(colors[i % colors.length], type, s.label, s.points.length, fmt, opts);
     return {
       ...base,
       fill: type === "bar" ? colors[i % colors.length] : base.fill,
@@ -422,12 +425,12 @@ export function renderCompare(el: HTMLElement, series: Array<{ label: string; po
     ],
     axes: [
       dateAxis(),
-      yAxis(),
+      yAxis(fmt),
     ],
     legend: { show: series.length > 1 },
     cursor: hoverCursor(seriesOpts[0].width),
     focus: { alpha: 0.22 },
-    plugins: [autoResizePlugin(el), tooltipPlugin(series.map((s) => ({ label: s.label, fmt: fmtAuto }))), hoverHighlightPlugin(seriesOpts.map((o) => o.width))],
+    plugins: [autoResizePlugin(el), tooltipPlugin(series.map((s) => ({ label: s.label, fmt }))), hoverHighlightPlugin(seriesOpts.map((o) => o.width))],
   };
 
   return new uPlot(uOpts, data as unknown as uPlot.AlignedData, el);

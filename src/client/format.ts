@@ -30,6 +30,27 @@ export function atomicPrecise(n: number | null | undefined): string {
   return v.toFixed(Math.min(10, 2 - Math.floor(Math.log10(v))));
 }
 
+// metrics whose history is reported in whole XEL, as tiny fractions
+export const FEE_METRICS = new Set(["fees", "fees-median", "fee-p90", "fees-p99"]);
+
+// whole-XEL amounts with 3 significant digits in fixed notation (no exponent),
+// so an average fee like 0.00129 XEL is not rounded away to "0.00".
+export function fmtXel(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return "—";
+  if (n === 0) return "0.00";
+  const a = Math.abs(n);
+  if (a >= 0.01) return fmt(n, 2);
+  return n.toFixed(Math.min(10, 2 - Math.floor(Math.log10(a))));
+}
+
+// axis/tooltip formatter for a history metric, matching the units the API
+// reports it in (whole XEL for fees, bytes for chain size, plain numbers else)
+export function metricFormatter(metric: string): (n: number) => string {
+  if (metric === "chain-size") return fmtBytes;
+  if (FEE_METRICS.has(metric)) return fmtXel;
+  return (n) => fmt(n, 2);
+}
+
 // binary byte sizes: 9.6 GiB-style, for on-disk chain size
 export function fmtBytes(n: number | null | undefined): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return "—";

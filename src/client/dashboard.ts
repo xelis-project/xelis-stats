@@ -1,5 +1,5 @@
 import { renderChart, renderCompare, cumulativePoints, ACCENTS, accentHex, type SeriesPoint, type LineWidth } from "./charts";
-import { fmt, fmtInt, fmtPct, fmtBytes, shortHash, atomic, ago } from "./format";
+import { fmt, fmtInt, fmtPct, fmtBytes, shortHash, atomic, ago, metricFormatter } from "./format";
 import { icons, gripIcon } from "./icons";
 import { containsBadWord } from "./badwords";
 import { refreshSort } from "./sortable";
@@ -1100,7 +1100,7 @@ function mountChart(w: Widget): void {
         return;
       }
       if (o.cum) points = cumulativePoints(points);
-      const inst = renderChart(body, points, item.label, item.metric === "chain-size" ? fmtBytes : undefined, { type: o.type, log: o.log, accent: o.accent, fill: o.fill, points: o.points, lineWidth: o.lineWidth });
+      const inst = renderChart(body, points, item.label, metricFormatter(item.metric ?? ""), { type: o.type, log: o.log, accent: o.accent, fill: o.fill, points: o.points, lineWidth: o.lineWidth });
       if (inst) charts.set(w.id, inst);
     })
     .catch(() => { setLoading(w, false); body.innerHTML = '<p class="w-empty">Failed to load series.</p>'; });
@@ -1139,7 +1139,7 @@ async function mountCompare(w: Widget): Promise<void> {
       body.innerHTML = '<p class="w-empty">No data for this range yet.</p>';
       return;
     }
-    const inst = renderCompare(body, series, { type: o.type, log: o.log ?? item.log, accent: o.accent, fill: o.fill, points: o.points, lineWidth: o.lineWidth });
+    const inst = renderCompare(body, series, { type: o.type, log: o.log ?? item.log, accent: o.accent, fill: o.fill, points: o.points, lineWidth: o.lineWidth, fmt: metricFormatter(metrics[0]) });
     if (inst) charts.set(w.id, inst);
   } catch {
     setLoading(w, false);
