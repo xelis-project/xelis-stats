@@ -99,7 +99,7 @@ header.site:hover {
 }
 header.site .logo { display: flex; align-items: center; gap: 0.8rem; font-weight: 700; font-size: 1.7rem; }
 header.site .logo svg { width: 2.2rem; height: 2.2rem; color: var(--mint); }
-header.site nav { display: flex; gap: 1.8rem; flex: 1; }
+header.site nav { display: flex; gap: 0.4rem; flex: 1; }
 header.site nav a { font-size: 1.35rem; font-weight: 600; padding: 0.4rem 0.6rem; }
 header.site nav a.active { color: var(--mint); }
 header.site .status {
