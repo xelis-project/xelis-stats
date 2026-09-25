@@ -197,7 +197,7 @@ CREATE INDEX IF NOT EXISTS idx_market_ts ON market_snapshots(ts);
 CREATE INDEX IF NOT EXISTS idx_market_ex ON market_snapshots(exchange, ts);
 
 -- Exchange registry: lifecycle + display metadata for the market feeds.
--- Seeded by scripts/import_history.mts from the legacy Postgres market history;
+-- Seeded by scripts/legacy/import_history.mts from the legacy Postgres market history;
 -- venues live in src/server/market/sources.ts are 'active'. status is one of
 -- 'active' | 'inactive'. added_ts/retired_ts are market-snapshot timestamps (ms)
 -- bounding the data we hold, so the charts page can order and label venues.

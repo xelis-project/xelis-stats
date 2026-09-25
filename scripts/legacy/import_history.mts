@@ -5,7 +5,7 @@
  * transformed into the current D1 schema and written next to the other export
  * artifacts for `wrangler d1 execute --file`.
  *
- *   scripts/import_history.mts --tickers=<csv> --chain-size=<csv> [--out=export]
+ *   scripts/legacy/import_history.mts --tickers=<csv> --chain-size=<csv> [--out=export]
  *
  * market_tickers  -> market_snapshots   (seconds -> ms, venue names canonical,
  *                                        price->last, volume->base_volume,

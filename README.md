@@ -70,6 +70,11 @@ For local development, secrets go in `.dev.vars` (gitignored).
 | `npm run import:history`   | Import legacy market + chain-size CSV into D1 SQL |
 | `npm run import:d1`        | Apply migrations and load `export/*.sql` into D1 |
 
+One-shot legacy/rebuild helpers live in `scripts/legacy/`. You only need
+`contracts` to seed the contract registry ahead of the tx pass, and
+`import:history` when rebuilding from the old Postgres cluster; neither runs
+during normal operation.
+
 ### Local D1 import
 
 After a backfill + `npm run export`, load the artifacts into the local D1 that

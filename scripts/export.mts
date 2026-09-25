@@ -259,7 +259,7 @@ const AGG_JOBS: Array<[string, string, string[], string]> = [
      FROM tx_assets ta JOIN tx_index i ON i.hash = ta.tx_hash GROUP BY 1,2 ORDER BY 1`],
   ["assets", "assets", ["asset_id", "name", "symbol", "decimals", "first_seen_topo"],
     `SELECT asset_id, name, symbol, decimals, first_seen_topo FROM assets ORDER BY first_seen_topo`],
-  // contract registry: deploy facts from scripts/contracts.mts / tx pass;
+  // contract registry: deploy facts from scripts/legacy/contracts.mts / tx pass;
 // invoke+gas totals derived from indexed tx history so they always match
   ["contracts", "contracts", ["contract_id", "deployer", "deploy_topo", "invoke_count", "gas_total", "events_count"],
     `SELECT c.contract_id, c.deployer, c.deploy_topo,

@@ -12,7 +12,7 @@
  * it to D1. Invoke/gas aggregates stay untouched here and are bumped by
  * the backfill tx pass and the live collector as those txs get indexed.
  *
- * Usage: node --experimental-strip-types scripts/contracts.mts
+ * Usage: node --experimental-strip-types scripts/legacy/contracts.mts
  * Env:   BACKFILL_NODE (default http://192.168.18.20:8080)
  *        BACKFILL_DB   (default data/backfill.db)
  */
