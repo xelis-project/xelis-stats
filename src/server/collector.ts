@@ -38,6 +38,14 @@ export class StatsCollector {
       this.ensureNodeConnection();
       return new Response(null, { status: 101, webSocket: pair[0] });
     }
+    // Called by the cron every 2 min so live indexing keeps running even with
+    // no browser clients connected: wake the DO, (re)connect the node socket,
+    // and run one indexing pass.
+    if (url.pathname === "/tick") {
+      this.ensureNodeConnection();
+      await this.indexNewBlock();
+      return new Response("ok");
+    }
     return new Response("not found", { status: 404 });
   }
 

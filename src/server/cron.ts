@@ -158,6 +158,16 @@ export async function snapshotPeers(
   }
 }
 export async function handleCron(env: Env): Promise<void> {
+  // wake the live collector so indexing continues in the background even with
+  // no browser clients connected (the DO reconnects the node socket and runs
+  // one incremental indexing pass; its alarm keeps it alive between ticks)
+  try {
+    const stub = env.COLLECTOR.get(env.COLLECTOR.idFromName("global"));
+    await stub.fetch("https://collector.internal/tick");
+  } catch (err) {
+    console.error("collector tick:", (err as Error).message);
+  }
+
   // market snapshot
   try {
     const tickers = await fetchAllTickers();
