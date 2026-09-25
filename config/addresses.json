@@ -1,21 +1,4 @@
 {
-  "exchanges": [
-    {
-      "id": "mexc",
-      "name": "MEXC",
-      "enabled": true
-    },
-    {
-      "id": "coinex",
-      "name": "CoinEx",
-      "enabled": true
-    },
-    {
-      "id": "nonkyc",
-      "name": "NonKyc",
-      "enabled": true
-    }
-  ],
   "entities": [
     {
       "address": "xel:qcd39a5u8cscztamjuyr7hdj6hh2wh9nrmhp86ljx2sz6t99ndjqqm7wxj8",

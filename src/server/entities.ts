@@ -1,4 +1,4 @@
-import entitiesJson from "../../config/entities.json";
+import entitiesJson from "../../config/addresses.json";
 
 export interface KnownEntity {
   address: string;

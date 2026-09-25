@@ -32,7 +32,7 @@ const MARKET = `XEL/${QUOTE}`;
 
 // canonical display name + lifecycle metadata, keyed by the legacy (lowercase)
 // venue id. Lives in the registry so the charts page can order/label venues and
-// mark retired feeds; mirrors config/entities.json links.
+// mark retired feeds; mirrors config/addresses.json links.
 const VENUES: Record<string, { name: string; status: string; url: string }> = {
   mexc: { name: "MEXC", status: "active", url: "https://www.mexc.com/" },
   coinex: { name: "CoinEx", status: "active", url: "https://www.coinex.com" },
