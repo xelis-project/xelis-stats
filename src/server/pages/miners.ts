@@ -43,7 +43,7 @@ miners.get("/miners", async (c) => {
     if (period === "all") {
       total = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners`)
         .first<{ n: number }>().then((r) => num(r?.n)).catch(() => 0);
-      rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(sync_count) sync, SUM(side_count) side, SUM(rewards_earned) rewards
+      rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(blocks_found) - SUM(sync_count) - SUM(side_count) normal, SUM(sync_count) sync, SUM(side_count) side, SUM(rewards_earned) rewards
         FROM daily_miners GROUP BY address ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
         .bind(PAGE_SIZE, (page - 1) * PAGE_SIZE)
         .all<Record<string, unknown>>().then((r) => r.results ?? []);
@@ -52,7 +52,7 @@ miners.get("/miners", async (c) => {
       const month = date || new Date().toISOString().slice(0, 7);
       total = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners WHERE date LIKE ? || '%'`)
         .bind(month).first<{ n: number }>().then((r) => num(r?.n)).catch(() => 0);
-      rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(sync_count) sync, SUM(side_count) side, SUM(rewards_earned) rewards
+      rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(blocks_found) - SUM(sync_count) - SUM(side_count) normal, SUM(sync_count) sync, SUM(side_count) side, SUM(rewards_earned) rewards
         FROM daily_miners WHERE date LIKE ? || '%' GROUP BY address ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
         .bind(month, PAGE_SIZE, (page - 1) * PAGE_SIZE)
         .all<Record<string, unknown>>().then((r) => r.results ?? []);
@@ -62,7 +62,7 @@ miners.get("/miners", async (c) => {
       total = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners WHERE date > date(?, '-7 days')`)
         .bind(anchor)
         .first<{ n: number }>().then((r) => num(r?.n)).catch(() => 0);
-      rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(sync_count) sync, SUM(side_count) side, SUM(rewards_earned) rewards
+      rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(blocks_found) - SUM(sync_count) - SUM(side_count) normal, SUM(sync_count) sync, SUM(side_count) side, SUM(rewards_earned) rewards
         FROM daily_miners WHERE date > date(?, '-7 days') GROUP BY address ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
         .bind(anchor, PAGE_SIZE, (page - 1) * PAGE_SIZE)
         .all<Record<string, unknown>>().then((r) => r.results ?? []);
@@ -71,7 +71,7 @@ miners.get("/miners", async (c) => {
       const day = date || await latestDay();
       total = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners WHERE date = ?`)
         .bind(day).first<{ n: number }>().then((r) => num(r?.n)).catch(() => 0);
-      rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(sync_count) sync, SUM(side_count) side, SUM(rewards_earned) rewards
+      rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(blocks_found) - SUM(sync_count) - SUM(side_count) normal, SUM(sync_count) sync, SUM(side_count) side, SUM(rewards_earned) rewards
         FROM daily_miners WHERE date = ? GROUP BY address ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
         .bind(day, PAGE_SIZE, (page - 1) * PAGE_SIZE)
         .all<Record<string, unknown>>().then((r) => r.results ?? []);
@@ -89,11 +89,12 @@ miners.get("/miners", async (c) => {
         <td class="num">${(page - 1) * PAGE_SIZE + i + 1}</td>
         <td><a class="mono" href="/miner/${r.address}">${shortHash(r.address as string, 10)}</a>${entityTag(r.address as string)}</td>
         <td class="num">${fmtInt(r.blocks as number)}</td>
+        <td class="num">${fmtInt(r.normal as number)}</td>
         <td class="num">${fmtInt(r.sync as number)}</td>
         <td class="num">${fmtInt(r.side as number)}</td>
         <td class="num">${fmt((r.rewards as number) / 1e8)}</td>
       </tr>`).join("")
-    : `<tr><td colspan="6" style="color:var(--text-dim)">No indexed miners yet — backfill pending.</td></tr>`;
+    : `<tr><td colspan="7" style="color:var(--text-dim)">No indexed miners yet — backfill pending.</td></tr>`;
 
   const fActive = period !== "all" || !!date;
   const fFields = `
@@ -120,7 +121,7 @@ const content = `<div class="panel">
       ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
-      <thead><tr><th class="num">#</th>${srt.th("address", "Miner")}${srt.th("blocks", "Blocks", true)}${srt.th("sync", "Sync", true)}${srt.th("side", "Side", true)}${srt.th("rewards", "Rewards (XEL)", true)}</tr></thead>
+      <thead><tr><th class="num">#</th>${srt.th("address", "Miner")}${srt.th("blocks", "Blocks", true)}${srt.th("normal", "Normal", true)}${srt.th("sync", "Sync", true)}${srt.th("side", "Side", true)}${srt.th("rewards", "Rewards (XEL)", true)}</tr></thead>
       <tbody>${body}</tbody>
     </table></div>
     ${pager(pageBase, page, totalPages)}

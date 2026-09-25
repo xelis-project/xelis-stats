@@ -79,6 +79,7 @@ export const ACCT_COLS: Record<string, SortCol> = {
 export const TOP_COLS: Record<string, Record<string, SortCol>> = {
   miners: {
     blocks: { sql: "blocks", def: "desc" },
+    normal: { sql: "normal", def: "desc" },
     sync: { sql: "sync", def: "desc" },
     side: { sql: "side", def: "desc" },
     rewards: { sql: "rewards", def: "desc" },
