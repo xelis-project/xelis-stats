@@ -700,7 +700,7 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
   header.site .logo { grid-column: 1; font-size: 1.5rem; }
   header.site .status {
     grid-column: 2; justify-self: end; margin-left: 0; min-width: 0; max-width: 100%;
-    padding: 0 0.9rem; font-size: 1rem;
+    padding: 0 1.3rem; font-size: 1rem;
   }
   header.site .status span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .searchbox { grid-column: 3; padding: 0 0.7rem; justify-content: center; }
@@ -757,7 +757,7 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
    so keep the colour-coded pulsing dot only. */
 @media (max-width: 360px) {
   header.site .status span:last-child { display: none; }
-  header.site .status { padding: 0 0.7rem; }
+  header.site .status { padding: 0 1rem; }
 }
 /* Big monitors: everything is rem-based, so scaling the root font with
    viewport width zooms the whole UI proportionally (62.5% = desktop 1x,
