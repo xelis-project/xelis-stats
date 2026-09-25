@@ -103,6 +103,11 @@ header.site .logo svg { width: 2.2rem; height: 2.2rem; color: var(--mint); }
 header.site nav { display: flex; gap: 0.4rem; flex: 1; }
 header.site nav a { font-size: 1.35rem; font-weight: 600; padding: 0.4rem 0.6rem; }
 header.site nav a.active { color: var(--mint); }
+/* Hamburger toggle — mobile only (see max-width:620px below). */
+header.site .menu-toggle { display: none; align-items: center; }
+header.site .menu-toggle .ict-close { display: none; }
+header.site.menu-open .menu-toggle .ict-open { display: none; }
+header.site.menu-open .menu-toggle .ict-close { display: inline-flex; }
 header.site .status {
   display: flex; align-items: center; gap: 0.7rem;
   padding: 0.55rem 1.1rem;
@@ -661,12 +666,25 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
 @media (max-width: 620px) {
   #app { padding: 1rem 1.2rem 4rem; }
   .cards { grid-template-columns: repeat(2, 1fr); }
-  header.site { gap: 0.8rem 1rem; padding: 0.8rem 1.2rem; top: 0.6rem; margin-bottom: 1.2rem; }
+  header.site { gap: 0.6rem; padding: 0.8rem 1rem; top: 0.6rem; margin-bottom: 1.2rem; }
   header.site .logo { font-size: 1.5rem; }
-  header.site nav { order: 3; flex-basis: 100%; margin: 0 -0.4rem; padding: 0 0.4rem 0.4rem; }
-  header.site nav a { font-size: 1.25rem; padding: 0.35rem 0.7rem; }
-  .searchbox { order: 2; }
   header.site .status { order: 1; margin-left: auto; padding: 0.4rem 0.9rem; font-size: 1rem; }
+  .searchbox { order: 2; padding: 0.5rem; }
+  .searchbox > span { display: none; }
+  header.site .icon-btn { order: 3; padding: 0.5rem; }
+  header.site .menu-toggle { order: 4; display: inline-flex; padding: 0.5rem; }
+  header.site nav {
+    order: 5; flex-basis: 100%; overflow: visible;
+    display: none; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.4rem; margin: 0.2rem 0 0; padding: 0.7rem 0 0.1rem;
+    border-top: 1px solid var(--border);
+  }
+  header.site.menu-open nav { display: grid; }
+  header.site nav a {
+    font-size: 1.25rem; padding: 0.7rem 0.9rem; white-space: normal; text-align: center;
+    border-radius: 0.6rem; background: hsla(0, 0%, 100%, 0.03); border: 1px solid var(--border);
+  }
+  header.site nav a.active { border-color: var(--border-hover); background: rgba(2, 255, 207, 0.07); }
   .search-overlay { padding-top: 12vh; }
   .pager { flex-wrap: wrap; justify-content: center; }
   footer.site { gap: 1rem 1.4rem; }
