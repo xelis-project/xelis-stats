@@ -104,6 +104,7 @@ interface Summary {
   chain_size_bytes?: number | null;
   chain_size_formatted?: string | null;
   peers?: number;
+  hashprice?: number | null;
   counts?: { transactions?: number; accounts?: number; assets?: number };
   supply?: { circulating?: number; emitted?: number; burned?: number; max?: number };
   market?: { price?: number; change_pct_24h?: number | null; quote_volume_24h?: number; exchanges?: number } | null;
@@ -133,11 +134,14 @@ const CATALOG: CatalogItem[] = [
   { key: "stat-exchanges", kind: "stat", field: "exchanges", label: "Exchanges", desc: "Active market feeds", w: 3, h: 2 },
   { key: "stat-reward", kind: "stat", field: "reward", label: "Block reward", desc: "Miner + dev reward per block", w: 3, h: 2 },
   { key: "stat-peers", kind: "stat", field: "peers", label: "Peers", desc: "Connected peers (2-min snapshot)", w: 3, h: 2 },
+  { key: "stat-hashprice", kind: "stat", field: "hashprice", label: "Hashprice", desc: "Miner revenue per TH/s per day", w: 3, h: 2 },
 
   { key: "chart-txs", kind: "chart", metric: "txs", label: "Transactions / day", desc: "Daily transaction count", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-price", kind: "chart", metric: "price", label: "XEL price", desc: "Median USDT quote over time", range: "30d", interval: "day", w: 6, h: 5 },
   { key: "chart-active-accounts", kind: "chart", metric: "active-accounts", label: "Active accounts", desc: "Distinct senders per bucket", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-hashrate", kind: "chart", metric: "hashrate", label: "Hashrate", desc: "Difficulty-based estimate", range: "90d", interval: "day", w: 6, h: 5 },
+  { key: "chart-difficulty", kind: "chart", metric: "difficulty", label: "Difficulty", desc: "Average network difficulty", range: "90d", interval: "day", w: 6, h: 5 },
+  { key: "chart-hashprice", kind: "chart", metric: "hashprice", label: "Hashprice", desc: "Miner revenue per TH/s per day (USD)", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-miners", kind: "chart", metric: "miners", label: "Unique miners", desc: "Distinct mining addresses", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-fees", kind: "chart", metric: "fees", label: "Average fee", desc: "Mean fee per transaction", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-supply", kind: "chart", metric: "supply", label: "Supply", desc: "Circulating supply", range: "1y", interval: "week", w: 6, h: 5 },
@@ -157,11 +161,14 @@ const CATALOG: CatalogItem[] = [
   { key: "chart-chainsize", kind: "chart", metric: "chain-size", label: "Blockchain size", desc: "Node on-disk chain size over time", range: "1y", interval: "week", w: 6, h: 5 },
   { key: "chart-peers", kind: "chart", metric: "peers", label: "Peer count", desc: "Connected peers over time", range: "7d", interval: "day", w: 6, h: 5 },
   { key: "chart-peers-pruned", kind: "chart", metric: "peers-pruned", label: "Pruned peers", desc: "Pruned nodes over time", range: "7d", interval: "day", w: 6, h: 5 },
+  { key: "chart-active-contracts", kind: "chart", metric: "active-contracts", label: "Active contracts", desc: "Distinct contracts active per bucket", range: "90d", interval: "day", w: 6, h: 5 },
 
   { key: "compare-price-volume", kind: "compare", metrics: ["price", "quote-volume"], log: true, label: "Price vs volume", desc: "Median price against USDT volume", range: "30d", interval: "day", w: 6, h: 5 },
   { key: "compare-txs-accounts", kind: "compare", metrics: ["txs", "active-accounts"], label: "Txs vs senders", desc: "Transactions against active senders", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "compare-hashrate-miners", kind: "compare", metrics: ["hashrate", "miners"], log: true, label: "Hashrate vs miners", desc: "Hashrate against unique miners", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "compare-fee-p90-txs", kind: "compare", metrics: ["fees", "fee-p90"], label: "Fee avg vs P90", desc: "Mean fee against 90th percentile", range: "90d", interval: "day", w: 6, h: 5 },
+  { key: "compare-hashrate-difficulty", kind: "compare", metrics: ["hashrate", "difficulty"], log: true, label: "Hashrate vs difficulty", desc: "Hashrate against network difficulty", range: "90d", interval: "day", w: 6, h: 5 },
+  { key: "compare-contract-invokes-deploys", kind: "compare", metrics: ["contract-invokes", "contract-deploys"], label: "Invokes vs deploys", desc: "Contract invocations against deployments", range: "90d", interval: "day", w: 6, h: 5 },
 
   { key: "rank-miners", kind: "rank", src: "miners", period: "week", limit: 10, label: "Top miners", desc: "Weekly blocks found by address", w: 6, h: 5 },
   { key: "rank-miners-month", kind: "rank", src: "miners", period: "month", limit: 10, label: "Top miners (month)", desc: "Monthly blocks found by address", w: 6, h: 5 },
@@ -196,6 +203,7 @@ const EXPLAIN: Record<string, string> = {
   "stat-blocktime": "Recent average interval between blocks compared with the protocol target, so you can see whether the network is running fast or slow.",
   "stat-reward": "Total reward paid per block, split between the miner reward and the developer reward.",
   "stat-peers": "Connected peers counted from the periodic peer snapshot, refreshed roughly every two minutes.",
+  "stat-hashprice": "The latest rolled-up day's miner revenue (USD) divided by that day's estimated hashrate, expressed per terahash per day. Because the network hashrate estimate is small, the absolute figure is large; read it as a trend rather than a hardware quote.",
   // charts
   "chart-txs": "Every indexed transaction is counted per day and summed across the bucket.",
   "chart-price": "Median USDT quote across connected exchanges. Buckets with no market coverage are omitted rather than zero-filled.",
@@ -220,11 +228,16 @@ const EXPLAIN: Record<string, string> = {
   "chart-chainsize": "On-disk blockchain size sampled from the node's get_size_on_disk RPC, averaged within the bucket. Grows with chain history and pruning is not reflected until a node prunes.",
   "chart-peers": "Average number of connected peers from periodic peer snapshots.",
   "chart-peers-pruned": "Average number of peers advertising pruned mode (they do not retain full history).",
+  "chart-difficulty": "Average network difficulty per bucket, computed from every block in the bucket. Rising difficulty means more mining effort is required; it moves inversely with observed block time.",
+  "chart-hashprice": "Daily miner revenue in USD divided by the estimated hashrate, scaled to USD per terahash per day. It combines emission, price and hashrate into a single miner-profitability trend.",
+  "chart-active-contracts": "Number of distinct contracts that had at least one invoke or deploy in the bucket, from the daily contract rollup. A rising line means more contracts are being used.",
   // comparisons
   "compare-price-volume": "Median price and summed USDT volume on one chart. The y-axis is logarithmic because trading volume dwarfs the price.",
   "compare-txs-accounts": "Transaction count and active sender count over the same buckets, to compare activity with breadth of participation.",
   "compare-hashrate-miners": "Hashrate and unique-miner count overlaid on a logarithmic axis to show whether hashrate growth tracks miner count.",
   "compare-fee-p90-txs": "Average transaction fee against the 90th-percentile fee, highlighting how far high fees sit above the mean.",
+  "compare-hashrate-difficulty": "Estimated hashrate and network difficulty on a logarithmic axis. They track closely, since hashrate is difficulty divided by the observed block time.",
+  "compare-contract-invokes-deploys": "Contract invocations against new contract deployments. Invokes usually dwarf deploys once the ecosystem is established.",
 };
 
 // Build the explanation shown in the info popover. Custom notes above win;
@@ -261,6 +274,8 @@ const DEFAULT_TABS: Array<{ name: string; widgets: Array<[string, number, number
       ["chart-gini", 6, 17, 6, 5],
       ["chart-chainsize", 0, 22, 6, 5],
       ["stat-chainsize", 6, 22, 6, 2],
+      ["chart-active-contracts", 0, 27, 6, 5],
+      ["compare-contract-invokes-deploys", 6, 27, 6, 5],
     ],
   },
   {
@@ -272,6 +287,9 @@ const DEFAULT_TABS: Array<{ name: string; widgets: Array<[string, number, number
       ["chart-miner-revenue", 6, 5, 6, 5],
       ["rank-miners", 0, 10, 6, 5],
       ["rank-miners-month", 6, 10, 6, 5],
+      ["chart-difficulty", 0, 15, 6, 5],
+      ["chart-hashprice", 6, 15, 6, 5],
+      ["compare-hashrate-difficulty", 0, 20, 6, 5],
     ],
   },
   {
@@ -551,6 +569,7 @@ function statValue(field: string | undefined, s: Summary): { value: string; sub:
       return { value: label, sub: Number.isFinite(bytes) ? `${fmtInt(bytes)} bytes on disk` : "node did not report size" };
     }
     case "peers": return { value: fmtInt(s.peers ?? NaN), sub: `${fmtInt(s.peers ?? 0)} connected peers` };
+    case "hashprice": return { value: s.hashprice ? `$${fmt(s.hashprice, 2)}` : "—", sub: "miner revenue per TH/s per day" };
     case "supply": {
       const circ = (s.supply?.circulating ?? 0) / 1e8;
       const max = (s.supply?.max ?? 0) / 1e8;

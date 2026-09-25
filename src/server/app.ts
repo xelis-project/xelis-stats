@@ -88,6 +88,15 @@ app.get("/api/market", async (c) => {
 
 app.get("/api/summary", async (c) => {
   const [s, m] = await Promise.all([getStatsCached(c.env), getMarketCached(c.env)]);
+  // Hashprice for the latest rolled-up day: daily miner revenue (whole XEL) at
+  // the current price divided by that day's estimated hashrate, in USD/TH/day.
+  let hashprice: number | null = null;
+  try {
+    const d = await c.env.DB.prepare(
+      "SELECT miner_revenue, hashrate FROM daily_stats WHERE hashrate > 0 AND miner_revenue > 0 ORDER BY date DESC LIMIT 1"
+    ).first<{ miner_revenue: number; hashrate: number }>();
+    if (d && m?.price) hashprice = (d.miner_revenue / 1e8) * m.price / Number(d.hashrate) * 1e12;
+  } catch { /* D1 not ready */ }
   return c.json({
     network: s.info.network,
     node_version: s.info.version,
@@ -102,6 +111,7 @@ app.get("/api/summary", async (c) => {
     chain_size_bytes: s.chainSize?.size_bytes ?? null,
     chain_size_formatted: s.chainSize?.size_formatted ?? null,
     peers: s.peers,
+    hashprice,
     counts: { transactions: s.txCount, accounts: s.accounts, assets: s.assets },
     supply: {
       circulating: s.info.circulating_supply,
