@@ -322,7 +322,7 @@ assetDetail.get("/asset/:id", async (c) => {
         <td class="num">${h.topo ? `<a href="/block/${h.topo}">${fmtInt(h.topo)}</a>` : "—"}</td>
       </tr>`).join("")
     : `<tr><td colspan="3" style="color:var(--text-dim)">No indexed contract holds this asset (or none checked so far).</td></tr>`;
-  const holdingsPanel = `<div class="panel"><h2>Contracts Holding <span style="color:var(--text-dim)">${fmtInt(holdings.length)} of ${fmtInt(CONTRACT_SCAN_MAX)} scanned</span></h2>
+  const holdingsPanel = `<div class="panel"><h2>Contracts Holding</h2>
     <div class="tablewrap"><table>
       <thead><tr><th>Contract</th><th class="num">Balance</th><th class="num">Updated (topo)</th></tr></thead>
       <tbody>${holdingRows}</tbody>
