@@ -113,7 +113,7 @@ export function initSettings(): void {
       if (density) density.value = "comfortable";
       if (numberFormat) numberFormat.value = "compact";
       if (timezone) timezone.value = "utc";
-      if (timeStyle) timeStyle.value = "24";
+      if (timeStyle) timeStyle.value = "12"; // matches the getTimeStyle() default
       if (timeFormat) timeFormat.value = "relative";
       if (hashStyle) hashStyle.value = "both";
       syncFormat();

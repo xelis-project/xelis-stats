@@ -274,18 +274,22 @@ function initMarket(): void {
         }
       }
 
+      // the three history series are independent: fetch them in parallel
+      const [hist, vol, cap] = await Promise.all([
+        fetch("/api/history/price?range=30d&interval=day").then((r) => r.json()) as Promise<{ points: SeriesPoint[] }>,
+        fetch("/api/history/quote-volume?range=30d&interval=day").then((r) => r.json()) as Promise<{ points: SeriesPoint[] }>,
+        fetch("/api/history/market-cap?range=30d&interval=day").then((r) => r.json()) as Promise<{ points: SeriesPoint[] }>,
+      ]);
+
       // price history chart
-      const hist = await fetch("/api/history/price?range=30d&interval=day").then((r) => r.json()) as { points: SeriesPoint[] };
       const el = document.getElementById("u-price-history");
       if (el && hist.points.length) { histLoaded = true; renderChart(el, hist.points, "XEL/USDT"); }
 
       // 24h quote volume history chart
-      const vol = await fetch("/api/history/quote-volume?range=30d&interval=day").then((r) => r.json()) as { points: SeriesPoint[] };
       const volEl = document.getElementById("u-volume-history");
       if (volEl && vol.points.length) { volLoaded = true; renderChart(volEl, vol.points, "24h volume", fmtAuto, { type: "bar", accent: "gold" }); }
 
       // market cap history chart (circulating supply x price)
-      const cap = await fetch("/api/history/market-cap?range=30d&interval=day").then((r) => r.json()) as { points: SeriesPoint[] };
       const capEl = document.getElementById("u-market-cap");
       if (capEl && cap.points.length) { capLoaded = true; renderChart(capEl, cap.points, "Market cap (USDT)", fmtAuto, { fill: true }); }
     } catch {

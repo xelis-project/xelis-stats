@@ -1,5 +1,5 @@
 import uPlot from "uplot";
-import "uplot/dist/uPlot.min.css";
+// uPlot CSS is inlined into every page by the server templates (layout.ts/seo.ts)
 import { getNumberFormat } from "./prefs";
 
 export interface SeriesPoint { date: string; value: number }
@@ -18,6 +18,18 @@ export interface ChartOpts {
 }
 
 const LINE_WIDTHS: Record<LineWidth, number> = { thin: 1, normal: 1.6, thick: 2.6 };
+
+// One uPlot instance per container: re-rendering must destroy the previous
+// chart (its canvas, cursor listeners and resize observer), otherwise every
+// dashboard refresh leaks a full chart.
+const liveCharts = new WeakMap<HTMLElement, uPlot>();
+
+function destroyChart(el: HTMLElement): void {
+  const prev = liveCharts.get(el);
+  if (!prev) return;
+  liveCharts.delete(el);
+  try { prev.destroy(); } catch { /* already destroyed */ }
+}
 
 // Bar width as a fraction of the x-slot, mirroring the thin/normal/thick steps.
 const BAR_WIDTHS: Record<LineWidth, number> = { thin: 0.45, normal: 0.7, thick: 0.95 };
@@ -387,6 +399,7 @@ function tooltipPlugin(tooltipSeries: Array<{ label: string; fmt: (v: number) =>
 
 export function renderChart(el: HTMLElement, points: SeriesPoint[], label = "", fmtVal = fmtAuto, opts: ChartOpts = {}): uPlot | null {
   if (!points.length || !el) return null;
+  destroyChart(el);
   el.innerHTML = "";
 
   const type = opts.type ?? "line";
@@ -417,20 +430,33 @@ export function renderChart(el: HTMLElement, points: SeriesPoint[], label = "", 
     plugins: [autoResizePlugin(el), tooltipPlugin([{ label, fmt: fmtVal }]), hoverHighlightPlugin([seriesOpts.width])],
   };
 
-  return new uPlot(uOpts, data, el);
+  const u = new uPlot(uOpts, data, el);
+  liveCharts.set(el, u);
+  return u;
 }
 
 // multi-series compare chart: series = [{label, points}]
 export function renderCompare(el: HTMLElement, series: Array<{ label: string; points: SeriesPoint[] }>, opts: ChartOpts = {}): uPlot | null {
   if (!series.length || !el) return null;
+  destroyChart(el);
   el.innerHTML = "";
 
   const type = opts.type ?? "line";
   const fmt = opts.fmt ?? fmtAuto;
   const firstAccent = accentHex(opts.accent);
   const colors = [firstAccent ?? MINT, GOLD, "#7fa7ff", "#ff9d76", "#c78fff"];
-  const xs = xValues(series[0].points.map((p) => p.date));
-  const data = [xs, ...series.map((s) => Float64Array.from(s.points.map((p) => p.value)))];
+  // Align every series on the union of bucket dates: series covering different
+  // ranges (e.g. a metric with shorter history) must share x positions, not be
+  // zipped by array index.
+  const allDates = [...new Set(series.flatMap((s) => s.points.map((p) => p.date)))].sort();
+  const xs = xValues(allDates);
+  const data = [
+    xs,
+    ...series.map((s) => {
+      const byDate = new Map(s.points.map((p) => [p.date, p.value]));
+      return allDates.map((d) => (byDate.has(d) ? (byDate.get(d) as number) : null));
+    }),
+  ];
   const seriesOpts = series.map((s, i) => {
     const base = seriesStyle(colors[i % colors.length], type, s.label, s.points.length, fmt, opts);
     return {
@@ -457,7 +483,9 @@ export function renderCompare(el: HTMLElement, series: Array<{ label: string; po
     plugins: [autoResizePlugin(el), tooltipPlugin(series.map((s) => ({ label: s.label, fmt }))), hoverHighlightPlugin(seriesOpts.map((o) => o.width))],
   };
 
-  return new uPlot(uOpts, data as unknown as uPlot.AlignedData, el);
+  const u = new uPlot(uOpts, data as unknown as uPlot.AlignedData, el);
+  liveCharts.set(el, u);
+  return u;
 }
 
 export function fmtAuto(v: number): string {

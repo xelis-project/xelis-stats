@@ -1001,10 +1001,20 @@ function wireSortClicks(w: Widget, body: HTMLElement): void {
   });
 }
 
+// Per-widget fetch generation: a slow response for an older request must not
+// overwrite the DOM after a newer request (refresh timer, sort click) landed.
+const mountGen = new Map<string, number>();
+function nextGen(id: string): number {
+  const g = (mountGen.get(id) ?? 0) + 1;
+  mountGen.set(id, g);
+  return g;
+}
+
 async function mountTable(w: Widget): Promise<void> {
   const item = byKey.get(w.key);
   const body = canvas?.querySelector<HTMLElement>(`[data-id="${w.id}"] .w-table`);
   if (!item || !body) return;
+  const gen = nextGen(w.id);
   const o = w.opts ?? {};
   const limit = o.limit ?? item.limit ?? 12;
   const period = o.period ?? item.period ?? "week";
@@ -1033,11 +1043,13 @@ async function mountTable(w: Widget): Promise<void> {
         : item.src === "peer-countries"
           ? j.countries
           : j.rows ?? j.blocks ?? j.transactions ?? j.accounts ?? j.tickers ?? j.versions ?? j.tags ?? []) as Record<string, unknown>[];
+    if (mountGen.get(w.id) !== gen) return;
     setLoading(w, false);
     body.innerHTML = rows.length ? tableHtml(item, rows, o) : '<p class="w-empty">No data available yet.</p>';
     wireSortClicks(w, body);
     refreshSort(body);
   } catch {
+    if (mountGen.get(w.id) !== gen) return;
     setLoading(w, false);
     body.innerHTML = '<p class="w-empty">Failed to load data.</p>';
   }
@@ -1054,6 +1066,7 @@ function mountChart(w: Widget): void {
   const o = w.opts ?? {};
   const prev = charts.get(w.id);
   if (prev) { prev.destroy(); charts.delete(w.id); }
+  const gen = nextGen(w.id);
   const p = new URLSearchParams();
   if (o.range === "custom" && (o.from || o.to)) {
     if (o.from) p.set("from", o.from);
@@ -1066,6 +1079,7 @@ function mountChart(w: Widget): void {
   void fetch(`/api/history/${item.metric}?${p.toString()}`)
     .then((r) => r.json())
     .then((j: unknown) => {
+      if (mountGen.get(w.id) !== gen) return;
       setLoading(w, false);
       let points = (j as { points?: SeriesPoint[] }).points ?? [];
       if (!points.length) {
@@ -1083,7 +1097,11 @@ function mountChart(w: Widget): void {
       const inst = renderChart(body, points, item.label, metricFormatter(item.metric ?? ""), { type: o.type, log: o.log, accent: o.accent, fill: o.fill, points: o.points, lineWidth: o.lineWidth });
       if (inst) charts.set(w.id, inst);
     })
-    .catch(() => { setLoading(w, false); body.innerHTML = '<p class="w-empty">Failed to load series.</p>'; });
+    .catch(() => {
+      if (mountGen.get(w.id) !== gen) return;
+      setLoading(w, false);
+      body.innerHTML = '<p class="w-empty">Failed to load series.</p>';
+    });
 }
 
 // Human labels for history metrics that no longer have a dedicated catalog
@@ -1105,6 +1123,7 @@ async function mountCompare(w: Widget): Promise<void> {
   const o = w.opts ?? {};
   const prev = charts.get(w.id);
   if (prev) { prev.destroy(); charts.delete(w.id); }
+  const gen = nextGen(w.id);
   const p = new URLSearchParams();
   if (o.range === "custom" && (o.from || o.to)) {
     if (o.from) p.set("from", o.from);
@@ -1120,6 +1139,7 @@ async function mountCompare(w: Widget): Promise<void> {
       const j = await fetch(`/api/history/${m}?${qs}`).then((r) => r.json()) as { points?: SeriesPoint[] };
       return { label: metricLabel(m), points: j.points ?? [] };
     }))).filter((s) => s.points.length);
+    if (mountGen.get(w.id) !== gen) return;
     setLoading(w, false);
     if (!series.length) {
       body.innerHTML = '<p class="w-empty">No data for this range yet.</p>';
@@ -1128,6 +1148,7 @@ async function mountCompare(w: Widget): Promise<void> {
     const inst = renderCompare(body, series, { type: o.type, log: o.log ?? item.log, accent: o.accent, fill: o.fill, points: o.points, lineWidth: o.lineWidth, fmt: metricFormatter(metrics[0]) });
     if (inst) charts.set(w.id, inst);
   } catch {
+    if (mountGen.get(w.id) !== gen) return;
     setLoading(w, false);
     body.innerHTML = '<p class="w-empty">Failed to load series.</p>';
   }
@@ -1744,6 +1765,8 @@ function importLayoutFile(file: File): void {
     canonicalize();
     renderTabs();
     render();
+  }).catch(() => {
+    alert("Import failed: could not read the file.");
   });
 }
 
