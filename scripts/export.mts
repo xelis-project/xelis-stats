@@ -12,8 +12,11 @@
  * Restartable: each output file is rewritten independently; use --only to
  * regenerate specific files (comma-separated, e.g. --only tx,daily_stats).
  *
- * Usage: node --experimental-strip-types scripts/export.mts [--full] [--only=a,b]
+ * Usage: node --experimental-strip-types scripts/export.mts [--full] [--only=a,b] [--remote]
  * Env:   BACKFILL_DB, EXPORT_DIR
+ *
+ * The printed import commands target local D1 by default; pass --remote to
+ * print the deployed-database commands instead.
  */
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, writeFileSync, existsSync, statSync, rmSync, unlinkSync, renameSync } from "node:fs";
@@ -22,6 +25,8 @@ import { join } from "node:path";
 const DB_PATH = process.env.BACKFILL_DB ?? "data/backfill.db";
 const OUT_DIR = process.env.EXPORT_DIR ?? "export";
 const FULL = process.argv.includes("--full");
+const REMOTE = process.argv.includes("--remote");
+const TARGET = REMOTE ? "--remote" : "--local";
 const onlyRaw: string = (process.argv.find((a: string) => a.startsWith("--only=")) ?? "").split("=")[1] ?? "";
 const ONLY: string[] = onlyRaw.split(",").filter((x) => x.length > 0);
 
@@ -359,22 +364,15 @@ if (FULL) {
   console.log(`  txs jsonl: ${nt.toLocaleString()} rows`);
 }
 
+const IMPORT_FILES = [
+  "daily_stats", "daily_miners", "daily_block_types", "daily_address_stats",
+  "daily_assets", "accounts", "assets", "contracts", "daily_contracts",
+  "blocks", "tx", "tx_assets", "tx_contracts",
+];
 console.log(`
-Done. Import to D1 (in order):
-npx wrangler d1 execute xelis-stats --file export/daily_stats.sql --remote
-  npx wrangler d1 execute xelis-stats --file export/daily_miners.sql --remote
-  npx wrangler d1 execute xelis-stats --file export/daily_block_types.sql --remote
-  npx wrangler d1 execute xelis-stats --file export/daily_address_stats.sql --remote
-  npx wrangler d1 execute xelis-stats --file export/daily_assets.sql --remote
-  npx wrangler d1 execute xelis-stats --file export/accounts.sql --remote
-  npx wrangler d1 execute xelis-stats --file export/assets.sql --remote
-  npx wrangler d1 execute xelis-stats --file export/contracts.sql --remote
-  npx wrangler d1 execute xelis-stats --file export/daily_contracts.sql --remote
-  npx wrangler d1 execute xelis-stats --file export/blocks.sql --remote
-  npx wrangler d1 execute xelis-stats --file export/tx.sql --remote
-  npx wrangler d1 execute xelis-stats --file export/tx_assets.sql --remote
-  npx wrangler d1 execute xelis-stats --file export/tx_contracts.sql --remote
+Done. Import to D1 (${REMOTE ? "remote" : "local"}, in order):
+${IMPORT_FILES.map((f) => `  npx wrangler d1 execute xelis-stats --file export/${f}.sql ${TARGET}`).join("\n")}
 Then seed cursor: sync_state.last_backfill_topoheight = (max stable at export time).
-${FULL ? "R2: upload export/r2/*.jsonl with wrangler r2 object put." : "(re-run with --full for R2 raw archives)"}`);
+${REMOTE ? "" : "Pass --remote for the deployed D1 instead of local.\n"}${FULL ? "R2: upload export/r2/*.jsonl with wrangler r2 object put." : "(re-run with --full for R2 raw archives)"}`);
 
 
