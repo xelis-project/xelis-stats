@@ -98,7 +98,7 @@ contracts.get("/contracts/:id", async (c) => {
     ct = (await db.prepare("SELECT * FROM contracts WHERE contract_id = ?").bind(id).first()) ?? undefined;
     invokeTotal = (await db.prepare("SELECT COUNT(*) AS n FROM tx_index WHERE contract_id = ?").bind(id).first<{ n: number }>())?.n ?? 0;
     invokes = await db.prepare(
-      `SELECT hash, block_topo, ts, fee, executed, sender FROM tx_index WHERE contract_id = ? ORDER BY block_topo DESC LIMIT ? OFFSET ?`
+      `SELECT hash, block_topo, ts, fee, sender FROM tx_index WHERE contract_id = ? ORDER BY block_topo DESC LIMIT ? OFFSET ?`
     ).bind(id, PAGE_SIZE, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>().then((r) => r.results ?? []);
   } catch (err) { logErr("page/contract", err); }
 
@@ -271,23 +271,21 @@ contracts.get("/contracts/:id", async (c) => {
   const invokeRows = invokes.length
     ? invokes.map((t) => {
         const h = String(t.hash ?? "");
-        const result = t.executed === 1 ? "executed" : t.executed === 0 ? "unexecuted" : "";
         return `<tr>
           <td><a class="mono" href="/tx/${esc(h)}">${esc(shortHash(h, 12))}</a></td>
           <td><a href="/block/${num(t.block_topo)}"><span class="mint">${fmtInt(num(t.block_topo))}</span></a></td>
           <td>${fmtTime(num(t.ts))}</td>
           <td><a class="mono" href="/account/${esc(t.sender as string)}">${esc(shortHash(t.sender as string, 8))}</a>${entityTag(t.sender as string)}</td>
           <td class="num">${atomic(num(t.fee), 6)}</td>
-          <td>${result ? `<span class="badge ${result === "executed" ? "ok" : "fail"}">${result}</span>` : '<span style="color:var(--text-dim)">—</span>'}</td>
         </tr>`;
       }).join("")
-    : `<tr><td colspan="6" style="color:var(--text-dim)">No indexed invocations for this contract yet.</td></tr>`;
+    : `<tr><td colspan="5" style="color:var(--text-dim)">No indexed invocations for this contract yet.</td></tr>`;
 
   const totalPages = Math.max(1, Math.ceil(invokeTotal / PAGE_SIZE));
   const pagerBase = `/contracts/${encodeURIComponent(deployHash)}`;
   const invokesPanel = `<div class="panel"><h2>Invocations ${invokeTotal ? `<span style="color:var(--text-dim)">${fmtInt(invokeTotal)}</span>` : ""}</h2>
     <div class="tablewrap"><table>
-      <thead><tr><th>Hash</th><th>Block</th><th>Time</th><th>Sender</th><th class="num">Fee (XEL)</th><th>Execution</th></tr></thead>
+      <thead><tr><th>Hash</th><th>Block</th><th>Time</th><th>Sender</th><th class="num">Fee (XEL)</th></tr></thead>
       <tbody>${invokeRows}</tbody>
     </table></div>
     ${pager(pagerBase, page, totalPages)}

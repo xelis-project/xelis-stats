@@ -222,7 +222,7 @@ txDetail.get("/tx/:hash", async (c) => {
       const b = (await runOn(c.env, rawT, "SELECT hash, tx_count FROM blocks WHERE topoheight = ?", [topo]))[0];
       blockHash = String(b?.hash ?? "");
       blockTxCount = num(b?.tx_count);
-      siblings = await runOn(c.env, rawT, "SELECT hash, tx_type, fee, size, executed, sender FROM tx_index WHERE block_topo = ? AND hash != ? ORDER BY ts, hash LIMIT 10", [topo, hash]);
+      siblings = await runOn(c.env, rawT, "SELECT hash, tx_type, fee, size, sender FROM tx_index WHERE block_topo = ? AND hash != ? ORDER BY ts, hash LIMIT 10", [topo, hash]);
     }
     maxTopo = (await db.prepare("SELECT MAX(topoheight) AS m FROM blocks").first<{ m: number }>())?.m ?? null;
     if (senderRaw) acct = (await db.prepare("SELECT first_seen, last_active, tx_count FROM accounts WHERE address = ?").bind(senderRaw).first()) ?? undefined;
@@ -385,7 +385,7 @@ txDetail.get("/tx/:hash", async (c) => {
   const siblingsPanel = siblings.length
     ? `<div class="panel"><h2>More in Block #${fmtInt(topo)}${blockTxCount ? ` <span style="color:var(--text-dim)">${fmtInt(blockTxCount)} txs total</span>` : ""}</h2>
        <div class="tablewrap"><table>
-         <thead><tr><th>Hash</th><th>Type</th><th>Sender</th><th class="num">Fee (XEL)</th><th class="num">Size</th><th>Execution</th></tr></thead>
+         <thead><tr><th>Hash</th><th>Type</th><th>Sender</th><th class="num">Fee (XEL)</th><th class="num">Size</th></tr></thead>
          <tbody>${siblings.map((s) => {
            const h = String(s.hash ?? "");
            return `<tr>
@@ -394,7 +394,6 @@ txDetail.get("/tx/:hash", async (c) => {
              <td><a class="mono" href="/account/${esc(s.sender as string)}">${esc(shortHash(s.sender as string, 8))}</a>${entityTag(s.sender as string)}</td>
              <td class="num">${atomic(num(s.fee), 6)}</td>
              <td class="num">${fmtInt(num(s.size))} B</td>
-             <td>${s.executed === 1 ? '<span class="badge ok">executed</span>' : s.executed === 0 ? '<span class="badge fail">unexecuted</span>' : '<span style="color:var(--text-dim)">—</span>'}</td>
            </tr>`; }).join("")}
          </tbody></table></div>
        ${otherInBlock && otherInBlock > siblings.length ? `<p class="tx-more"><a href="/block/${topo}">View block #${fmtInt(topo)} for all ${fmtInt(otherInBlock + 1)} transactions ${icons.arrowRight}</a></p>` : ""}
