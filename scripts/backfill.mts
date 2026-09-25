@@ -13,8 +13,8 @@
  *        BATCH (default 20 — daemon max), CONCURRENCY (default 8)
  */
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { Agent, setGlobalDispatcher } from "undici";
 
 // allow enough parallel RPC connections (default 6 per origin throttles fetches)
@@ -184,6 +184,7 @@ async function rpc<T>(method: string, params?: unknown): Promise<T> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${method}`);
   const json = (await res.json()) as { result?: T; error?: { message: string } };
@@ -367,7 +368,14 @@ const lookupBlock = db.prepare("SELECT topoheight, ts FROM blocks WHERE hash = ?
 async function processTx(t: any, tsMs: number, force = false): Promise<boolean> {
   const hash = String(t.hash ?? "");
   if (!hash) return false;
-  if (!force) {
+  // force = repair path: overwrite the row but do not re-apply the additive
+  // side effects that were already counted on the first pass
+  let prev: { tx_type?: string | null; contract_id?: string | null } | undefined;
+  if (force) {
+    prev = db.prepare("SELECT tx_type, contract_id FROM tx_index WHERE hash = ?").get(hash) as
+      | { tx_type?: string | null; contract_id?: string | null }
+      | undefined;
+  } else {
     const existing = db.prepare("SELECT 1 FROM tx_index WHERE hash = ?").get(hash);
     if (existing) return false;
   }
@@ -407,9 +415,12 @@ async function processTx(t: any, tsMs: number, force = false): Promise<boolean> 
   );
 
   // gas burned for contract ops (deploy max_gas lives under deploy_contract.invoke)
+  const maxGas = Number(t.data?.invoke_contract?.max_gas ?? 0);
   if (txType === "invoke_contract" && contractId) {
-    insertTxContract.run(hash, contractId, Number(t.data?.invoke_contract?.max_gas ?? 0));
-    upsertContractInvoke.run(contractId, Number(t.data?.invoke_contract?.max_gas ?? 0));
+    insertTxContract.run(hash, contractId, maxGas);
+    // only bump usage when the first pass had not already classified this row
+    const alreadyCounted = prev?.tx_type === "invoke_contract" && !!prev?.contract_id;
+    if (!alreadyCounted) upsertContractInvoke.run(contractId, maxGas);
   } else if (txType === "deploy_contract" && contractId) {
     insertTxContract.run(hash, contractId, Number(t.data?.deploy_contract?.invoke?.max_gas ?? 0));
     insertContractRegistry.run(contractId, String(t.source ?? ""), blockTopo);
@@ -431,7 +442,8 @@ async function processTx(t: any, tsMs: number, force = false): Promise<boolean> 
   }
 
   if (t.source) {
-    upsertAccount.run(String(t.source), blockTs, blockTs, blockTs);
+    const stmt = force ? upsertAccountNoCount : upsertAccount;
+    stmt.run(String(t.source), blockTs, blockTs, blockTs);
   }
   return true;
 }
@@ -576,8 +588,10 @@ async function backfillTxs(): Promise<void> {
           const msg = (err as Error).message;
           if (attempt >= 6) {
             if (chunk.length > 1) {
-              // one bad hash fails the whole batch; retry each individually
-              for (const c of chunk) await fetchSingle(c.hash, c.ts);
+              // one bad hash fails the whole batch; retry each individually.
+              // fetchSingleRetry is called directly (not fetchSingle) so the
+              // chunk's own pool slot is reused instead of deadlocking.
+              for (const c of chunk) await fetchSingleRetry(c.hash, c.ts, 15);
             } else {
               await fetchSingleRetry(chunk[0].hash, chunk[0].ts, 15);
             }
@@ -589,27 +603,26 @@ async function backfillTxs(): Promise<void> {
     } finally { release(); }
   };
 
+  // hashes the daemon never returned after all retries; recorded so gaps are
+  // explicit instead of silently skipped when the cursor advances
+  const failedTxs = new Set<string>();
+
   const fetchSingleRetry = async (hash: string, ts: number, maxAttempts: number, force = false): Promise<void> => {
     for (let attempt = 0; ; attempt++) {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const t = await rpc<any>("get_transaction", { hash });
         await processTx(t, ts, force);
+        failedTxs.delete(hash);
         return;
       } catch (err) {
         const msg = (err as Error).message;
         // pruned/orphaned txs: daemon wording varies ("not found", "Couldn't find", NON_EXISTENT)
         if (/not found|couldn'?t find|doesn'?t exist|non.?existent|no transaction/i.test(msg)) return;
-        if (attempt >= maxAttempts) { console.error(`[txs] ${hash.slice(0, 10)} giving up: ${msg}`); return; }
+        if (attempt >= maxAttempts) { console.error(`[txs] ${hash.slice(0, 10)} giving up: ${msg}`); failedTxs.add(hash); return; }
         await new Promise((r) => setTimeout(r, Math.min(Math.pow(2, Math.min(attempt, 6)) * 1000, 60_000)));
       }
     }
-  };
-
-  // single-tx fetch used as a fallback when a batch fails
-  const fetchSingle = async (hash: string, ts: number): Promise<void> => {
-    await acquire();
-    try { await fetchSingleRetry(hash, ts, 15); } finally { release(); }
   };
 
   // Repair incomplete rows left by an older/interrupted pass: a NULL executed
@@ -647,8 +660,12 @@ async function backfillTxs(): Promise<void> {
     const jobs: Array<{ hash: string; ts: number }>[] = [];
     const chunks: Array<Array<{ hash: string; ts: number }>> = [];
     for (const row of rows) {
-      const hashes = JSON.parse(row.txs_hashes) as string[];
+      // legacy rows may hold NULL/invalid JSON; treat as no hashes
+      let hashes: unknown = null;
+      try { hashes = JSON.parse(row.txs_hashes ?? "[]"); } catch { hashes = null; }
+      if (!Array.isArray(hashes)) continue;
       for (const h of hashes) {
+        if (typeof h !== "string" || !h) continue;
         if (chunks.length === 0 || chunks[chunks.length - 1].length >= 20) chunks.push([]);
         chunks[chunks.length - 1].push({ hash: h, ts: Number(row.ts) });
       }
@@ -669,6 +686,11 @@ async function backfillTxs(): Promise<void> {
   }
 
   saveState(getState().last, getState().done, txDone, txCursor);
+  if (failedTxs.size) {
+    const file = join(dirname(DB_PATH), "failed_txs.json");
+    writeFileSync(file, JSON.stringify([...failedTxs], null, 2) + "\n");
+    console.error(`[txs] ${failedTxs.size} hashes could not be fetched after retries — recorded in ${file}; re-run --txs to retry`);
+  }
   console.log(`[txs] pass complete through topo ${txCursor}`);
 }
 

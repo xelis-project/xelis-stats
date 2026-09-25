@@ -18,7 +18,7 @@
  *   npx wrangler d1 execute xelis-stats --file export/market_snapshots.sql --remote
  *   npx wrangler d1 execute xelis-stats --file export/chain_size_snapshots.sql --remote
  */
-import { readFileSync, writeFileSync, mkdirSync, unlinkSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, unlinkSync, statSync, renameSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 const arg = (name: string): string | undefined =>
@@ -66,24 +66,65 @@ function quoteVolume(price: string, volume: string): string {
   return String(Number((p * v).toPrecision(12)));
 }
 
-function readCsv(path: string): { header: string[]; rows: string[][] } {
+// Minimal RFC-4180 parser: handles quoted fields, escaped quotes ("") and
+// newlines inside quotes, which the legacy COPY output can contain.
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else {
+        field += ch;
+      }
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ",") {
+      row.push(field); field = "";
+    } else if (ch === "\n") {
+      row.push(field); field = ""; rows.push(row); row = [];
+    } else if (ch !== "\r") {
+      field += ch;
+    }
+  }
+  if (field.length || row.length) { row.push(field); rows.push(row); }
+  return rows.filter((r) => r.some((v) => v.length > 0));
+}
+
+function readCsv(path: string, required: string[]): { header: string[]; rows: string[][] } {
   const text = readFileSync(path, "utf8").replace(/^\uFEFF/, "");
-  const lines = text.split(/\r?\n/).filter((l) => l.length > 0);
-  const header = lines[0].split(",");
-  const rows = lines.slice(1).map((l) => l.split(","));
-  return { header, rows };
+  const table = parseCsv(text);
+  if (!table.length) throw new Error(`${path}: empty CSV`);
+  const header = table[0].map((h) => h.trim());
+  const missing = required.filter((c) => !header.includes(c));
+  if (missing.length) {
+    throw new Error(`${path}: missing column(s) ${missing.join(", ")} (found: ${header.join(", ")})`);
+  }
+  return { header, rows: table.slice(1) };
 }
 
 mkdirSync(OUT_DIR, { recursive: true });
 function fresh(file: string): void {
   try { unlinkSync(file); } catch { /* not there */ }
 }
+// publish the .tmp artifact only on success so an interrupted run never leaves
+// a truncated file that looks like a complete export
+function publish(tmp: string, file: string): void {
+  if (existsSync(tmp)) renameSync(tmp, file);
+  else fresh(file);
+}
 function writer(file: string, table: string, cols: string[]): { add: (row: string[]) => void; done: () => void } {
-  fresh(file);
+  const tmp = `${file}.tmp`;
+  fresh(tmp);
   let buffer: string[] = [];
   const flush = (): void => {
     if (!buffer.length) return;
-    writeFileSync(file, `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${buffer.join(",\n")};\n`, { flag: "a" });
+    writeFileSync(tmp, `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${buffer.join(",\n")};\n`, { flag: "a" });
     buffer = [];
   };
   return {
@@ -91,11 +132,12 @@ function writer(file: string, table: string, cols: string[]): { add: (row: strin
       buffer.push(`(${row.join(",")})`);
       if (buffer.length >= 100) flush();
     },
-    done: flush,
+    done: () => { flush(); publish(tmp, file); },
   };
 }
 function report(name: string, count: number): void {
   const file = join(OUT_DIR, `${name}.sql`);
+  if (!existsSync(file)) { console.log(`  ${name}: ${count.toLocaleString()} rows (no file written)`); return; }
   const size = statSync(file).size / 1e6;
   console.log(`  ${name}: ${count.toLocaleString()} rows (${size.toFixed(1)} MB)`);
 }
@@ -105,7 +147,7 @@ let tickerCount = 0;
 
 if (TICKERS_CSV) {
   console.log(`Importing market tickers from ${TICKERS_CSV}…`);
-  const { header, rows } = readCsv(TICKERS_CSV);
+  const { header, rows } = readCsv(TICKERS_CSV, ["exchange", "timestamp", "price", "volume"]);
   const col = (r: string[], n: string): string => r[header.indexOf(n)] ?? "";
   const write = writer(join(OUT_DIR, "market_snapshots.sql"), "market_snapshots",
     ["ts", "exchange", "market", "last", "high", "low", "base_volume", "quote_volume", "source_ts"]);
@@ -133,7 +175,7 @@ if (TICKERS_CSV) {
 
 if (CHAIN_SIZE_CSV) {
   console.log(`Importing chain size from ${CHAIN_SIZE_CSV}…`);
-  const { header, rows } = readCsv(CHAIN_SIZE_CSV);
+  const { header, rows } = readCsv(CHAIN_SIZE_CSV, ["timestamp", "size_in_bytes"]);
   const col = (r: string[], n: string): string => r[header.indexOf(n)] ?? "";
   const write = writer(join(OUT_DIR, "chain_size_snapshots.sql"), "chain_size_snapshots", ["ts", "size_bytes"]);
   let n = 0;

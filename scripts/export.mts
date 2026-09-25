@@ -16,7 +16,7 @@
  * Env:   BACKFILL_DB, EXPORT_DIR
  */
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync, writeFileSync, existsSync, statSync, rmSync, unlinkSync } from "node:fs";
+import { mkdirSync, writeFileSync, existsSync, statSync, rmSync, unlinkSync, renameSync } from "node:fs";
 import { join } from "node:path";
 
 const DB_PATH = process.env.BACKFILL_DB ?? "data/backfill.db";
@@ -40,6 +40,13 @@ function fresh(file: string): void {
   try { unlinkSync(file); } catch { /* not there */ }
 }
 
+/** Append-only writers target a .tmp path; publish() renames it into place so
+ *  an interrupted export never leaves a truncated file that looks complete. */
+function publish(tmp: string, file: string): void {
+  if (existsSync(tmp)) renameSync(tmp, file);
+  else fresh(file);
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function esc(v: any): string {
   if (v === null || v === undefined) return "NULL";
@@ -53,7 +60,8 @@ function esc(v: any): string {
 function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit?: number; outFile?: string; chunkRows?: number; desc?: boolean; tieCol?: string; includeNull?: boolean }): number {
   const limit = opts.limit ?? Infinity;
   const file = opts.outFile ?? join(OUT_DIR, `${table}.sql`);
-  fresh(file);
+  const tmp = `${file}.tmp`;
+  fresh(tmp);
   const chunkRows = opts.chunkRows ?? 100_000;
   const desc = opts.desc ?? false;
   const dir = desc ? "DESC" : "ASC";
@@ -84,7 +92,7 @@ function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit
     }
     // multi-row INSERT: fewer, larger statements for fast D1 import
     for (let i = 0; i < buffer.length; i += 100) {
-      writeFileSync(file, `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${buffer.slice(i, i + 100).join(",\n")};\n`, { flag: "a" });
+      writeFileSync(tmp, `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${buffer.slice(i, i + 100).join(",\n")};\n`, { flag: "a" });
     }
     buffer = [];
     const last = rows[rows.length - 1];
@@ -101,11 +109,12 @@ function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit
     const rows: any[] = stmt.all();
     const nullBuf = rows.map((row) => `(${cols.map((c) => esc(row[c])).join(",")})`);
     for (let i = 0; i < nullBuf.length; i += 100) {
-      writeFileSync(file, `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${nullBuf.slice(i, i + 100).join(",\n")};\n`, { flag: "a" });
+      writeFileSync(tmp, `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${nullBuf.slice(i, i + 100).join(",\n")};\n`, { flag: "a" });
     }
     count += rows.length;
   }
-return count;
+  publish(tmp, file);
+  return count;
 }
 
 /** Keyset-paginated dump by a TEXT key column (e.g. hashes). Optionally uses a
@@ -115,7 +124,8 @@ return count;
 function dumpKeysetText(table: string, keyCol: string, cols: string[], opts: { outFile: string; chunkRows?: number; tieCol?: string }): number {
   const chunkRows = opts.chunkRows ?? 100_000;
   const tieCol = opts.tieCol;
-  fresh(opts.outFile);
+  const tmp = `${opts.outFile}.tmp`;
+  fresh(tmp);
   const where = tieCol
     ? `(${keyCol} > ? OR (${keyCol} = ? AND ${tieCol} > ?))`
     : `${keyCol} > ?`;
@@ -136,13 +146,14 @@ function dumpKeysetText(table: string, keyCol: string, cols: string[], opts: { o
       count++;
     }
     for (let i = 0; i < buffer.length; i += 100) {
-      writeFileSync(opts.outFile, `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${buffer.slice(i, i + 100).join(",\n")};\n`, { flag: "a" });
+      writeFileSync(tmp, `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${buffer.slice(i, i + 100).join(",\n")};\n`, { flag: "a" });
     }
     buffer.length = 0;
     const last = rows[rows.length - 1];
     lastKey = String(last[keyCol]);
     if (tieCol) lastTie = String(last[tieCol]);
   }
+  publish(tmp, opts.outFile);
   return count;
 }
 
@@ -171,16 +182,20 @@ function dumpJsonl(table: string, keyCol: string, chunkRows: number, dir: string
     lastKey = Number(rows[rows.length - 1][keyCol]);
     if (buffer.length >= chunkRows) {
       const f = join(dir, `${table}-${String(chunkIndex).padStart(4, "0")}.jsonl`);
-      fresh(f);
-      writeFileSync(f, buffer.join("\n") + "\n");
+      const tmp = `${f}.tmp`;
+      fresh(tmp);
+      writeFileSync(tmp, buffer.join("\n") + "\n");
+      publish(tmp, f);
       buffer = [];
       chunkIndex++;
     }
   }
   if (buffer.length) {
     const f = join(dir, `${table}-${String(chunkIndex).padStart(4, "0")}.jsonl`);
-    fresh(f);
-    writeFileSync(f, buffer.join("\n") + "\n");
+    const tmp = `${f}.tmp`;
+    fresh(tmp);
+    writeFileSync(tmp, buffer.join("\n") + "\n");
+    publish(tmp, f);
   }
   return count;
 }
@@ -259,6 +274,15 @@ const AGG_JOBS: Array<[string, string, string[], string]> = [
      FROM tx_index WHERE contract_id IS NOT NULL AND contract_id != '' GROUP BY 1, 2 ORDER BY 1`],
 ];
 
+// Aggregate tables are also written by the live cron/collector with additional
+// columns (e.g. daily_stats.peer_count/transfer_count, assets owner/supply
+// metadata). INSERT OR IGNORE keeps those live rows intact instead of
+// replacing them with a historical subset; only missing rows are inserted.
+const AGG_IGNORE = new Set([
+  "daily_stats", "daily_miners", "daily_block_types", "accounts",
+  "daily_address_stats", "daily_assets", "assets", "contracts", "daily_contracts",
+]);
+
 for (const [file, table, cols, sql] of AGG_JOBS) {
   if (!wanted(file)) { console.log(`  ${table}: skipped (--only)`); continue; }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -267,16 +291,19 @@ for (const [file, table, cols, sql] of AGG_JOBS) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rows: any[] = stmt.all();
   const outFile = join(OUT_DIR, `${file}.sql`);
-  fresh(outFile);
+  const tmp = `${outFile}.tmp`;
+  fresh(tmp);
   const buffer: string[] = [];
   for (const row of rows) {
     const vals = cols.map((c) => esc(row[c]));
     buffer.push(`(${vals.join(",")})`);
   }
+  const verb = AGG_IGNORE.has(table) ? "INSERT OR IGNORE" : "INSERT OR REPLACE";
   // multi-row INSERT: batch 100 rows per statement for fast D1 import
   for (let i = 0; i < buffer.length; i += 100) {
-    writeFileSync(outFile, `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${buffer.slice(i, i + 100).join(",\n")};\n`, { flag: "a" });
+    writeFileSync(tmp, `${verb} INTO ${table} (${cols.join(",")}) VALUES\n${buffer.slice(i, i + 100).join(",\n")};\n`, { flag: "a" });
   }
+  publish(tmp, outFile);
   console.log(`  ${table}: ${rows.length.toLocaleString()} rows${existsSync(outFile) ? ` (${(statSync(outFile).size / 1e6).toFixed(1)} MB)` : " (empty — file not written)"}`);
 }
 
@@ -287,7 +314,8 @@ if (wanted("blocks")) {
   const nBlocks = dumpKeyset("blocks", "topoheight",
     ["topoheight", "height", "hash", "ts", "version", "nonce", "difficulty", "size", "tx_count", "block_type", "miner_address", "miner_reward", "dev_reward", "burned", "fee_total", "cum_difficulty", "tips"],
     { outFile: join(OUT_DIR, "blocks.sql"), desc: true });
-  console.log(`  blocks: ${nBlocks.toLocaleString()} rows (${(statSync(join(OUT_DIR, "blocks.sql")).size / 1e6).toFixed(1)} MB)`);
+  const blocksFile = join(OUT_DIR, "blocks.sql");
+  console.log(`  blocks: ${nBlocks.toLocaleString()} rows${existsSync(blocksFile) ? ` (${(statSync(blocksFile).size / 1e6).toFixed(1)} MB)` : " (empty)"}`);
 } else {
   console.log("  blocks: skipped (--only)");
 }

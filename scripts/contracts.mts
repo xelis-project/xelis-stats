@@ -41,6 +41,7 @@ async function rpc<T>(method: string, params?: unknown): Promise<T> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, ...(params !== undefined ? { params } : {}) }),
+    signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) throw new Error(`HTTP ${res.status} for ${method}`);
   const json = (await res.json()) as { result?: T; error?: { message: string } };
@@ -51,7 +52,7 @@ async function rpc<T>(method: string, params?: unknown): Promise<T> {
 const lookupTopo = db.prepare("SELECT topoheight, ts FROM blocks WHERE hash = ?");
 const getContract = db.prepare("SELECT deployer, deploy_topo FROM contracts WHERE contract_id = ?");
 const insertContract = db.prepare(
-  "INSERT INTO contracts (contract_id, deployer, deploy_topo, invoke_count, gas_total, events_count) VALUES (?, ?, ?, 0, 0, 0)"
+  "INSERT OR IGNORE INTO contracts (contract_id, deployer, deploy_topo, invoke_count, gas_total, events_count) VALUES (?, ?, ?, 0, 0, 0)"
 );
 const updateContract = db.prepare(`
   UPDATE contracts SET
