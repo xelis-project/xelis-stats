@@ -33,6 +33,8 @@ export function initLiveStatus(): void {
           const el = document.getElementById("stat-topo");
           if (el) el.textContent = msg.topoheight.toLocaleString("en-US");
         }
+        // Let pages that mirror node state (e.g. /live) refresh on tip changes.
+        window.dispatchEvent(new CustomEvent("xelis:chain-tip", { detail: msg }));
       } catch {
         // ignore malformed frames
       }

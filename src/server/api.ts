@@ -4,6 +4,7 @@ import { parseSort, BLOCK_COLS, TX_COLS, ACCT_COLS } from "./sort";
 import { knownEntity } from "./entities";
 import { fetchBlock, fetchTx, pagedRaw } from "./shards";
 import { clampInt } from "./pages/shared";
+import { getLive } from "./live";
 
 export { clampInt };
 
@@ -20,6 +21,13 @@ export function tagAddress(row: Row, key: string): Row {
 }
 
 export const api = new Hono<{ Bindings: Env }>();
+
+// Live, unstable node data (unindexed). Never cached — the client polls it.
+api.get("/api/live", async (c) => {
+  const data = await getLive(c.env);
+  c.header("Cache-Control", "no-store");
+  return c.json(data);
+});
 
 api.get("/api/blocks", async (c) => {
   const before = Number(c.req.query("before") ?? 0);

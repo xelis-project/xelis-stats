@@ -59,7 +59,7 @@ app.use("*", async (c, next) => {
   ].join("; "));
   // Short-lived caching for GETs; never cache the WebSocket upgrade or the
   // RPC-backed storage fragment.
-  const noStore = c.req.path === "/ws" || /^\/contracts\/[^/]+\/storage$/.test(c.req.path);
+  const noStore = c.req.path === "/ws" || c.req.path === "/api/live" || /^\/contracts\/[^/]+\/storage$/.test(c.req.path);
   if (c.req.method === "GET" && !noStore) {
     if (c.req.path.startsWith("/api/")) {
       h.set("Cache-Control", "public, max-age=30, stale-while-revalidate=120");

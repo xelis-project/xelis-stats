@@ -20,6 +20,8 @@ const needsIslands = path === "/charts" || path === "/market" || path.startsWith
   || document.querySelector("[data-datepicker]") !== null;
 if (path === "/") {
   void import("./dashboard").then((m) => m.initDashboard()).catch(() => { /* dashboard unavailable */ });
+} else if (path === "/live") {
+  void import("./live-dashboard").then((m) => m.initLiveDashboard()).catch(() => { /* live page unavailable */ });
 } else if (needsIslands) {
   void import("./islands");
 }

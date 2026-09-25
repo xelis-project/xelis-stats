@@ -1246,3 +1246,77 @@ html.reduce-motion *::after {
   scroll-behavior: auto !important;
 }
 
+/* ---------- Live (unstable) page ---------- */
+
+.live-hero { padding: 2rem; }
+.live-hero-head { display: flex; align-items: flex-start; gap: 1.6rem; flex-wrap: wrap; }
+.live-title { font-size: 2.2rem; margin: 0 0 0.6rem; text-transform: none; letter-spacing: 0; color: var(--text); font-weight: 700; }
+.live-title .mint { color: var(--mint); text-shadow: 0 0 24px var(--mint-glow); }
+.live-sub { color: var(--text-dim); font-size: 1.3rem; max-width: 68rem; }
+.live-badge {
+  display: inline-flex; align-items: center; gap: 0.7rem; flex: 0 0 auto;
+  padding: 0.55rem 1.2rem; border-radius: 99rem;
+  border: 1px solid rgba(2, 255, 207, 0.3); background: rgba(2, 255, 207, 0.06);
+  font-family: var(--mono); font-size: 1.15rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--mint);
+}
+.live-meta { margin-top: 1.2rem; color: var(--text-dim); font-size: 1.25rem; display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.live-dot {
+  width: 0.8rem; height: 0.8rem; border-radius: 50%; flex: none; display: inline-block;
+  background: var(--text-dim); box-shadow: 0 0 0 0 transparent;
+}
+.live-dot.on { background: var(--mint); box-shadow: 0 0 8px var(--mint-glow); animation: livepulse 2s ease-in-out infinite; }
+.live-dot.off { background: var(--danger); }
+.live-muted { color: var(--text-dim); }
+
+.live-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 1.2rem; margin-bottom: 2rem; }
+.live-cards .card .value { font-size: 1.8rem; }
+
+.live-hint { font-size: 1.15rem; color: var(--text-dim); }
+
+/* DAG tip window */
+.live-dag { display: flex; flex-direction: column; gap: 1.4rem; }
+.live-dag-group { display: flex; flex-direction: column; gap: 0.7rem; }
+.live-dag-cap {
+  font-size: 1.05rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim);
+}
+.live-dag-cap.unstable { color: var(--gold); }
+.live-dag-nodes { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+.live-node {
+  width: 1.5rem; height: 1.5rem; border-radius: 0.4rem; display: inline-block;
+  border: 1px solid var(--border); background: hsla(0, 0%, 100%, 0.06);
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.live-node:hover { transform: translateY(-2px) scale(1.15); }
+.live-node.normal { border-color: rgba(2, 255, 207, 0.5); background: rgba(2, 255, 207, 0.3); }
+.live-node.side { border-color: rgba(245, 217, 95, 0.55); background: rgba(245, 217, 95, 0.32); }
+.live-node.sync { border-color: rgba(127, 167, 255, 0.55); background: rgba(127, 167, 255, 0.32); }
+.live-node.unstable { outline: 1px solid hsla(0, 0%, 100%, 0.4); outline-offset: 1px; animation: livepulse 1.6s ease-in-out infinite; }
+.live-dag-note, .live-empty { color: var(--text-dim); font-size: 1.2rem; margin-top: 0.8rem; }
+.live-empty { margin: 0; }
+.live-dag-legend { display: flex; flex-wrap: wrap; gap: 0.6rem 1.8rem; margin-top: 1.2rem; }
+.live-key { display: inline-flex; align-items: center; gap: 0.55rem; font-size: 1.1rem; color: var(--text-dim); }
+.live-key-dot { width: 1rem; height: 1rem; border-radius: 0.25rem; border: 1px solid var(--border); }
+.live-key-dot.normal { border-color: rgba(2, 255, 207, 0.5); background: rgba(2, 255, 207, 0.3); }
+.live-key-dot.side { border-color: rgba(245, 217, 95, 0.55); background: rgba(245, 217, 95, 0.32); }
+.live-key-dot.sync { border-color: rgba(127, 167, 255, 0.55); background: rgba(127, 167, 255, 0.32); }
+.live-key-dot.unstable { background: hsla(0, 0%, 100%, 0.14); outline: 1px solid hsla(0, 0%, 100%, 0.4); outline-offset: 1px; }
+
+.badge.unstable { color: var(--gold); border-color: rgba(245, 217, 95, 0.35); border-style: dashed; }
+
+/* Mempool fee-rate chips */
+.live-mempool-head { color: var(--text-dim); font-size: 1.25rem; margin-bottom: 1rem; }
+.live-feerates { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-bottom: 1.2rem; }
+.live-fee {
+  display: flex; flex-direction: column; gap: 0.2rem;
+  padding: 0.7rem 1.1rem; border-radius: 0.7rem;
+  border: 1px solid var(--border); background: hsla(0, 0%, 100%, 0.04);
+}
+.live-fee-label { font-size: 1rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); font-weight: 700; }
+.live-fee-value { font-family: var(--mono); font-size: 1.2rem; color: var(--mint); }
+
+.live-split { align-items: start; }
+
+@keyframes livepulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+

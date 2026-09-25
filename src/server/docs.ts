@@ -9,6 +9,7 @@ const ENDPOINTS: Array<[string, string, string]> = [
   ["GET", "/api/stats", "Aggregated chain overview (KV-cached 60s)"],
   ["GET", "/api/summary", "Compact full-state JSON — AI/agent friendly"],
   ["GET", "/api/market", "Aggregated XEL market data + per-exchange tickers"],
+  ["GET", "/api/live", "Live unstable node data (unindexed, uncached): info, DAG window, mempool, fee rates"],
   ["GET", "/api/blocks?before=&type=&limit=&sort=&dir=", "Blocks (D1). ?type filters block_type (Normal|Side|Sync). ?sort runs over the full dataset: topo|hash|time|txs|difficulty|reward|type"],
   ["GET", "/api/transactions?before=&type=&limit=&sort=&dir=", "Transactions (D1). ?sort over the full dataset: block|time|type|sender|transfers|fee|executed. Responses include transfer_count (transfer outputs per tx)"],
   ["GET", "/api/accounts?sort=&dir=&limit=", "Observed senders. ?sort: address|first|last|txs|transfers (legacy active|txs). Responses include transfer_count (transfer outputs summed per sender)"],

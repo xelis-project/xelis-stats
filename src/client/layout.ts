@@ -12,6 +12,7 @@ export const escHtml = (v: unknown): string =>
 export function layout(title: string, content: string, active: string, bodyClass = ""): string {
   const nav = [
     ["/", "Dashboard"],
+    ["/live", "Live"],
     ["/blocks", "Blocks"],
     ["/transactions", "Transactions"],
     ["/accounts", "Accounts"],
