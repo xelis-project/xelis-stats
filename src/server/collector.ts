@@ -136,27 +136,48 @@ export class StatsCollector {
     if (this.indexing) return;
     this.indexing = true;
     try {
-      const stable = await this.rpc<{ stable_topoheight: number }>("get_info").then((r) => r.stable_topoheight);
+      const info = await this.rpc<{ stable_topoheight: number; pruned_topoheight: number | null }>("get_info");
+      const stable = info.stable_topoheight;
       // legacy burn rows predate per-tx burn storage; top them up first so
       // /tx pages show public burn amounts even for old transactions
       await this.backfillBurnAmounts();
       if (!stable) return;
       // find cursor (per-stage checkpoint)
       const row = await this.env.DB.prepare("SELECT cursor FROM sync_state WHERE stage = 'live_blocks'").first<{ cursor: number }>();
-      const cursor = row?.cursor ?? 0;
+      let cursor = row?.cursor ?? 0;
+      // if the node pruned history past our checkpoint, jump to its floor so we
+      // stop asking for ranges it can no longer serve
+      const pruned = info.pruned_topoheight;
+      if (pruned != null && pruned > cursor) {
+        cursor = pruned;
+        await this.setBlocksCursor(cursor);
+      }
       if (stable <= cursor) return;
-      // fetch missing range (capped per tick)
-      const from = cursor + 1;
-      const to = Math.min(stable, from + 100);
-      const res = await this.rpcFetch(`${this.env.XELIS_NODE}/json_rpc`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "get_blocks_range_by_topoheight", params: { start_topoheight: from, end_topoheight: to } }),
-      });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const json = await (res as Response).json() as any;
-      const blocks = json?.result as any[] | undefined;
-      if (Array.isArray(blocks) && blocks.length) {
+      // The node caps get_blocks_range_by_topoheight at a 20-topoheight span,
+      // so walk the gap in chunks. Cap total per tick to stay within subrequest
+      // limits; any remaining lag drains over the next cron ticks.
+      const MAX_SPAN = 20;
+      const BUDGET = 200;
+      let indexed = 0;
+      while (cursor < stable && indexed < BUDGET) {
+        const from = cursor + 1;
+        const to = Math.min(stable, from + MAX_SPAN);
+        const res = await this.rpcFetch(`${this.env.XELIS_NODE}/json_rpc`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "get_blocks_range_by_topoheight", params: { start_topoheight: from, end_topoheight: to } }),
+        });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const json = await (res as Response).json() as { result?: any[]; error?: { message?: string } };
+        if (json.error) {
+          console.error(`indexNewBlock: RPC error for ${from}..${to}: ${json.error.message ?? "unknown"}`);
+          break;
+        }
+        const blocks = json.result;
+        if (!Array.isArray(blocks) || !blocks.length) {
+          console.error(`indexNewBlock: empty block range ${from}..${to} (stable ${stable}); checkpoint left at ${cursor}`);
+          break;
+        }
         const inserts = blocks.map((b) =>
           this.env.DB.prepare(`INSERT OR REPLACE INTO blocks (topoheight,height,hash,ts,version,nonce,difficulty,size,tx_count,block_type,miner_address,miner_reward,dev_reward,burned,fee_total,cum_difficulty,tips,txs_hashes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
             .bind(Number(b.topoheight), Number(b.height ?? 0), String(b.hash ?? ""), Number(b.timestamp ?? 0), Number(b.version ?? 0), Number(b.nonce ?? 0), Number(b.difficulty ?? 0), Number(b.total_size_in_bytes ?? 0), (b.txs_hashes ?? []).length, String(b.block_type ?? "normal"), String(b.miner ?? ""), Number(b.miner_reward ?? 0), Number(b.dev_reward ?? 0), Number(b.total_fees_burned ?? 0), Number(b.total_fees ?? 0), String(b.cumulative_difficulty ?? ""), JSON.stringify(b.tips ?? []), JSON.stringify(b.txs_hashes ?? []))
@@ -188,13 +209,13 @@ export class StatsCollector {
         // advance only over data actually written; an empty/failed range must
         // not move the checkpoint (that would create a permanent gap)
         const lastTopo = Number(blocks[blocks.length - 1].topoheight);
-        if (Number.isFinite(lastTopo) && lastTopo > cursor) {
-          await this.env.DB.prepare(`INSERT INTO sync_state (stage, cursor, updated_at) VALUES ('live_blocks', ?, ?)
-            ON CONFLICT(stage) DO UPDATE SET cursor = excluded.cursor, updated_at = excluded.updated_at`)
-            .bind(lastTopo, Date.now()).run();
+        if (!Number.isFinite(lastTopo) || lastTopo <= cursor) {
+          console.error(`indexNewBlock: non-advancing range ${from}..${to} (last ${lastTopo}); checkpoint left at ${cursor}`);
+          break;
         }
-      } else if (stable > cursor) {
-        console.error(`indexNewBlock: empty block range ${from}..${to} (stable ${stable}); checkpoint left at ${cursor}`);
+        cursor = lastTopo;
+        indexed += blocks.length;
+        await this.setBlocksCursor(cursor);
       }
       await this.enrichPendingTxs(stable);
     } catch (err) {
@@ -202,6 +223,12 @@ export class StatsCollector {
     } finally {
       this.indexing = false;
     }
+  }
+
+  private async setBlocksCursor(cursor: number): Promise<void> {
+    await this.env.DB.prepare(`INSERT INTO sync_state (stage, cursor, updated_at) VALUES ('live_blocks', ?, ?)
+      ON CONFLICT(stage) DO UPDATE SET cursor = excluded.cursor, updated_at = excluded.updated_at`)
+      .bind(cursor, Date.now()).run();
   }
 
   // Transaction enrichment has its own checkpoint ('live_txs') so a blocked or
@@ -312,9 +339,9 @@ export class StatsCollector {
     if (t.source) {
       const sender = String(t.source);
       stmts.push(this.env.DB.prepare(
-        `INSERT INTO accounts (address, first_seen, last_active, tx_count) VALUES (?, ?, ?, 1)
-         ON CONFLICT(address) DO UPDATE SET last_active = MAX(last_active, excluded.last_active), tx_count = tx_count + 1`
-      ).bind(sender, ts, ts));
+        `INSERT INTO accounts (address, first_seen, last_active, tx_count, transfer_count) VALUES (?, ?, ?, 1, ?)
+         ON CONFLICT(address) DO UPDATE SET last_active = MAX(last_active, excluded.last_active), tx_count = tx_count + 1, transfer_count = transfer_count + excluded.transfer_count`
+      ).bind(sender, ts, ts, transfers.length));
       // daily sender rollup: counts + public burn amounts
       stmts.push(this.env.DB.prepare(
         `INSERT INTO daily_address_stats (date, address, tx_count, transfer_outputs, burned) VALUES (?, ?, 1, ?, ?)
