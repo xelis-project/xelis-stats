@@ -171,18 +171,16 @@ account.get("/account/:address", async (c) => {
   const txRows = txs.length
     ? txs.map((t) => {
         const hash = String(t.hash ?? "");
-        const result = t.executed === 1 ? "executed" : t.executed === 0 ? "unexecuted" : "";
         return `<tr>
           <td><a class="mono" href="/tx/${esc(hash)}">${esc(shortHash(hash, 10))}</a></td>
           <td><a href="/block/${num(t.block_topo)}"><span class="mint">${fmtInt(num(t.block_topo))}</span></a></td>
           <td>${fmtTime(num(t.ts))}</td>
           <td><span class="badge ${esc(t.tx_type ?? "other")}">${esc(t.tx_type ?? "other")}</span></td>
           <td class="num"${Number(t.transfer_count) === 0 ? ' style="color:var(--text-dim)"' : ""}>${fmtInt(Number(t.transfer_count))}</td>
-          ${result ? `<td><span class="badge ${result === "executed" ? "ok" : "fail"}">${result}</span></td>` : '<td><span style="color:var(--text-dim)">—</span></td>'}
           <td class="num">${atomic(num(t.fee), 6)}</td>
         </tr>`;
       }).join("")
-    : `<tr><td colspan="7" style="color:var(--text-dim)">${histTotal > 0 ? "No transactions match the current filters." : "No indexed transactions from this address (backfill pending or address inactive)."}</td></tr>`;
+    : `<tr><td colspan="6" style="color:var(--text-dim)">${histTotal > 0 ? "No transactions match the current filters." : "No indexed transactions from this address (backfill pending or address inactive)."}</td></tr>`;
 
   const fActive = !!type || !!executed;
   const fFields = `
@@ -201,7 +199,7 @@ account.get("/account/:address", async (c) => {
       ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
-      <thead><tr><th>Hash</th>${srt.th("block", "Block")}${srt.th("time", "Time")}${srt.th("type", "Type")}${srt.th("transfers", "Transfers", true)}${srt.th("executed", "Execution")}${srt.th("fee", "Fee (XEL)", true)}</tr></thead>
+      <thead><tr><th>Hash</th>${srt.th("block", "Block")}${srt.th("time", "Time")}${srt.th("type", "Type")}${srt.th("transfers", "Transfers", true)}${srt.th("fee", "Fee (XEL)", true)}</tr></thead>
       <tbody>${txRows}</tbody>
     </table></div>
     ${pager(srt.link(srt.key, srt.dir), page, histPages)}

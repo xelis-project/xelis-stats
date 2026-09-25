@@ -5,7 +5,7 @@ import { icons } from "../../client/icons";
 import { fmt, fmtInt, fmtPct, shortHash, fmtTime, ago, atomic, atomicPrecise } from "../../client/format";
 import { rpc } from "../xelis";
 import { fetchBlock, runOn, type RawTarget } from "../shards";
-import { PAGE_SIZE, pager, esc, jsq, entityTag, resultBadge, blkCopyScript, num, logErr } from "./shared";
+import { PAGE_SIZE, pager, esc, jsq, entityTag, blkCopyScript, num, logErr } from "./shared";
 
 export const blockDetail = new Hono<{ Bindings: Env }>();
 
@@ -185,14 +185,14 @@ blockDetail.get("/block/:id", async (c) => {
     : "";
 
   // join block tx hashes against the tx index for richer rows (chunked: D1 param limit)
-  const known = new Map<string, { tx_type: string; fee: number; size: number; executed: number | null; sender: string }>();
+  const known = new Map<string, { tx_type: string; fee: number; size: number; sender: string }>();
   try {
     for (let i = 0; i < view.txHashes.length; i += 90) {
       const chunk = view.txHashes.slice(i, i + 90);
-      const sql = `SELECT hash, tx_type, fee, size, executed, sender FROM tx_index WHERE hash IN (${chunk.map(() => "?").join(",")})`;
+      const sql = `SELECT hash, tx_type, fee, size, sender FROM tx_index WHERE hash IN (${chunk.map(() => "?").join(",")})`;
       const rows = blockTarget
-        ? (await runOn(c.env, blockTarget, sql, chunk)) as Array<{ hash: string; tx_type: string; fee: number; size: number; executed: number | null; sender: string }>
-        : (await db.prepare(sql).bind(...chunk).all<{ hash: string; tx_type: string; fee: number; size: number; executed: number | null; sender: string }>().then((r) => r.results ?? []));
+        ? (await runOn(c.env, blockTarget, sql, chunk)) as Array<{ hash: string; tx_type: string; fee: number; size: number; sender: string }>
+        : (await db.prepare(sql).bind(...chunk).all<{ hash: string; tx_type: string; fee: number; size: number; sender: string }>().then((r) => r.results ?? []));
       for (const r of rows) known.set(r.hash, r);
     }
   } catch { /* db unavailable */ }
@@ -238,16 +238,15 @@ blockDetail.get("/block/:id", async (c) => {
             ? `<td><span class="badge ${esc(t.tx_type)}">${esc(t.tx_type)}</span></td>
                <td><a class="mono" href="/account/${esc(t.sender)}">${esc(shortHash(t.sender, 8))}</a>${entityTag(t.sender)}</td>
                <td class="num">${atomic(t.fee, 6)}</td>
-               <td class="num">${fmtInt(t.size)} B</td>
-               <td>${resultBadge(t.executed)}</td>`
-            : `<td colspan="5"><span class="badge">live node</span> <span style="color:var(--text-dim)">not indexed yet</span></td>`}
+               <td class="num">${fmtInt(t.size)} B</td>`
+            : `<td colspan="4"><span class="badge">live node</span> <span style="color:var(--text-dim)">not indexed yet</span></td>`}
         </tr>`;
       }).join("")
-    : `<tr><td colspan="6" style="color:var(--text-dim)">No transactions in this block${txCount > 0 ? " (hashes not stored)" : ""}.</td></tr>`;
+    : `<tr><td colspan="5" style="color:var(--text-dim)">No transactions in this block${txCount > 0 ? " (hashes not stored)" : ""}.</td></tr>`;
 
   const txs = txCount > 0 || hasTxHashes
     ? `<div class="panel"><h2>Transactions (${fmtInt(hasTxHashes ? view.txHashes.length : txCount)})</h2><div class="tablewrap"><table>
-        <thead><tr><th>Hash</th><th>Type</th><th>Sender</th><th class="num">Fee (XEL)</th><th class="num">Size</th><th>Execution</th></tr></thead>
+        <thead><tr><th>Hash</th><th>Type</th><th>Sender</th><th class="num">Fee (XEL)</th><th class="num">Size</th></tr></thead>
         <tbody>${txRows}</tbody></table></div></div>`
     : "";
 

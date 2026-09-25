@@ -193,7 +193,7 @@ assetDetail.get("/asset/:id", async (c) => {
     }
     txs = await topNRaw(c.env, {
       table: semi ? "tx_index t" : "tx_index t JOIN tx_assets a ON a.tx_hash = t.hash",
-      select: "t.hash, t.block_topo, t.ts, t.tx_type, t.sender, t.fee, t.transfer_count, t.executed",
+      select: "t.hash, t.block_topo, t.ts, t.tx_type, t.sender, t.fee, t.transfer_count",
       order: srt.order,
       limit: PAGE_SIZE,
       skip,
@@ -308,7 +308,6 @@ assetDetail.get("/asset/:id", async (c) => {
   const txRows = txs.length
     ? txs.map((t) => {
         const hash = String(t.hash ?? "");
-        const result = t.executed === 1 ? "executed" : t.executed === 0 ? "unexecuted" : "";
         return `<tr>
           <td><a class="mono" href="/tx/${esc(hash)}">${esc(shortHash(hash, 10))}</a></td>
           <td><a href="/block/${num(t.block_topo)}"><span class="mint">${fmtInt(num(t.block_topo))}</span></a></td>
@@ -316,11 +315,10 @@ assetDetail.get("/asset/:id", async (c) => {
           <td><span class="badge ${esc(t.tx_type ?? "other")}">${esc(t.tx_type ?? "other")}</span></td>
           <td><a class="mono" href="/account/${esc(t.sender as string)}">${esc(shortHash(t.sender as string, 8))}</a></td>
           <td class="num">${fmtInt(num(t.transfer_count))}</td>
-          <td>${result ? `<span class="badge ${result === "executed" ? "ok" : "fail"}">${result}</span>` : '<span style="color:var(--text-dim)">—</span>'}</td>
           <td class="num">${atomic(num(t.fee), 6)}</td>
         </tr>`;
       }).join("")
-    : `<tr><td colspan="8" style="color:var(--text-dim)">${histTotal > 0 ? "No transactions match the current filters." : "No indexed transactions involving this asset yet."}</td></tr>`;
+    : `<tr><td colspan="7" style="color:var(--text-dim)">${histTotal > 0 ? "No transactions match the current filters." : "No indexed transactions involving this asset yet."}</td></tr>`;
 
   const totalPages = Math.max(1, Math.ceil(histTotal / PAGE_SIZE));
   const txsPanel = `<div class="panel">
@@ -330,7 +328,7 @@ assetDetail.get("/asset/:id", async (c) => {
       ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
-      <thead><tr><th>Hash</th>${srt.th("block", "Block")}${srt.th("time", "Time")}${srt.th("type", "Type")}${srt.th("sender", "Sender")}${srt.th("transfers", "Transfers", true)}${srt.th("executed", "Execution")}${srt.th("fee", "Fee (XEL)", true)}</tr></thead>
+      <thead><tr><th>Hash</th>${srt.th("block", "Block")}${srt.th("time", "Time")}${srt.th("type", "Type")}${srt.th("sender", "Sender")}${srt.th("transfers", "Transfers", true)}${srt.th("fee", "Fee (XEL)", true)}</tr></thead>
       <tbody>${txRows}</tbody>
     </table></div>
     ${pager(srt.link(srt.key, srt.dir), page, totalPages)}
