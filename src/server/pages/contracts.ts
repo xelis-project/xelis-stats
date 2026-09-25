@@ -191,7 +191,7 @@ contracts.get("/contracts/:id", async (c) => {
           ${lastTs ? `<span class="blk-when">last invoked ${ago(lastTs)}</span>` : ""}
         </div>
         <div class="hash-row">
-          <span class="hashline mono">${esc(deployHash)}</span>
+          <a class="hashline mono" href="/tx/${esc(deployHash)}" title="Deploy transaction">${esc(deployHash)}</a>
           <button class="copybtn" type="button" onclick="blkCopy('${esc(deployHash)}', this)">copy</button>
         </div>
       </div>
@@ -207,7 +207,7 @@ contracts.get("/contracts/:id", async (c) => {
   </div>`;
 
   const overview = `<div class="panel"><h2>Overview</h2><table class="kv">
-    <tr><td>Contract ID</td><td><span class="mono">${esc(deployHash)}</span> <button class="copybtn" type="button" onclick="blkCopy('${esc(deployHash)}', this)">copy</button></td></tr>
+    <tr><td>Contract ID</td><td><a class="mono" href="/tx/${esc(deployHash)}" title="Deploy transaction">${esc(deployHash)}</a> <button class="copybtn" type="button" onclick="blkCopy('${esc(deployHash)}', this)">copy</button></td></tr>
     <tr><td>Deployer</td><td>${shownDeployer ? `<a class="mono" href="/account/${esc(shownDeployer)}">${shortHash(shownDeployer, 10)}</a>${entityTag(shownDeployer)} <button class="copybtn" type="button" onclick="blkCopy('${esc(shownDeployer)}', this)">copy</button>${!deployer ? ' <span style="color:var(--text-dim)">(resolved on-chain)</span>' : ""}` : "—"}</td></tr>
     ${shownDeployTopo > 0 ? `<tr><td>Deployed at</td><td><a href="/block/${shownDeployTopo}"><span class="mint">#${fmtInt(shownDeployTopo)}</span></a>${deployTopo > 0 && moduleTopo && moduleTopo !== deployTopo ? ` <a href="/block/${moduleTopo}"><span class="mint">#${fmtInt(moduleTopo)}</span></a> <span style="color:var(--text-dim)">(on-chain)</span>` : ""}</td></tr>` : ""}
     ${codeSize ? `<tr><td>Module code</td><td><span class="mono">~${fmtInt(codeSize)} bytes (serialized)</span></td></tr>` : ""}

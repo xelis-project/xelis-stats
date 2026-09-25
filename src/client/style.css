@@ -445,6 +445,8 @@ html.reveal-flags .flag-shown { display: inline; }
 .blk-nav .btn { padding: 0.5rem 1.2rem; font-size: 1.25rem; }
 .hash-row { display: flex; align-items: center; gap: 0.8rem; min-width: 0; }
 .hash-row .hashline { color: var(--text-dim2); font-size: 1.25rem; word-break: break-all; }
+.hash-row a.hashline { transition: color 0.15s; }
+.hash-row a.hashline:hover { color: var(--mint); }
 .copybtn {
   flex: 0 0 auto; cursor: pointer; font-family: var(--mono); font-size: 1.05rem; font-weight: 600;
   color: var(--text-dim); background: hsla(0, 0%, 100%, 0.05);
