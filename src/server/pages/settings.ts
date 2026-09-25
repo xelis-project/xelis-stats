@@ -82,7 +82,7 @@ settings.get("/settings", (c) => {
       <div class="setting-row">
         <div class="setting-info">
           <div class="setting-name">Hash style</div>
-          <div class="setting-desc">How much of a hash or address to show in tables and links. Both ends keeps the start and end; start only keeps the beginning; end only keeps the end. The full value stays available via hover and copy.</div>
+          <div class="setting-desc">How much of a hash or address to show in tables and links.</div>
         </div>
         <select id="pref-hash-style" aria-label="Hash style">
           <option value="both">Both ends (123456…abcdef)</option>
