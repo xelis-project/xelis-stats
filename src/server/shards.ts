@@ -307,6 +307,38 @@ export async function fetchBlock(env: Env, id: string): Promise<{ row: Row; targ
 }
 
 /**
+ * Resolve block timestamps (ms) for a set of topoheights across the hot DB and
+ * sealed shards. Lookups are grouped per database so a list page costs at most
+ * (1 + shard count) queries instead of one per row. Topos that cannot be
+ * resolved (missing block, shard read error) are omitted from the map.
+ */
+export async function fetchBlockTimes(env: Env, topos: number[]): Promise<Map<number, number>> {
+  const out = new Map<number, number>();
+  const uniq = [...new Set(topos.filter((t) => Number.isFinite(t) && t > 0))];
+  if (!uniq.length) return out;
+  const shards = await getShards(env);
+  const groups = new Map<string, { target: RawTarget; topos: number[] }>();
+  for (const topo of uniq) {
+    const target = targetForTopo(shards, topo);
+    const key = target.kind === "hot" ? "hot" : target.dbId!;
+    const g = groups.get(key);
+    if (g) g.topos.push(topo);
+    else groups.set(key, { target, topos: [topo] });
+  }
+  await Promise.all([...groups.values()].map(async ({ target, topos: ts }) => {
+    try {
+      const rows = await runOn(
+        env, target,
+        `SELECT topoheight, ts FROM blocks WHERE topoheight IN (${ts.map(() => "?").join(",")})`,
+        ts,
+      );
+      for (const r of rows) out.set(Number(r.topoheight), Number(r.ts));
+    } catch { /* shard unreachable: leave unresolved */ }
+  }));
+  return out;
+}
+
+/**
  * Keyset-paginated list over hot + sealed shards, newest first.
  * Walks descending segments: hot window first (topo > hotFloor), then each
  * sealed shard. `before` is the exclusive upper cursor (0 = from the top);

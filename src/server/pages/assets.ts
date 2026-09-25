@@ -1,12 +1,12 @@
 import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout, notFound } from "../../client/layout";
-import { fmtInt, shortHash } from "../../client/format";
+import { fmtInt, shortHash, fmtTime } from "../../client/format";
 import { srvSort } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
-import { esc, flaggedText } from "./shared";
+import { esc, flaggedText, num } from "./shared";
 import { PAGE_SIZE, pager } from "./shared";
-import { fetchBlock, fetchTx } from "../shards";
+import { fetchBlock, fetchBlockTimes, fetchTx } from "../shards";
 
 export const assets = new Hono<{ Bindings: Env }>();
 
@@ -52,15 +52,21 @@ assets.get("/assets", async (c) => {
     reset: `/assets${srt.qs ? `?${srt.qs}` : ""}`,
   });
 
+  const times = await fetchBlockTimes(c.env, rows.map((a) => num(a.first_seen_topo)));
+
   const body = rows.length
-    ? rows.map((a) => `<tr>
+    ? rows.map((a) => {
+        const ts = times.get(num(a.first_seen_topo));
+        return `<tr>
         <td><a class="mono" href="/asset/${esc(a.asset_id as string)}">${shortHash(a.asset_id as string, 8)}</a></td>
         <td>${a.name ? `<a href="/asset/${esc(a.asset_id as string)}">${flaggedText(a.name)}</a>` : "—"}</td>
         <td>${a.symbol ? flaggedText(a.symbol) : "—"}</td>
         <td class="num">${fmtInt(a.decimals as number)}</td>
         <td class="num">${fmtInt(a.first_seen_topo as number)}</td>
-      </tr>`).join("")
-    : `<tr><td colspan="5" style="color:var(--text-dim)">No assets indexed yet (populated during tx detail pass).</td></tr>`;
+        <td>${ts ? fmtTime(ts) : "—"}</td>
+      </tr>`;
+      }).join("")
+    : `<tr><td colspan="6" style="color:var(--text-dim)">No assets indexed yet (populated during tx detail pass).</td></tr>`;
 
   const content = `<div class="panel">
     <div class="panel-head">
@@ -69,7 +75,7 @@ assets.get("/assets", async (c) => {
       ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
-    <thead><tr>${srt.th("asset", "Asset ID")}${srt.th("name", "Name")}${srt.th("symbol", "Symbol")}${srt.th("decimals", "Decimals", true)}${srt.th("first", "First seen (topo)", true)}</tr></thead>
+    <thead><tr>${srt.th("asset", "Asset ID")}${srt.th("name", "Name")}${srt.th("symbol", "Symbol")}${srt.th("decimals", "Decimals", true)}${srt.th("first", "First seen (topo)", true)}<th>Time</th></tr></thead>
     <tbody>${body}</tbody></table></div>
     ${pager(pagerBase, page, totalPages)}
   </div>`;

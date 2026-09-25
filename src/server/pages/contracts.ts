@@ -6,6 +6,7 @@ import { fmtInt, shortHash, fmtTime, ago, atomic, fmt } from "../../client/forma
 import { srvSort } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
 import { rpc } from "../xelis";
+import { fetchBlockTimes } from "../shards";
 import { esc, entityTag, blkCopyScript, flaggedText, num, PAGE_SIZE, pager } from "./shared";
 import { fetchStorage, storageBatchHtml, storageCard, storageHeadText, storageScript } from "./storage";
 
@@ -55,15 +56,21 @@ contracts.get("/contracts", async (c) => {
     reset: `/contracts${srt.qs ? `?${srt.qs}` : ""}`,
   });
 
+  const times = await fetchBlockTimes(c.env, rows.map((ct) => num(ct.deploy_topo)));
+
   const body = rows.length
-    ? rows.map((ct) => `<tr>
+    ? rows.map((ct) => {
+        const ts = times.get(num(ct.deploy_topo));
+        return `<tr>
         <td><a class="mono" href="/contracts/${ct.contract_id}">${shortHash(ct.contract_id as string, 10)}</a></td>
         <td><a class="mono" href="/account/${ct.deployer}">${shortHash(ct.deployer as string, 8)}</a></td>
         <td class="num">${fmtInt(ct.deploy_topo as number)}</td>
+        <td>${ts ? fmtTime(ts) : "—"}</td>
         <td class="num">${fmtInt(ct.invoke_count as number)}</td>
         <td class="num">${num(ct.gas_total) > 0 ? `${atomic(ct.gas_total as number)} XEL` : "—"}</td>
-      </tr>`).join("")
-    : `<tr><td colspan="5" style="color:var(--text-dim)">No contracts indexed yet (populated during tx detail pass).</td></tr>`;
+      </tr>`;
+      }).join("")
+    : `<tr><td colspan="6" style="color:var(--text-dim)">No contracts indexed yet (populated during tx detail pass).</td></tr>`;
 
   const content = `<div class="panel">
     <div class="panel-head">
@@ -72,7 +79,7 @@ contracts.get("/contracts", async (c) => {
       ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
-    <thead><tr>${srt.th("contract", "Contract")}${srt.th("deployer", "Deployer")}${srt.th("deployed", "Deployed (topo)", true)}${srt.th("invokes", "Invokes", true)}${srt.th("gas", "Gas (XEL)", true)}</tr></thead>
+    <thead><tr>${srt.th("contract", "Contract")}${srt.th("deployer", "Deployer")}${srt.th("deployed", "Deployed (topo)", true)}<th>Time</th>${srt.th("invokes", "Invokes", true)}${srt.th("gas", "Gas (XEL)", true)}</tr></thead>
     <tbody>${body}</tbody></table></div>
     ${pager(pagerBase, page, totalPages)}
   </div>`;
