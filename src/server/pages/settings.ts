@@ -71,7 +71,7 @@ settings.get("/settings", (c) => {
       <div class="setting-row">
         <div class="setting-info">
           <div class="setting-name">Time format</div>
-          <div class="setting-desc">Tables show a relative age (2m ago) by default; hover for the exact timestamp. Both shows the relative age and the clock together.</div>
+          <div class="setting-desc">Tables show a relative age (2m ago) by default; hover for the exact timestamp.</div>
         </div>
         <select id="pref-time-format" aria-label="Time format">
           <option value="relative">Relative</option>
