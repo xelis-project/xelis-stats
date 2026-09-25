@@ -46,16 +46,41 @@ docs.get("/status", async (c) => {
   } catch { /* node unreachable */ }
   const lag = s?.topoheight && s?.stable_topoheight ? s.topoheight - s.stable_topoheight : null;
 
-  const rows = [
+  // indexing checkpoints written by the cron-driven collector
+  const sync = await c.env.DB.prepare("SELECT stage, cursor, updated_at FROM sync_state").all<{ stage: string; cursor: number; updated_at: number }>().catch(() => null);
+  const syncRows = sync?.results ?? [];
+  const byStage = new Map(syncRows.map((r) => [r.stage, r]));
+  const stable = s?.stable_topoheight ?? 0;
+  const age = (ts?: number) => ts ? `${Math.max(0, Math.round((Date.now() - ts) / 1000))}s ago` : "—";
+  const cursorRow = (stage: string) => {
+    const r = byStage.get(stage);
+    if (!r) return "—";
+    const behind = stable ? stable - r.cursor : null;
+    return `${r.cursor.toLocaleString()}${behind !== null && behind > 0 ? ` (${behind} behind stable)` : " (up to date)"}`;
+  };
+
+  const kv = (k: string, v: string) => `<tr><td>${escHtml(k)}</td><td>${escHtml(v)}</td></tr>`;
+
+  const nodeRows = [
     ["Network", s?.network ?? "—"],
     ["Node version", s?.node_version ?? "—"],
     ["Topoheight", s?.topoheight?.toLocaleString() ?? "—"],
     ["Stable topoheight", s?.stable_topoheight?.toLocaleString() ?? "—"],
     ["Stability lag", lag !== null ? `${lag} topoheights` : "—"],
-    ["Indexer WS", "see live dot in header"],
-  ].map(([k, v]) => `<tr><td>${escHtml(k)}</td><td>${escHtml(v)}</td></tr>`).join("");
+  ].map(([k, v]) => kv(k, v)).join("");
 
-  const content = `<div class="panel"><h2>Status</h2><table class="kv">${rows}</table></div>`;
+  const indexerRows = [
+    ["Blocks cursor", cursorRow("live_blocks")],
+    ["Blocks checkpoint", age(byStage.get("live_blocks")?.updated_at)],
+    ["Tx enrichment cursor", cursorRow("live_txs")],
+    ["Tx checkpoint", age(byStage.get("live_txs")?.updated_at)],
+    ["Indexer WS", "see live dot in header"],
+  ].map(([k, v]) => kv(k, v)).join("");
+
+  const content = `<div class="grid-2">
+    <div class="panel"><h2>Node</h2><table class="kv">${nodeRows}</table></div>
+    <div class="panel"><h2>Indexing</h2><table class="kv">${indexerRows}</table></div>
+  </div>`;
   return c.html(layout("Status", content, ""));
 });
 
