@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p src/client/tsconfig.json",
+    "cron": "curl -fsS \"http://localhost:5173/__scheduled\"",
     "deploy": "vite build && wrangler deploy",
     "preview": "vite build && vite preview",
     "cf-typegen": "wrangler types",
