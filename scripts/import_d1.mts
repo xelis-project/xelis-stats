@@ -12,12 +12,15 @@
  * re-import never refreshes aggregate rows already present in an existing DB.
  *
  * Order: schema -> legacy market/chain-size -> daily aggregates -> chain rows.
+ * Large dumps may be split by export.mts into numbered chunks (`blocks.000.sql`
+ * …) to stay under D1's 2 GiB `--file` limit; each logical table's chunks are
+ * applied in order.
  * The live collector cursors ('live_blocks'/'live_txs') are then seeded to the
  * backfill top (max topoheight in BACKFILL_DB, or --cursor=N) so `npm run dev`
  * resumes from the tip instead of re-walking history, which would double-count
  * the daily_miners/daily_block_types upserts.
  */
-import { existsSync, rmSync, writeFileSync, unlinkSync, statSync } from "node:fs";
+import { existsSync, rmSync, writeFileSync, unlinkSync, statSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
@@ -37,6 +40,25 @@ const DB_PATH = process.env.BACKFILL_DB ?? "data/backfill.db";
 const DB_NAME = process.env.D1_NAME ?? "xelis-stats";
 const STATE_DIR = ".wrangler/state/v3/d1";
 const TARGET = REMOTE ? "--remote" : "--local";
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Pick up the file(s) for a logical dump: the numbered chunks when the export
+ *  was split to stay under D1's 2 GiB `--file` limit, otherwise `<name>.sql`. */
+function filesFor(name: string): string[] {
+  if (!existsSync(OUT_DIR)) return [];
+  const re = new RegExp(`^${escapeRegExp(name)}\\.(\\d{3})\\.sql$`);
+  const parts: Array<[number, string]> = [];
+  for (const f of readdirSync(OUT_DIR)) {
+    const m = re.exec(f);
+    if (m) parts.push([Number(m[1]), join(OUT_DIR, f)]);
+  }
+  if (parts.length) return parts.sort((a, b) => a[0] - b[0]).map((p) => p[1]);
+  const base = join(OUT_DIR, `${name}.sql`);
+  return existsSync(base) ? [base] : [];
+}
 
 // legacy history first (only meaningful on an empty DB), then export.mts output
 // in the same order export.mts prints it
@@ -98,19 +120,19 @@ if (unknown.length) {
 const selected = ONLY.length ? FILES.filter((f) => ONLY.includes(f)) : FILES;
 
 for (const name of selected) {
-  const file = join(OUT_DIR, `${name}.sql`);
-  if (!existsSync(file)) {
+  const files = filesFor(name);
+  if (!files.length) {
     if (ONLY.length) {
-      console.error(`  ${name}: missing ${file}`);
+      console.error(`  ${name}: no ${join(OUT_DIR, `${name}.sql`)} or ${name}.NNN.sql chunks`);
       process.exitCode = 1;
     } else {
-      console.log(`  ${name}: skipped (no ${file})`);
+      console.log(`  ${name}: skipped (no export file)`);
     }
     continue;
   }
-  const mb = (statSync(file).size / 1e6).toFixed(1);
-  console.log(`  ${name}.sql (${mb} MB)`);
-  run(["d1", "execute", DB_NAME, "--file", file, TARGET]);
+  const mb = (files.reduce((n, f) => n + statSync(f).size, 0) / 1e6).toFixed(1);
+  console.log(`  ${name}.sql (${mb} MB${files.length > 1 ? `, ${files.length} parts` : ""})`);
+  for (const file of files) run(["d1", "execute", DB_NAME, "--file", file, TARGET]);
 }
 
 if (!NO_SEED) {

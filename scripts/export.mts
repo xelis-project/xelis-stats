@@ -19,11 +19,14 @@
  * print the deployed-database commands instead.
  */
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync, writeFileSync, existsSync, statSync, rmSync, unlinkSync, renameSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, writeFileSync, existsSync, statSync, rmSync, unlinkSync, renameSync, readdirSync } from "node:fs";
+import { join, basename } from "node:path";
 
 const DB_PATH = process.env.BACKFILL_DB ?? "data/backfill.db";
 const OUT_DIR = process.env.EXPORT_DIR ?? "export";
+// `wrangler d1 execute --file` refuses files above 2 GiB, so dumps larger than
+// this are split into numbered parts. Default 1 GB leaves headroom.
+const CHUNK_BYTES = Number(process.env.EXPORT_CHUNK_BYTES ?? 1_000_000_000);
 const FULL = process.argv.includes("--full");
 const REMOTE = process.argv.includes("--remote");
 const TARGET = REMOTE ? "--remote" : "--local";
@@ -52,6 +55,96 @@ function publish(tmp: string, file: string): void {
   else fresh(file);
 }
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Resolve a logical dump name (e.g. "blocks") to its published file(s): the
+ *  numbered chunks when the dump was split, otherwise the plain `<name>.sql`. */
+function resolveOutFiles(name: string): string[] {
+  const re = new RegExp(`^${escapeRegExp(name)}\\.(\\d{3})\\.sql$`);
+  const parts: Array<[number, string]> = [];
+  for (const f of readdirSync(OUT_DIR)) {
+    const m = re.exec(f);
+    if (m) parts.push([Number(m[1]), join(OUT_DIR, f)]);
+  }
+  if (parts.length) return parts.sort((a, b) => a[0] - b[0]).map((p) => p[1]);
+  const base = join(OUT_DIR, `${name}.sql`);
+  return existsSync(base) ? [base] : [];
+}
+
+/** Split a logical `.sql` dump into parts under CHUNK_BYTES.
+ *
+ *  Parts roll over only between whole statements, so each chunk is valid SQL on
+ *  its own. A dump that fits keeps the plain `<name>.sql` name; a split dump is
+ *  written as `<name>.000.sql`, `<name>.001.sql`, … in import order. */
+class SqlChunks {
+  files: string[] = [];
+  stem: string;
+  tmp = "";
+  size = 0;
+  counter = 0;
+  baseFile: string;
+
+  constructor(baseFile: string) {
+    this.baseFile = baseFile;
+    this.stem = baseFile.endsWith(".sql") ? baseFile.slice(0, -4) : baseFile;
+    this.clean();
+  }
+
+  /** Drop the previous single file and any numbered parts so a shorter re-export
+   *  never leaves stale chunks behind. */
+  clean(): void {
+    fresh(this.baseFile);
+    const re = new RegExp(`^${escapeRegExp(basename(this.stem))}\\.\\d{3}\\.sql$`);
+    for (const f of readdirSync(OUT_DIR)) {
+      if (re.test(f)) fresh(join(OUT_DIR, f));
+    }
+  }
+
+  numbered(part: number): string {
+    return `${this.stem}.${String(part).padStart(3, "0")}.sql`;
+  }
+
+  open(): void {
+    this.tmp = `${this.stem}.${String(this.counter++).padStart(3, "0")}.tmp`;
+    fresh(this.tmp);
+    this.size = 0;
+  }
+
+  write(stmt: string): void {
+    if (!this.tmp) this.open();
+    if (this.size >= CHUNK_BYTES) {
+      const dest = this.numbered(this.files.length);
+      renameSync(this.tmp, dest);
+      this.files.push(dest);
+      this.open();
+    }
+    writeFileSync(this.tmp, stmt, { flag: "a" });
+    this.size += Buffer.byteLength(stmt);
+  }
+
+  /** Publish the pending part. A single part keeps the plain base name. */
+  close(): string[] {
+    if (!this.tmp) return this.files;
+    if (!this.files.length) {
+      renameSync(this.tmp, this.baseFile);
+      this.files.push(this.baseFile);
+    } else {
+      const dest = this.numbered(this.files.length);
+      renameSync(this.tmp, dest);
+      this.files.push(dest);
+    }
+    this.tmp = "";
+    return this.files;
+  }
+}
+
+function totalMB(files: string[]): string {
+  const bytes = files.reduce((n, f) => n + (existsSync(f) ? statSync(f).size : 0), 0);
+  return (bytes / 1e6).toFixed(1);
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function esc(v: any): string {
   if (v === null || v === undefined) return "NULL";
@@ -65,8 +158,7 @@ function esc(v: any): string {
 function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit?: number; outFile?: string; chunkRows?: number; desc?: boolean; tieCol?: string; includeNull?: boolean }): number {
   const limit = opts.limit ?? Infinity;
   const file = opts.outFile ?? join(OUT_DIR, `${table}.sql`);
-  const tmp = `${file}.tmp`;
-  fresh(tmp);
+  const out = new SqlChunks(file);
   const chunkRows = opts.chunkRows ?? 100_000;
   const desc = opts.desc ?? false;
   const dir = desc ? "DESC" : "ASC";
@@ -97,7 +189,7 @@ function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit
     }
     // multi-row INSERT: fewer, larger statements for fast D1 import
     for (let i = 0; i < buffer.length; i += 100) {
-      writeFileSync(tmp, `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${buffer.slice(i, i + 100).join(",\n")};\n`, { flag: "a" });
+      out.write(`INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${buffer.slice(i, i + 100).join(",\n")};\n`);
     }
     buffer = [];
     const last = rows[rows.length - 1];
@@ -114,11 +206,11 @@ function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit
     const rows: any[] = stmt.all();
     const nullBuf = rows.map((row) => `(${cols.map((c) => esc(row[c])).join(",")})`);
     for (let i = 0; i < nullBuf.length; i += 100) {
-      writeFileSync(tmp, `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${nullBuf.slice(i, i + 100).join(",\n")};\n`, { flag: "a" });
+      out.write(`INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${nullBuf.slice(i, i + 100).join(",\n")};\n`);
     }
     count += rows.length;
   }
-  publish(tmp, file);
+  out.close();
   return count;
 }
 
@@ -129,8 +221,7 @@ function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit
 function dumpKeysetText(table: string, keyCol: string, cols: string[], opts: { outFile: string; chunkRows?: number; tieCol?: string }): number {
   const chunkRows = opts.chunkRows ?? 100_000;
   const tieCol = opts.tieCol;
-  const tmp = `${opts.outFile}.tmp`;
-  fresh(tmp);
+  const out = new SqlChunks(opts.outFile);
   const where = tieCol
     ? `(${keyCol} > ? OR (${keyCol} = ? AND ${tieCol} > ?))`
     : `${keyCol} > ?`;
@@ -151,14 +242,14 @@ function dumpKeysetText(table: string, keyCol: string, cols: string[], opts: { o
       count++;
     }
     for (let i = 0; i < buffer.length; i += 100) {
-      writeFileSync(tmp, `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${buffer.slice(i, i + 100).join(",\n")};\n`, { flag: "a" });
+      out.write(`INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${buffer.slice(i, i + 100).join(",\n")};\n`);
     }
     buffer.length = 0;
     const last = rows[rows.length - 1];
     lastKey = String(last[keyCol]);
     if (tieCol) lastTie = String(last[tieCol]);
   }
-  publish(tmp, opts.outFile);
+  out.close();
   return count;
 }
 
@@ -296,8 +387,7 @@ for (const [file, table, cols, sql] of AGG_JOBS) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const rows: any[] = stmt.all();
   const outFile = join(OUT_DIR, `${file}.sql`);
-  const tmp = `${outFile}.tmp`;
-  fresh(tmp);
+  const out = new SqlChunks(outFile);
   const buffer: string[] = [];
   for (const row of rows) {
     const vals = cols.map((c) => esc(row[c]));
@@ -306,10 +396,10 @@ for (const [file, table, cols, sql] of AGG_JOBS) {
   const verb = AGG_IGNORE.has(table) ? "INSERT OR IGNORE" : "INSERT OR REPLACE";
   // multi-row INSERT: batch 100 rows per statement for fast D1 import
   for (let i = 0; i < buffer.length; i += 100) {
-    writeFileSync(tmp, `${verb} INTO ${table} (${cols.join(",")}) VALUES\n${buffer.slice(i, i + 100).join(",\n")};\n`, { flag: "a" });
+    out.write(`${verb} INTO ${table} (${cols.join(",")}) VALUES\n${buffer.slice(i, i + 100).join(",\n")};\n`);
   }
-  publish(tmp, outFile);
-  console.log(`  ${table}: ${rows.length.toLocaleString()} rows${existsSync(outFile) ? ` (${(statSync(outFile).size / 1e6).toFixed(1)} MB)` : " (empty — file not written)"}`);
+  const parts = out.close();
+  console.log(`  ${table}: ${rows.length.toLocaleString()} rows${parts.length ? ` (${totalMB(parts)} MB${parts.length > 1 ? `, ${parts.length} parts` : ""})` : " (empty — file not written)"}`);
 }
 
 // ---------- chain data (D1) ----------
@@ -319,8 +409,8 @@ if (wanted("blocks")) {
   const nBlocks = dumpKeyset("blocks", "topoheight",
     ["topoheight", "height", "hash", "ts", "version", "nonce", "difficulty", "size", "tx_count", "block_type", "miner_address", "miner_reward", "dev_reward", "burned", "fee_total", "cum_difficulty", "tips"],
     { outFile: join(OUT_DIR, "blocks.sql"), desc: true });
-  const blocksFile = join(OUT_DIR, "blocks.sql");
-  console.log(`  blocks: ${nBlocks.toLocaleString()} rows${existsSync(blocksFile) ? ` (${(statSync(blocksFile).size / 1e6).toFixed(1)} MB)` : " (empty)"}`);
+  const parts = resolveOutFiles("blocks");
+  console.log(`  blocks: ${nBlocks.toLocaleString()} rows${parts.length ? ` (${totalMB(parts)} MB${parts.length > 1 ? `, ${parts.length} parts` : ""})` : " (empty)"}`);
 } else {
   console.log("  blocks: skipped (--only)");
 }
@@ -329,7 +419,8 @@ if (wanted("tx")) {
   const nTxs = dumpKeyset("tx_index", "block_topo",
     ["hash", "block_topo", "ts", "fee", "size", "tx_type", "sender", "transfer_count", "version", "multisig", "contract_id", "gas", "executed", "encrypted", "burn_amount", "burn_asset"],
     { outFile: join(OUT_DIR, "tx.sql"), chunkRows: 100_000, tieCol: "hash", includeNull: true });
-  console.log(`  tx: ${nTxs.toLocaleString()} rows`);
+  const parts = resolveOutFiles("tx");
+  console.log(`  tx: ${nTxs.toLocaleString()} rows${parts.length > 1 ? ` (${parts.length} parts)` : ""}`);
 } else {
   console.log("  tx: skipped (--only)");
 }
@@ -339,7 +430,8 @@ if (wanted("tx")) {
 if (wanted("tx_assets")) {
   const n = dumpKeysetText("tx_assets", "tx_hash", ["tx_hash", "asset"],
     { outFile: join(OUT_DIR, "tx_assets.sql"), chunkRows: 100_000, tieCol: "asset" });
-  console.log(`  tx_assets: ${n.toLocaleString()} rows`);
+  const parts = resolveOutFiles("tx_assets");
+  console.log(`  tx_assets: ${n.toLocaleString()} rows${parts.length > 1 ? ` (${parts.length} parts)` : ""}`);
 } else {
   console.log("  tx_assets: skipped (--only)");
 }
@@ -347,7 +439,8 @@ if (wanted("tx_assets")) {
 if (wanted("tx_contracts")) {
   const n = dumpKeysetText("tx_contracts", "tx_hash", ["tx_hash", "contract_id", "max_gas"],
     { outFile: join(OUT_DIR, "tx_contracts.sql"), chunkRows: 100_000 });
-  console.log(`  tx_contracts: ${n.toLocaleString()} rows`);
+  const parts = resolveOutFiles("tx_contracts");
+  console.log(`  tx_contracts: ${n.toLocaleString()} rows${parts.length > 1 ? ` (${parts.length} parts)` : ""}`);
 } else {
   console.log("  tx_contracts: skipped (--only)");
 }
@@ -371,7 +464,7 @@ const IMPORT_FILES = [
 ];
 console.log(`
 Done. Import to D1 (${REMOTE ? "remote" : "local"}, in order):
-${IMPORT_FILES.map((f) => `  npx wrangler d1 execute xelis-stats --file export/${f}.sql ${TARGET}`).join("\n")}
+${IMPORT_FILES.flatMap((name) => resolveOutFiles(name)).map((f) => `  npx wrangler d1 execute xelis-stats --file ${f.replace(/\\/g, "/")} ${TARGET}`).join("\n")}
 Then seed cursor: sync_state.last_backfill_topoheight = (max stable at export time).
 ${REMOTE ? "" : "Pass --remote for the deployed D1 instead of local.\n"}${FULL ? "R2: upload export/r2/*.jsonl with wrangler r2 object put." : "(re-run with --full for R2 raw archives)"}`);
 

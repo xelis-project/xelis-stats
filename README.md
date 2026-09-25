@@ -88,10 +88,17 @@ npm run import:d1 -- --remote     # deployed D1
 
 `--reset` wipes `.wrangler/state/v3/d1` first. Prefer it after a fresh backfill:
 the aggregate tables are exported with `INSERT OR IGNORE`, so an incremental
-import never refreshes aggregate rows already in the database. The script also
+import never refreshes aggregate rows already present in an existing DB. The script also
 seeds the `live_blocks`/`live_txs` cursors to the backfill tip so the collector
 resumes from the top instead of re-walking history. Use `--only=a,b`, `--dry-run`,
 `--no-seed`, or `--cursor=N` to control a run.
+
+Large dumps (`blocks`, `tx`) are split by both scripts: `wrangler d1 execute
+--file` rejects files above 2 GiB, so `npm run export` writes
+`blocks.000.sql`, `blocks.001.sql`, … once a dump passes 1 GB (override with
+`EXPORT_CHUNK_BYTES`), and `npm run import:d1` applies the parts in order.
+Small dumps keep their plain `<name>.sql` name, and `--only=blocks` works with
+either form.
 
 ### Legacy Postgres history
 
