@@ -128,6 +128,10 @@ function migrate(): void {
   // one-time repair for rows written before `executed` existed: block_topo was
   // only resolved from executed_in_block, so a non-NULL topo means executed.
   db.exec("UPDATE tx_index SET executed = 1 WHERE executed IS NULL AND block_topo IS NOT NULL");
+  // legacy DBs renamed a TEXT `result` column, so `executed` has TEXT affinity
+  // and node's double binding stored '1.0'/'0.0' instead of '1'/'0'. Normalize
+  // so the transactions page `executed = 1/0` filters match every row.
+  db.exec("UPDATE tx_index SET executed = CASE WHEN CAST(executed AS REAL) != 0 THEN '1' ELSE '0' END WHERE typeof(executed) = 'text' AND executed GLOB '*[.]*'");
   try { db.exec("CREATE TABLE IF NOT EXISTS tx_assets (tx_hash TEXT, asset TEXT); CREATE INDEX IF NOT EXISTS idx_tx_assets_asset ON tx_assets(asset);"); } catch { /* exists */ }
   try { db.exec("CREATE TABLE IF NOT EXISTS tx_contracts (tx_hash TEXT PRIMARY KEY, contract_id TEXT, max_gas INTEGER); CREATE INDEX IF NOT EXISTS idx_tx_contracts_cid ON tx_contracts(contract_id);"); } catch { /* exists */ }
   const mcols = (db.prepare("PRAGMA table_info(daily_miners)").all() as Array<{ name: string }>).map((c) => c.name);
@@ -356,25 +360,30 @@ function classifyTx(t: any): { type: string; contractId: string | null } {
   return { type: "other", contractId: null };
 }
 
-// hash -> topo lookup for executed_in_block resolution
-const lookupTopo = db.prepare("SELECT topoheight FROM blocks WHERE hash = ?");
+// hash -> topo/ts lookup for executed_in_block resolution
+const lookupBlock = db.prepare("SELECT topoheight, ts FROM blocks WHERE hash = ?");
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function processTx(t: any, tsMs: number): Promise<boolean> {
+async function processTx(t: any, tsMs: number, force = false): Promise<boolean> {
   const hash = String(t.hash ?? "");
   if (!hash) return false;
-  const existing = db.prepare("SELECT 1 FROM tx_index WHERE hash = ?").get(hash);
-  if (existing) return false;
+  if (!force) {
+    const existing = db.prepare("SELECT 1 FROM tx_index WHERE hash = ?").get(hash);
+    if (existing) return false;
+  }
 
   // executed_in_block is a block HASH string (verified against daemon)
   let blockTopo: number | null = null;
+  let blockTs = tsMs;
   const exec = t.executed_in_block;
   if (typeof exec === "string") {
-    const r = lookupTopo.get(exec) as { topoheight: number } | undefined;
+    const r = lookupBlock.get(exec) as { topoheight: number; ts: number } | undefined;
     blockTopo = r ? r.topoheight : null;
+    if (r && !blockTs) blockTs = Number(r.ts ?? 0);
   } else if (Array.isArray(t.blocks) && t.blocks.length > 0) {
-    const r = lookupTopo.get(String(t.blocks[0])) as { topoheight: number } | undefined;
+    const r = lookupBlock.get(String(t.blocks[0])) as { topoheight: number; ts: number } | undefined;
     blockTopo = r ? Number(r.topoheight) : null;
+    if (r && !blockTs) blockTs = Number(r.ts ?? 0);
   }
 
   const { type: txType, contractId } = classifyTx(t);
@@ -386,13 +395,13 @@ async function processTx(t: any, tsMs: number): Promise<boolean> {
   const burnAsset = burn && typeof burn.asset === "string" ? burn.asset : (burn ? "" : null);
 
   insertTx.run(
-    hash, blockTopo, tsMs,
+    hash, blockTopo, blockTs,
     Number(t.fee_paid ?? t.fee ?? 0), Number(t.size ?? 0),
     txType, String(t.source ?? ''),
     transferCount, Number(t.version ?? 0), t.multisig ? 1 : 0,
     contractId,
     Number(t.data?.invoke_contract?.max_gas ?? 0),
-    exec ? 1 : 0,
+    exec ? "1" : "0",
     transferCount > 0 ? 1 : 0,
     burnAmount, burnAsset,
   );
@@ -422,7 +431,7 @@ async function processTx(t: any, tsMs: number): Promise<boolean> {
   }
 
   if (t.source) {
-    upsertAccount.run(String(t.source), tsMs, tsMs, tsMs);
+    upsertAccount.run(String(t.source), blockTs, blockTs, blockTs);
   }
   return true;
 }
@@ -580,12 +589,12 @@ async function backfillTxs(): Promise<void> {
     } finally { release(); }
   };
 
-  const fetchSingleRetry = async (hash: string, ts: number, maxAttempts: number): Promise<void> => {
+  const fetchSingleRetry = async (hash: string, ts: number, maxAttempts: number, force = false): Promise<void> => {
     for (let attempt = 0; ; attempt++) {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const t = await rpc<any>("get_transaction", { hash });
-        await processTx(t, ts);
+        await processTx(t, ts, force);
         return;
       } catch (err) {
         const msg = (err as Error).message;
@@ -602,6 +611,25 @@ async function backfillTxs(): Promise<void> {
     await acquire();
     try { await fetchSingleRetry(hash, ts, 15); } finally { release(); }
   };
+
+  // Repair incomplete rows left by an older/interrupted pass: a NULL executed
+  // flag (shown as "unknown"), an empty tx_type, and no resolved block/timestamp.
+  // The tx pass resumes from tx_cursor and never revisits their blocks, so
+  // re-fetch each from the node and overwrite it in place.
+  const stale = db.prepare(
+    "SELECT hash FROM tx_index WHERE executed IS NULL OR tx_type IS NULL OR tx_type = ''",
+  ).all() as Array<{ hash: string }>;
+  if (stale.length) {
+    console.log(`[txs] repairing ${stale.length} incomplete rows`);
+    await Promise.all(stale.map(({ hash }) => (async () => {
+      await acquire();
+      try { await fetchSingleRetry(hash, 0, 15, true); } finally { release(); }
+    })()));
+    const remaining = (db.prepare(
+      "SELECT COUNT(*) c FROM tx_index WHERE executed IS NULL OR tx_type IS NULL OR tx_type = ''",
+    ).get() as { c: number }).c;
+    console.log(`[txs] repaired ${stale.length - remaining}/${stale.length} (${remaining} remaining)`);
+  }
 
   const startedAt = Date.now();
   let doneSinceCheckpoint = 0;
