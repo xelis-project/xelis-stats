@@ -22,6 +22,11 @@ const CONTRACT_SCAN_MAX = 100;
 const CONTRACT_SCAN_CONCURRENCY = 10;
 const HOLDINGS_CACHE_TTL = 600;
 
+// Minimum matching transactions before the dense-asset (semi-join) query path
+// is considered; below this the joined sort is already cheap and an extra
+// total-count query would not pay for itself.
+const SEMIJOIN_MIN = 5000;
+
 interface Holding {
   contract: string;
   balance: number;
@@ -172,13 +177,29 @@ assetDetail.get("/asset/:id", async (c) => {
       extra,
       floorCol: "t.block_topo",
     });
+
+    // The native XEL asset is in nearly every transaction, so the join makes
+    // SQLite materialise and sort the whole match set (700k+ rows) before the
+    // LIMIT applies. Driving the scan from tx_index's (sortCol, hash) index and
+    // probing tx_assets by primary key lets it stop once the page is filled.
+    // Only switch when that probe count beats sorting the matching set; sparse
+    // assets keep the join. A type filter cannot use the ordered sort indexes,
+    // so it also stays on the join.
+    const skip = (page - 1) * PAGE_SIZE;
+    let semi = false;
+    if (!type && histTotal >= SEMIJOIN_MIN) {
+      const totalTxs = await countRaw(c.env, { table: "tx_index", floorCol: "block_topo" });
+      semi = totalTxs > 0 && totalTxs * (skip + PAGE_SIZE) < histTotal * histTotal;
+    }
     txs = await topNRaw(c.env, {
-      table: "tx_index t JOIN tx_assets a ON a.tx_hash = t.hash",
+      table: semi ? "tx_index t" : "tx_index t JOIN tx_assets a ON a.tx_hash = t.hash",
       select: "t.hash, t.block_topo, t.ts, t.tx_type, t.sender, t.fee, t.transfer_count, t.executed",
       order: srt.order,
       limit: PAGE_SIZE,
-      skip: (page - 1) * PAGE_SIZE,
-      extra,
+      skip,
+      extra: semi
+        ? { sql: "EXISTS (SELECT 1 FROM tx_assets a WHERE a.tx_hash = t.hash AND a.asset = ?)", binds: [id] }
+        : extra,
       floorCol: "t.block_topo",
     });
   } catch (err) { logErr("page/asset", err); }
