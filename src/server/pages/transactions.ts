@@ -4,7 +4,7 @@ import { layout } from "../../client/layout";
 import { fmtInt, shortHash, fmtTime, atomic } from "../../client/format";
 import { srvSort, TX_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
-import { PAGE_SIZE, pager, cursorPager, entityTag, resultBadge } from "./shared";
+import { PAGE_SIZE, pager, cursorPager, entityTag, resultBadge, esc } from "./shared";
 import { pagedCompositeRaw, topNRaw, countRaw } from "../shards";
 
 export const transactions = new Hono<{ Bindings: Env }>();
@@ -14,7 +14,11 @@ transactions.get("/transactions", async (c) => {
   const TX_TYPES = ["transfer", "burn", "invoke_contract", "deploy_contract", "multisig"];
   const rawType = c.req.query("type") ?? "";
   const type = TX_TYPES.includes(rawType) ? rawType : "";
-  const executed = c.req.query("executed") === "1" || c.req.query("executed") === "0" ? c.req.query("executed")! : "";
+  // executed status filter: 1/0 match the recorded flag, "unknown" matches rows
+  // with no recorded status (legacy rows, executed IS NULL)
+  const EXEC_STATES = ["1", "0", "unknown"];
+  const rawExec = c.req.query("executed") ?? "";
+  const executed = EXEC_STATES.includes(rawExec) ? rawExec : "";
   const srt = srvSort((n) => c.req.query(n), TX_COLS, "block", "hash", (s) => {
     const p = new URLSearchParams();
     if (type) p.set("type", type);
@@ -29,11 +33,15 @@ transactions.get("/transactions", async (c) => {
   if (type) { conds.push("tx_type = ?"); binds.push(type); }
   if (executed === "1") { conds.push("executed = 1"); }
   if (executed === "0") { conds.push("executed = 0"); }
+  if (executed === "unknown") { conds.push("executed IS NULL"); }
   const extra = conds.length ? { sql: conds.join(" AND "), binds } : undefined;
 
   // Default view (newest block first) uses a two-column keyset cursor
   // (block_topo, hash): any depth is an index seek, no offset scan.
-  const keyset = srt.key === "block" && srt.dir === "desc";
+  // The "unknown" filter is exempt: those rows may have a NULL block_topo that
+  // the keyset bounds (block_topo <= cursor) would exclude, so fall back to the
+  // offset pager, which is cheap because the set is tiny.
+  const keyset = srt.key === "block" && srt.dir === "desc" && executed !== "unknown";
   const curRaw = c.req.query("cur") ?? "";
   const [curBt, curHash] = curRaw.includes(":") ? curRaw.split(":") : ["", ""];
   const cursor: [number, string] | null = curBt && curHash ? [Number(curBt), curHash] : null;
@@ -119,24 +127,32 @@ transactions.get("/transactions", async (c) => {
   const fActive = !!type || !!executed;
   const fFields = `
     ${filterField("Transaction type", `<select name="type">${selectOpts(TX_TYPES, type, "all types")}</select>`)}
-    ${filterField("Execution", `<select name="executed"><option value=""${executed === "" ? " selected" : ""}>any status</option><option value="1"${executed === "1" ? " selected" : ""}>executed</option><option value="0"${executed === "0" ? " selected" : ""}>unexecuted</option></select>`)}
+    ${filterField("Execution", `<select name="executed"><option value=""${executed === "" ? " selected" : ""}>any status</option><option value="1"${executed === "1" ? " selected" : ""}>executed</option><option value="0"${executed === "0" ? " selected" : ""}>unexecuted</option><option value="unknown"${executed === "unknown" ? " selected" : ""}>unknown</option></select>`)}
   `;
   const fPop = filterPop("f-txs", "/transactions", fFields, {
     hidden: srt.qs ? { sort: srt.key, dir: srt.dir } : {},
     reset: `/transactions${srt.qs ? `?${srt.qs}` : ""}`,
   });
 
+  const dim = (s: string): string => `<span style="color:var(--text-dim)">${s}</span>`;
   const body = rows.length
-    ? rows.map((t) => `<tr>
-        <td><a class="mono" href="/tx/${t.hash}">${shortHash(t.hash as string)}</a></td>
-        <td><a href="/block/${t.block_topo}"><span class="mint">${fmtInt(t.block_topo as number)}</span></a></td>
-        <td>${fmtTime(t.ts as number)}</td>
-        <td><span class="badge ${t.tx_type}">${t.tx_type as string}</span></td>
-        <td><a class="mono" href="/account/${t.sender}">${shortHash(t.sender as string, 8)}</a>${entityTag(t.sender as string)}</td>
+    ? rows.map((t) => {
+        const hash = String(t.hash ?? "");
+        const topo = t.block_topo == null ? NaN : Number(t.block_topo);
+        const ts = t.ts == null ? NaN : Number(t.ts);
+        const txType = String(t.tx_type ?? "");
+        const sender = String(t.sender ?? "");
+        return `<tr>
+        <td><a class="mono" href="/tx/${esc(hash)}">${shortHash(hash)}</a></td>
+        <td>${Number.isFinite(topo) ? `<a href="/block/${topo}"><span class="mint">${fmtInt(topo)}</span></a>` : dim("—")}</td>
+        <td>${Number.isFinite(ts) ? fmtTime(ts) : dim("—")}</td>
+        <td>${txType ? `<span class="badge ${esc(txType)}">${esc(txType)}</span>` : dim("—")}</td>
+        <td>${sender ? `<a class="mono" href="/account/${esc(sender)}">${shortHash(sender, 8)}</a>${entityTag(sender)}` : dim("—")}</td>
         <td class="num"${Number(t.transfer_count) === 0 ? ' style="color:var(--text-dim)"' : ""}>${fmtInt(Number(t.transfer_count))}</td>
         <td class="num">${atomic(t.fee as number, 6)}</td>
         <td>${resultBadge(t.executed)}</td>
-      </tr>`).join("")
+      </tr>`;
+      }).join("")
     : `<tr><td colspan="8" style="color:var(--text-dim)">No indexed transactions yet — backfill pending.</td></tr>`;
 
   const content = `<div class="panel">
