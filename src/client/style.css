@@ -656,14 +656,21 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
 .err404 { text-align: center; padding: 8rem 0; }
 .err404 h1 { font-size: 6rem; color: var(--mint); text-shadow: 0 0 40px var(--mint-glow); }
 
+/* Header wrap: the single-row header (logo + 9 links + search + status) is
+   ~1140px wide, so it would overflow the pill for any viewport below ~1240px.
+   Wrap the nav onto its own scrollable row well before that. Kept separate
+   from the 1000px content breakpoint below so the two can move independently. */
+@media (max-width: 1280px) {
+  header.site { flex-wrap: wrap; gap: 1rem 1.4rem; top: 0.8rem; }
+  header.site nav { order: 3; flex-basis: 100%; min-width: 0; overflow-x: auto; gap: 1.2rem; padding-bottom: 0.4rem; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  header.site nav::-webkit-scrollbar { display: none; }
+  header.site nav a { white-space: nowrap; padding: 0.4rem 0.8rem; }
+}
+
 /* Tablet / mobile */
 @media (max-width: 1000px) {
   .cards { grid-template-columns: repeat(2, 1fr); }
   .grid-2, .grid-3 { grid-template-columns: 1fr; }
-  header.site { flex-wrap: wrap; gap: 1rem 1.4rem; top: 0.8rem; }
-  header.site nav { order: 3; flex-basis: 100%; overflow-x: auto; gap: 1.2rem; padding-bottom: 0.4rem; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
-  header.site nav::-webkit-scrollbar { display: none; }
-  header.site nav a { white-space: nowrap; padding: 0.4rem 0.8rem; }
   .searchbox { padding: 0.5rem 0.8rem; }
   .searchbox kbd { display: none; }
 }
