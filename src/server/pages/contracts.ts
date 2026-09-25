@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout, notFound, statCard } from "../../client/layout";
 import { icons } from "../../client/icons";
-import { fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/format";
+import { fmtInt, shortHash, fmtTime, ago, atomic, fmt } from "../../client/format";
 import { srvSort } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
 import { rpc } from "../xelis";
@@ -103,7 +103,7 @@ contracts.get("/contracts/:id", async (c) => {
   let moduleRaw: unknown = null;
   let entries: { key: unknown; value: unknown }[] = [];
   let storageMore = false;
-  type Bal = { asset: string; name: string | null; symbol: string | null; balance: number | null; topo: number | null };
+  type Bal = { asset: string; name: string | null; symbol: string | null; decimals: number | null; balance: number | null; topo: number | null };
   let balances: Bal[] = [];
   try {
     const mod = await rpc<{ topoheight: number; version: { data?: { module?: unknown } } }>("get_contract_module", { contract: id });
@@ -120,23 +120,23 @@ contracts.get("/contracts/:id", async (c) => {
     balances = await Promise.all(assets.map(async (asset): Promise<Bal> => {
       try {
         const b = await rpc<{ data: number; topoheight: number }>("get_contract_balance", { contract: id, asset });
-        return { asset, name: null, symbol: null, balance: num(b.data), topo: num(b.topoheight) };
-      } catch { return { asset, name: null, symbol: null, balance: null, topo: null }; }
+        return { asset, name: null, symbol: null, decimals: null, balance: num(b.data), topo: num(b.topoheight) };
+      } catch { return { asset, name: null, symbol: null, decimals: null, balance: null, topo: null }; }
     }));
   } catch { /* none */ }
   const xel = "0000000000000000000000000000000000000000000000000000000000000000";
   try {
     const ids = balances.map((b) => b.asset).filter((a) => a !== xel);
-    const byId = new Map<string, { name: string | null; symbol: string | null }>();
+    const byId = new Map<string, { name: string | null; symbol: string | null; decimals: number | null }>();
     if (ids.length) {
       const rows = await db.prepare(
-        `SELECT asset_id, name, symbol FROM assets WHERE asset_id IN (${ids.map(() => "?").join(",")})`
-      ).bind(...ids).all<{ asset_id: string; name: string | null; symbol: string | null }>();
-      for (const r of rows.results ?? []) byId.set(r.asset_id, { name: r.name, symbol: r.symbol });
+        `SELECT asset_id, name, symbol, decimals FROM assets WHERE asset_id IN (${ids.map(() => "?").join(",")})`
+      ).bind(...ids).all<{ asset_id: string; name: string | null; symbol: string | null; decimals: number | null }>();
+      for (const r of rows.results ?? []) byId.set(r.asset_id, { name: r.name, symbol: r.symbol, decimals: r.decimals });
     }
     balances = balances.map((b) => {
-      const meta = b.asset === xel ? { name: "Xelis", symbol: "XEL" } : byId.get(b.asset);
-      return { ...b, name: meta?.name ?? null, symbol: meta?.symbol ?? null };
+      const meta = b.asset === xel ? { name: "Xelis", symbol: "XEL", decimals: 8 } : byId.get(b.asset);
+      return { ...b, name: meta?.name ?? null, symbol: meta?.symbol ?? null, decimals: meta?.decimals ?? null };
     });
   } catch { /* names unavailable */ }
   const deployer = String(ct.deployer ?? "");
@@ -210,7 +210,8 @@ contracts.get("/contracts/:id", async (c) => {
 
   const balRows = balances.length
     ? balances.map((b) => {
-        const amount = b.balance !== null ? `<td class="num">${b.asset === xel ? atomic(b.balance, 6) : fmtInt(b.balance)}</td>` : `<td class="num" style="color:var(--text-dim)">—</td>`;
+        const dec = b.decimals ?? 8;
+        const amount = b.balance !== null ? `<td class="num">${fmt(b.balance / 10 ** dec, Math.min(dec, 6))}</td>` : `<td class="num" style="color:var(--text-dim)">—</td>`;
         const assetCell = b.asset === xel
           ? `<span class="badge">XEL</span>`
           : `<a class="mono" href="/asset/${esc(b.asset)}">${shortHash(b.asset, 10)}</a>`;
