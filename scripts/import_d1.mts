@@ -13,15 +13,19 @@
  *
  * Order: schema -> legacy market/chain-size -> daily aggregates -> chain rows.
  * Large dumps may be split by export.mts into numbered chunks (`blocks.000.sql`
- * …) to stay under D1's 2 GiB `--file` limit; each logical table's chunks are
- * applied in order.
+ * …) to stay under the size `wrangler d1 execute --file` can read; each logical
+ * table's chunks are applied in order. Any file still above the safe read size
+ * (e.g. produced by an older export) is re-split on statement boundaries into
+ * temporary parts before being applied.
  * The live collector cursors ('live_blocks'/'live_txs') are then seeded to the
  * backfill top (max topoheight in BACKFILL_DB, or --cursor=N) so `npm run dev`
  * resumes from the tip instead of re-walking history, which would double-count
  * the daily_miners/daily_block_types upserts.
  */
-import { existsSync, rmSync, writeFileSync, unlinkSync, statSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, rmSync, writeFileSync, unlinkSync, statSync, readdirSync, createReadStream, createWriteStream, mkdtempSync } from "node:fs";
+import { join, basename } from "node:path";
+import { tmpdir } from "node:os";
+import { once } from "node:events";
 import { spawnSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 
@@ -40,6 +44,10 @@ const DB_PATH = process.env.BACKFILL_DB ?? "data/backfill.db";
 const DB_NAME = process.env.D1_NAME ?? "xelis-stats";
 const STATE_DIR = ".wrangler/state/v3/d1";
 const TARGET = REMOTE ? "--remote" : "--local";
+// `wrangler d1 execute --file` reads the whole dump into a JS string, so V8's
+// max string length (0x1fffffe8 ≈ 512 MiB) is the real cap — not D1's 2 GiB
+// file limit. Keep parts comfortably under it; larger files are re-split.
+const MAX_FILE_BYTES = Number(process.env.IMPORT_CHUNK_BYTES ?? 400_000_000);
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -77,6 +85,107 @@ function run(args: string[]): void {
   });
   if (res.error) throw res.error;
   if (res.status !== 0) throw new Error(`npx wrangler ${args.join(" ")} failed (exit ${res.status})`);
+}
+
+/** Split a large `.sql` dump into temp parts under MAX_FILE_BYTES so wrangler
+ *  can read each one. Cuts only between statements (after `;` + newline, outside
+ *  single-quoted strings) so every part is valid SQL on its own. */
+async function splitSqlFile(file: string, dir: string): Promise<string[]> {
+  const parts: string[] = [];
+  let out: ReturnType<typeof createWriteStream> | undefined;
+  let outBytes = 0;
+
+  const openPart = (): void => {
+    const p = join(dir, `part-${String(parts.length).padStart(3, "0")}.sql`);
+    out = createWriteStream(p);
+    outBytes = 0;
+    parts.push(p);
+  };
+  const closePart = async (): Promise<void> => {
+    if (!out) return;
+    const done = once(out, "close");
+    out.end();
+    await done;
+    out = undefined;
+  };
+  const writeStmt = async (stmt: string): Promise<void> => {
+    if (out && outBytes >= MAX_FILE_BYTES) await closePart();
+    if (!out) openPart();
+    const ok = out!.write(stmt);
+    outBytes += Buffer.byteLength(stmt);
+    if (!ok) await once(out!, "drain");
+  };
+
+  let carry = "";
+  let inQuote = false;
+  let semicolonPending = false;
+  for await (const chunk of createReadStream(file, { encoding: "utf8", highWaterMark: 1 << 24 })) {
+    const piece = chunk as string;
+    let start = 0;
+    let i = 0;
+    if (semicolonPending) {
+      semicolonPending = false;
+      if (piece[0] === "\n") {
+        await writeStmt(carry + "\n");
+        carry = "";
+        i = 1;
+      }
+    }
+    start = i;
+    while (i < piece.length) {
+      const ch = piece[i];
+      if (inQuote) {
+        if (ch === "'") {
+          if (piece[i + 1] === "'") { i += 2; continue; }
+          inQuote = false;
+        }
+        i++;
+      } else if (ch === "'") {
+        inQuote = true;
+        i++;
+      } else if (ch === ";") {
+        if (i + 1 < piece.length) {
+          if (piece[i + 1] === "\n") {
+            await writeStmt(carry + piece.slice(start, i + 2));
+            carry = "";
+            i += 2;
+            start = i;
+            continue;
+          }
+          i++;
+        } else {
+          carry += piece.slice(start, i + 1);
+          semicolonPending = true;
+          i++;
+          start = i;
+        }
+      } else {
+        i++;
+      }
+    }
+    if (start < piece.length) carry += piece.slice(start);
+  }
+  if (carry.trim().length) await writeStmt(carry);
+  await closePart();
+  return parts;
+}
+
+/** Apply one dump file, re-splitting first when it is too large to read. */
+async function applyFile(file: string): Promise<void> {
+  if (statSync(file).size <= MAX_FILE_BYTES) {
+    run(["d1", "execute", DB_NAME, "--file", file, TARGET]);
+    return;
+  }
+  const mb = (statSync(file).size / 1e6).toFixed(0);
+  const dir = mkdtempSync(join(tmpdir(), "d1-import-"));
+  try {
+    const parts = await splitSqlFile(file, dir);
+    console.log(`    ${basename(file)} is ${mb} MB; split into ${parts.length} parts`);
+    if (DRY) { console.log(`  [dry-run] would import ${parts.length} temporary parts from ${dir}`); return; }
+    for (const p of parts) run(["d1", "execute", DB_NAME, "--file", p, TARGET]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 function backfillTop(): number | undefined {
@@ -132,7 +241,7 @@ for (const name of selected) {
   }
   const mb = (files.reduce((n, f) => n + statSync(f).size, 0) / 1e6).toFixed(1);
   console.log(`  ${name}.sql (${mb} MB${files.length > 1 ? `, ${files.length} parts` : ""})`);
-  for (const file of files) run(["d1", "execute", DB_NAME, "--file", file, TARGET]);
+  for (const file of files) await applyFile(file);
 }
 
 if (!NO_SEED) {

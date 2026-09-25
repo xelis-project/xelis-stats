@@ -24,9 +24,10 @@ import { join, basename } from "node:path";
 
 const DB_PATH = process.env.BACKFILL_DB ?? "data/backfill.db";
 const OUT_DIR = process.env.EXPORT_DIR ?? "export";
-// `wrangler d1 execute --file` refuses files above 2 GiB, so dumps larger than
-// this are split into numbered parts. Default 1 GB leaves headroom.
-const CHUNK_BYTES = Number(process.env.EXPORT_CHUNK_BYTES ?? 1_000_000_000);
+// `wrangler d1 execute --file` reads the whole dump into a JS string, so V8's
+// max string length (0x1fffffe8 ≈ 512 MiB) is the real cap — not D1's 2 GiB
+// file limit. Keep parts comfortably under it; import_d1 re-splits any leftovers.
+const CHUNK_BYTES = Number(process.env.EXPORT_CHUNK_BYTES ?? 400_000_000);
 const FULL = process.argv.includes("--full");
 const REMOTE = process.argv.includes("--remote");
 const TARGET = REMOTE ? "--remote" : "--local";
