@@ -677,15 +677,30 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
 @media (max-width: 620px) {
   #app { padding: 1rem 1.2rem 4rem; }
   .cards { grid-template-columns: repeat(2, 1fr); }
-  header.site { gap: 0.6rem; padding: 0.8rem 1rem; top: 0.6rem; margin-bottom: 1.2rem; }
-  header.site .logo { font-size: 1.5rem; }
-  header.site .status { order: 1; margin-left: auto; padding: 0.4rem 0.9rem; font-size: 1rem; }
-  .searchbox { order: 2; padding: 0.5rem; }
+  /* Header becomes a 2-row grid: one compact control row plus a full-width
+     nav row that expands into the drawer. Explicit column placement keeps the
+     hamburger pinned to the right instead of wrapping onto a line of its own. */
+  header.site {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.8rem 1rem;
+    top: 0.6rem;
+    margin-bottom: 1.2rem;
+  }
+  header.site .logo { grid-column: 1; font-size: 1.5rem; }
+  header.site .status {
+    grid-column: 2; justify-self: end; margin-left: 0; min-width: 0; max-width: 100%;
+    padding: 0.4rem 0.9rem; font-size: 1rem;
+  }
+  header.site .status span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .searchbox { grid-column: 3; padding: 0.5rem; }
   .searchbox > span { display: none; }
-  header.site .icon-btn { order: 3; padding: 0.5rem; }
-  header.site .menu-toggle { order: 4; display: inline-flex; padding: 0.5rem; }
+  header.site .icon-btn { grid-column: 4; padding: 0.5rem; }
+  header.site .menu-toggle { grid-column: 5; display: inline-flex; padding: 0.5rem; }
   header.site nav {
-    order: 5; flex-basis: 100%;
+    grid-column: 1 / -1;
     display: grid; grid-template-rows: 0fr;
     overflow: visible; gap: 0; margin: 0; padding: 0;
     transition: grid-template-rows 0.3s ease;
@@ -729,6 +744,12 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
   footer.site .footer-copy { margin-left: 0; flex-basis: 100%; }
   .kv td:first-child { width: auto; }
   .panel { padding: 1.2rem; }
+}
+/* Tiny phones: no room for the status text next to the logo + three controls,
+   so keep the colour-coded pulsing dot only. */
+@media (max-width: 360px) {
+  header.site .status span:last-child { display: none; }
+  header.site .status { padding: 0.4rem 0.7rem; }
 }
 /* Big monitors: everything is rem-based, so scaling the root font with
    viewport width zooms the whole UI proportionally (62.5% = desktop 1x,
