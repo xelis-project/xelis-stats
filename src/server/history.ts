@@ -28,7 +28,7 @@ const METRICS: Record<string, { table: string; col: string; agg?: "sum" | "avg";
   "miner-rev-usd": { table: "miner-rev-usd", col: "", agg: "sum" },
   // daily_stats.miner_revenue holds atomic XEL; report whole XEL
   "miner-revenue": { table: "daily_stats", col: "miner_revenue", agg: "sum", div: 1e8 },
-  orphans: { table: "daily_stats", col: "orphan_count", agg: "sum" },
+  "side-blocks": { table: "daily_stats", col: "side_count", agg: "sum" },
   "block-time": { table: "blocks", col: "", agg: "avg" },
   "nakamoto": { table: "daily_miners", col: "nakamoto", agg: "avg" },
   gini: { table: "daily_miners", col: "gini", agg: "avg" },

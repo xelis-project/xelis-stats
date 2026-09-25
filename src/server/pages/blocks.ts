@@ -112,7 +112,6 @@ blocks.get("/blocks", async (c) => {
     ? rows.map((b) => {
         const topo = b.topoheight as number;
         const ts = b.ts as number;
-        const orphan = b.is_orphan ? ' <span class="badge fail">orphan</span>' : "";
         const type = esc(String(b.block_type ?? "normal"));
         return `<tr>
           <td><a href="/block/${topo}"><span class="mint">${fmtInt(topo)}</span></a></td>
@@ -121,7 +120,7 @@ blocks.get("/blocks", async (c) => {
           <td class="num">${fmtInt(b.tx_count as number)}</td>
           <td class="num">${fmt((b.difficulty as number) ?? 0)}</td>
           <td class="num">${atomic(b.miner_reward as number)}</td>
-          <td><span class="badge ${type.toLowerCase()}">${type}</span>${orphan}</td>
+          <td><span class="badge ${type.toLowerCase()}">${type}</span></td>
         </tr>`;
       }).join("")
     : `<tr><td colspan="7" style="color:var(--text-dim)">No indexed blocks yet — historical backfill pending. Live data unavailable until D1 import.</td></tr>`;

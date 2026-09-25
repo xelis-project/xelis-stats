@@ -47,7 +47,6 @@ blockDetail.get("/block/:id", async (c) => {
     difficulty: num(block.difficulty),
     size: num(block.size ?? block.total_size_in_bytes),
     type: esc(block.block_type ?? "normal"),
-    orphan: !!block.is_orphan,
     miner: String(block.miner_address ?? block.miner ?? ""),
     minerReward: num(block.miner_reward),
     devReward: num(block.dev_reward),
@@ -102,7 +101,7 @@ blockDetail.get("/block/:id", async (c) => {
     ${maxTopo === null || view.topo < maxTopo ? `<a class="btn ghost" href="/block/${view.topo + 1}" title="Next block">Next ${icons.chevronRight}</a>` : dim(`Next ${icons.chevronRight}`)}
   </div>`;
 
-  const typeBadge = `<span class="badge ${view.type.toLowerCase()}">${view.type}</span>${view.orphan ? ' <span class="badge fail">orphan</span>' : ""}`;
+  const typeBadge = `<span class="badge ${view.type.toLowerCase()}">${view.type}</span>`;
 
   const hero = `<div class="panel blk-hero">
     <div class="blk-head">
