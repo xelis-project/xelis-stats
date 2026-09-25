@@ -8,7 +8,7 @@ import { filterButton, filterPop, filterField } from "../filters";
 import { rpc } from "../xelis";
 import { fetchBlockTimes } from "../shards";
 import { esc, entityTag, blkCopyScript, flaggedText, num, PAGE_SIZE, pager } from "./shared";
-import { fetchStorage, storageBatchHtml, storageCard, storageHeadText, storageScript } from "./storage";
+import { fetchStorage, storageBatchHtml, storageEntry, storageHeadText } from "./storage";
 
 export const contracts = new Hono<{ Bindings: Env }>();
 
@@ -239,9 +239,18 @@ contracts.get("/contracts/:id", async (c) => {
   </div>` : "";
 
   const storagePanel = entries.length ? `<div class="panel" id="storage">
-    <h2>Contract Storage <span style="color:var(--text-dim)">${storageHeadText(entries.length, storageMore)}</span></h2>
-    <div class="stg-list" id="stg-list" data-contract="${esc(deployHash)}">${entries.map((e) => storageCard(e.key, e.value)).join("")}</div>
-    ${storageMore ? `<div class="stg-more-row"><button class="btn ghost" type="button" id="stg-more">Load more entries</button></div>` : ""}
+    <h2>Contract Storage <span style="color:var(--text-dim)" id="stg-count">${storageHeadText(entries.length, storageMore)}</span></h2>
+    <div class="stg-toolbar">
+      <input class="stg-search" id="stg-search" type="search" autocomplete="off" placeholder="Filter by key, value or type…" aria-label="Filter storage entries" />
+      <select class="stg-sel" id="stg-type" aria-label="Filter by value type"><option value="">all value types</option></select>
+      <button class="btn ghost stg-act" type="button" id="stg-expand">Expand all</button>
+      <button class="btn ghost stg-act" type="button" id="stg-collapse">Collapse all</button>
+    </div>
+    <div class="stg-head stg-head-cols" aria-hidden="true">
+      <span>Key</span><span>Key type</span><span>Value</span><span>Value type</span><span></span>
+    </div>
+    <div class="stg-list" id="stg-list" data-contract="${esc(deployHash)}">${entries.map((e) => storageEntry(e.key, e.value)).join("")}</div>
+    <div class="stg-more-row" id="stg-more-row"${storageMore ? "" : " hidden"}><button class="btn ghost" type="button" id="stg-more">Load more entries</button></div>
   </div>` : "";
 
   // bytecode viewer: collapsible dump of the compiled module chunks
@@ -291,7 +300,6 @@ contracts.get("/contracts/:id", async (c) => {
     ${invokesPanel}
     ${storagePanel}
     ${bytecodePanel}
-    ${entries.length ? storageScript(deployHash, entries.length) : ""}
     <script>${blkCopyScript}</script>`;
   return c.html(layout(`Contract ${shortHash(deployHash, 8)}`, content, "/contracts"));
 });
