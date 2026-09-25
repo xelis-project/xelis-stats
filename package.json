@@ -13,9 +13,7 @@
     "cf-typegen": "wrangler types",
     "backfill": "node --experimental-strip-types scripts/backfill.mts",
     "backfill:monitor": "node --experimental-strip-types scripts/monitor.mts",
-    "contracts": "node --experimental-strip-types scripts/legacy/contracts.mts",
     "export": "node --experimental-strip-types scripts/export.mts",
-    "import:history": "node --experimental-strip-types scripts/legacy/import_history.mts",
     "import:d1": "node --experimental-strip-types scripts/import_d1.mts"
   },
   "dependencies": {
