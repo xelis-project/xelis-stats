@@ -106,11 +106,11 @@ contracts.get("/contracts/:id", async (c) => {
   type Bal = { asset: string; name: string | null; symbol: string | null; decimals: number | null; balance: number | null; topo: number | null };
   let balances: Bal[] = [];
   try {
-    const mod = await rpc<{ topoheight: number; version: { data?: { module?: unknown } } }>("get_contract_module", { contract: id });
+    // RPCVersioned flattens Versioned<T>, so the module is at `data` (top-level)
+    const mod = await rpc<{ topoheight: number; data?: unknown }>("get_contract_module", { contract: id });
     moduleTopo = num(mod.topoheight) || null;
-    moduleRaw = mod.version?.data?.module ?? null;
-    const raw = JSON.stringify(moduleRaw);
-    codeSize = raw.length;
+    moduleRaw = mod.data ?? null;
+    codeSize = moduleRaw == null ? null : JSON.stringify(moduleRaw).length;
   } catch { /* no module / node unreachable */ }
   try {
     ({ entries, more: storageMore } = await fetchStorage(id, 0));
@@ -168,6 +168,9 @@ contracts.get("/contracts/:id", async (c) => {
   const gasTotal = num(ct.gas_total);
   const shownDeployer = deployer || liveDeployer;
   const deployTopo = num(ct.deploy_topo) || liveDeployTopo || 0;
+  // contracts are immutable, so the indexed deploy topo and the on-chain module
+  // topo are the same block; use the on-chain value only as a fallback
+  const shownDeployTopo = deployTopo > 0 ? deployTopo : (moduleTopo ?? 0);
   const deployHash = String(ct.contract_id ?? id);
   const lastTs = invokes.length ? num(invokes[0].ts) : null;
 
@@ -190,7 +193,7 @@ contracts.get("/contracts/:id", async (c) => {
       ${statCard("Invokes", invokeCount > 0 ? fmtInt(invokeCount) : "—", "indexed contract calls")}
       ${statCard("Gas Total", gasTotal > 0 ? `${atomic(gasTotal)} XEL` : "—", "sum of max_gas across invokes")}
       ${statCard("Deployer", shownDeployer ? `<a class="mono" href="/account/${esc(shownDeployer)}">${shortHash(shownDeployer, 8)}</a>` : "—", shownDeployer && !deployer ? "resolved on-chain" : "account that deployed")}
-      ${statCard("Deployed", deployTopo > 0 ? `<a href="/block/${deployTopo}">#${fmtInt(deployTopo)}</a>` : "—", "deploy tx block")}
+      ${statCard("Deployed", shownDeployTopo > 0 ? `<a href="/block/${shownDeployTopo}">#${fmtInt(shownDeployTopo)}</a>` : "—", "deploy tx block")}
       ${statCard("Last Invoke", lastTs ? ago(lastTs) : "—", lastTs ? fmtTime(lastTs) : "not observed")}
     </div>
   </div>`;
@@ -198,7 +201,7 @@ contracts.get("/contracts/:id", async (c) => {
   const overview = `<div class="panel"><h2>Overview</h2><table class="kv">
     <tr><td>Contract ID</td><td><span class="mono">${esc(deployHash)}</span> <button class="copybtn" type="button" onclick="blkCopy('${esc(deployHash)}', this)">copy</button></td></tr>
     <tr><td>Deployer</td><td>${shownDeployer ? `<a class="mono" href="/account/${esc(shownDeployer)}">${shortHash(shownDeployer, 10)}</a>${entityTag(shownDeployer)} <button class="copybtn" type="button" onclick="blkCopy('${esc(shownDeployer)}', this)">copy</button>${!deployer ? ' <span style="color:var(--text-dim)">(resolved on-chain)</span>' : ""}` : "—"}</td></tr>
-    ${deployTopo > 0 || moduleTopo ? `<tr><td>Deployed at</td><td>${deployTopo > 0 ? `<a href="/block/${deployTopo}"><span class="mint">#${fmtInt(deployTopo)}</span></a> <span style="color:var(--text-dim)">(indexed)</span>` : ""}${moduleTopo ? ` <a href="/block/${moduleTopo}"><span class="mint">#${fmtInt(moduleTopo)}</span></a> <span style="color:var(--text-dim)">(on-chain)</span>` : ""}</td></tr>` : ""}
+    ${shownDeployTopo > 0 ? `<tr><td>Deployed at</td><td><a href="/block/${shownDeployTopo}"><span class="mint">#${fmtInt(shownDeployTopo)}</span></a> <span style="color:var(--text-dim)">(${deployTopo > 0 ? "indexed" : "on-chain"})</span>${deployTopo > 0 && moduleTopo && moduleTopo !== deployTopo ? ` <a href="/block/${moduleTopo}"><span class="mint">#${fmtInt(moduleTopo)}</span></a> <span style="color:var(--text-dim)">(on-chain)</span>` : ""}</td></tr>` : ""}
     ${codeSize ? `<tr><td>Module code</td><td><span class="mono">~${fmtInt(codeSize)} bytes (serialized)</span></td></tr>` : ""}
     ${deployFee ? `<tr><td>Deploy fee</td><td>${atomic(deployFee, 6)} XEL</td></tr>` : ""}
     <tr><td>Invokes seen</td><td>${invokeCount > 0 ? fmtInt(invokeCount) : "—"}</td></tr>
