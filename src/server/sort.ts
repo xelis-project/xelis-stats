@@ -74,6 +74,8 @@ export const ACCT_COLS: Record<string, SortCol> = {
   first: { sql: "first_seen", def: "asc" },
   last: { sql: "last_active", def: "desc" },
   txs: { sql: "tx_count", def: "desc" },
+  // transfer_count is a computed alias summed from tx_index, not a stored column
+  transfers: { sql: "transfer_count", def: "desc" },
 };
 
 // /api/top rankings; ORDER BY aliases must match each ranking query

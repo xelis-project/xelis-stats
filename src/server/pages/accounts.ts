@@ -39,7 +39,9 @@ accounts.get("/accounts", async (c) => {
     }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     total = await db.prepare(`SELECT COUNT(*) AS n FROM accounts ${where}`).bind(...binds).first<{ n: number }>().then((r) => r?.n ?? 0);
-    rows = await db.prepare(`SELECT address, first_seen, last_active, tx_count FROM accounts ${where} ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
+    rows = await db.prepare(`SELECT address, first_seen, last_active, tx_count,
+        (SELECT COALESCE(SUM(t.transfer_count), 0) FROM tx_index t WHERE t.sender = accounts.address) AS transfer_count
+      FROM accounts ${where} ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
       .bind(...binds, PAGE_SIZE, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>().then((r) => r.results ?? []);
   } catch {
     rows = [];
@@ -64,9 +66,10 @@ accounts.get("/accounts", async (c) => {
           <td>${timeCell(a.first_seen as number)}</td>
           <td>${timeCell((a.last_active as number) ?? null)}</td>
           <td class="num">${fmtInt(a.tx_count as number)}</td>
+          <td class="num"${Number(a.transfer_count) === 0 ? ' style="color:var(--text-dim)"' : ""}>${fmtInt(a.transfer_count as number)}</td>
         </tr>`;
       }).join("")
-    : `<tr><td colspan="4" style="color:var(--text-dim)">No observed accounts yet.</td></tr>`;
+    : `<tr><td colspan="5" style="color:var(--text-dim)">No observed accounts yet.</td></tr>`;
 
   const content = `<div class="panel">
     <div class="panel-head">
@@ -75,7 +78,7 @@ accounts.get("/accounts", async (c) => {
       ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
-      <thead><tr>${srt.th("address", "Address")}${srt.th("first", "First seen")}${srt.th("last", "Last active")}${srt.th("txs", "Txs", true)}</tr></thead>
+      <thead><tr>${srt.th("address", "Address")}${srt.th("first", "First seen")}${srt.th("last", "Last active")}${srt.th("txs", "Txs", true)}${srt.th("transfers", "Transfers", true)}</tr></thead>
       <tbody>${body}</tbody>
     </table></div>
     ${pager(srt.link(srt.key, srt.dir), page, totalPages)}
