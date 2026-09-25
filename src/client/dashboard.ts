@@ -1,4 +1,4 @@
-import { renderChart, renderCompare, cumulativePoints, ACCENTS, accentHex, type SeriesPoint, type LineWidth } from "./charts";
+import { renderChart, renderCompare, cumulativePoints, splitBlockTypes, ACCENTS, accentHex, type SeriesPoint, type LineWidth } from "./charts";
 import { fmt, fmtInt, fmtPct, fmtBytes, shortHash, atomic, ago, metricFormatter } from "./format";
 import { icons, gripIcon } from "./icons";
 import { containsBadWord } from "./badwords";
@@ -1041,6 +1041,9 @@ async function mountTable(w: Widget): Promise<void> {
   }
 }
 
+// "block-types" returns one row per (day, type) as "YYYY-MM-DD-Type". Rendered
+// as a single series, uPlot maps all of a day's types to the same x and draws a
+// zig-zag between the counts. Split them into one series per type instead.
 function mountChart(w: Widget): void {
   const item = byKey.get(w.key);
   const body = chartBody(w);
@@ -1064,6 +1067,13 @@ function mountChart(w: Widget): void {
       let points = (j as { points?: SeriesPoint[] }).points ?? [];
       if (!points.length) {
         body.innerHTML = '<p class="w-empty">No data for this range yet.</p>';
+        return;
+      }
+      if (item.metric === "block-types") {
+        const series = splitBlockTypes(points);
+        if (o.cum) for (const s of series) s.points = cumulativePoints(s.points);
+        const inst = renderCompare(body, series, { type: o.type, log: o.log, accent: o.accent, fill: o.fill, points: o.points, lineWidth: o.lineWidth, fmt: metricFormatter(item.metric ?? "block-types") });
+        if (inst) charts.set(w.id, inst);
         return;
       }
       if (o.cum) points = cumulativePoints(points);

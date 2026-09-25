@@ -1,4 +1,4 @@
-import { renderChart, renderCompare, cumulativePoints, fmtAuto, type ChartOpts, type SeriesPoint } from "./charts";
+import { renderChart, renderCompare, cumulativePoints, splitBlockTypes, fmtAuto, type ChartOpts, type SeriesPoint } from "./charts";
 import { metricFormatter, FEE_METRICS } from "./format";
 import { refreshSort } from "./sortable";
 import { attachDatePickers, setDatePickerValue } from "./datepicker";
@@ -43,6 +43,13 @@ function initChartsHub(): void {
     const o = renderOpts();
     const useCum = !!chkCum?.checked;
     const m2 = selCompare?.value ?? "";
+    if (m === "block-types") {
+      const series = splitBlockTypes(data1);
+      if (useCum) for (const s of series) s.points = cumulativePoints(s.points);
+      if (!series.length) { showEmpty(); return; }
+      renderCompare(chartTarget, series, { ...o, fmt: metricFormatter(m) });
+      return;
+    }
     const s1 = useCum ? cumulativePoints(data1) : data1;
     if (m2 && m2 !== m && data2) {
       const s2 = useCum ? cumulativePoints(data2) : data2;

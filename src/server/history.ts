@@ -465,7 +465,7 @@ history.get("/api/history/:metric", async (c) => {
         if (until) { conds.push("date <= ?"); binds.push(until); }
         const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
         rows = await c.env.DB.prepare(
-          `SELECT date || '-' || block_type bucket, count value FROM daily_block_types ${where} ORDER BY date`
+          `SELECT date || '-' || block_type bucket, count value FROM daily_block_types ${where} ORDER BY date, block_type`
         ).bind(...binds).all<{ bucket: string; value: number }>().then((r) => r.results ?? []);
       } else {
         const conds: string[] = [];

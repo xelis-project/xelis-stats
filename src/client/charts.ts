@@ -51,6 +51,30 @@ export function cumulativePoints(points: SeriesPoint[]): SeriesPoint[] {
   return points.map((p) => ({ date: p.date, value: (sum += p.value) }));
 }
 
+// The block-types metric keys each point "YYYY-MM-DD-Type". Drawn as a single
+// series, every type of a day collapses onto the same x and uPlot connects the
+// counts into a zig-zag, so split them into one series per type instead.
+const BLOCK_TYPE_ORDER = ["Normal", "Side", "Sync"];
+
+export function splitBlockTypes(points: SeriesPoint[]): Array<{ label: string; points: SeriesPoint[] }> {
+  const groups = new Map<string, SeriesPoint[]>();
+  for (const p of points) {
+    const m = /^(\d{4}-\d{2}-\d{2})-(.+)$/.exec(p.date);
+    const type = m ? m[2] : "Normal";
+    const date = m ? m[1] : p.date;
+    const list = groups.get(type) ?? [];
+    list.push({ date, value: p.value });
+    groups.set(type, list);
+  }
+  const rank = (t: string) => {
+    const i = BLOCK_TYPE_ORDER.indexOf(t);
+    return i < 0 ? BLOCK_TYPE_ORDER.length : i;
+  };
+  return [...groups.keys()]
+    .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+    .map((t) => ({ label: t, points: groups.get(t)! }));
+}
+
 function hexToRgba(hex: string, a: number): string {
   const m = /^#([0-9a-f]{6})$/i.exec(hex);
   if (!m) return `rgba(2,255,207,${a})`;
