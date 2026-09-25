@@ -6,7 +6,7 @@ import { fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/format";
 import { srvSort } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
 import { rpc } from "../xelis";
-import { esc, entityTag, blkCopyScript, num, PAGE_SIZE, pager } from "./shared";
+import { esc, entityTag, blkCopyScript, flaggedText, num, PAGE_SIZE, pager } from "./shared";
 import { fetchStorage, storageBatchHtml, storageCard, storageHeadText, storageScript } from "./storage";
 
 export const contracts = new Hono<{ Bindings: Env }>();
@@ -103,7 +103,7 @@ contracts.get("/contracts/:id", async (c) => {
   let moduleRaw: unknown = null;
   let entries: { key: unknown; value: unknown }[] = [];
   let storageMore = false;
-  type Bal = { asset: string; balance: number | null; topo: number | null };
+  type Bal = { asset: string; name: string | null; balance: number | null; topo: number | null };
   let balances: Bal[] = [];
   try {
     const mod = await rpc<{ topoheight: number; version: { data?: { module?: unknown } } }>("get_contract_module", { contract: id });
@@ -120,11 +120,22 @@ contracts.get("/contracts/:id", async (c) => {
     balances = await Promise.all(assets.map(async (asset): Promise<Bal> => {
       try {
         const b = await rpc<{ data: number; topoheight: number }>("get_contract_balance", { contract: id, asset });
-        return { asset, balance: num(b.data), topo: num(b.topoheight) };
-      } catch { return { asset, balance: null, topo: null }; }
+        return { asset, name: null, balance: num(b.data), topo: num(b.topoheight) };
+      } catch { return { asset, name: null, balance: null, topo: null }; }
     }));
   } catch { /* none */ }
   const xel = "0000000000000000000000000000000000000000000000000000000000000000";
+  try {
+    const ids = balances.map((b) => b.asset).filter((a) => a !== xel);
+    const byId = new Map<string, string | null>();
+    if (ids.length) {
+      const rows = await db.prepare(
+        `SELECT asset_id, name FROM assets WHERE asset_id IN (${ids.map(() => "?").join(",")})`
+      ).bind(...ids).all<{ asset_id: string; name: string | null }>();
+      for (const r of rows.results ?? []) byId.set(r.asset_id, r.name);
+    }
+    balances = balances.map((b) => ({ ...b, name: b.asset === xel ? "XEL" : byId.get(b.asset) ?? null }));
+  } catch { /* names unavailable */ }
   const deployer = String(ct.deployer ?? "");
 
   // contract hash == deploy tx hash: resolve the deployer on-chain when the
@@ -200,12 +211,13 @@ contracts.get("/contracts/:id", async (c) => {
         const assetCell = b.asset === xel
           ? `<span class="badge">XEL</span>`
           : `<a class="mono" href="/asset/${esc(b.asset)}">${shortHash(b.asset, 10)}</a>`;
-        return `<tr><td>${assetCell}</td>${amount}<td class="num">${b.topo ? `<a href="/block/${b.topo}">${fmtInt(b.topo)}</a>` : "—"}</td></tr>`;
+        const nameCell = b.name ? flaggedText(b.name) : "—";
+        return `<tr><td>${assetCell}</td><td>${nameCell}</td>${amount}<td class="num">${b.topo ? `<a href="/block/${b.topo}">${fmtInt(b.topo)}</a>` : "—"}</td></tr>`;
       }).join("")
     : "";
   const balancesPanel = balances.length ? `<div class="panel"><h2>Balances</h2>
     <div class="tablewrap"><table>
-      <thead><tr><th>Asset</th><th class="num">Amount</th><th class="num">Updated (topo)</th></tr></thead>
+      <thead><tr><th>Asset</th><th>Name</th><th class="num">Amount</th><th class="num">Updated (topo)</th></tr></thead>
       <tbody>${balRows}</tbody>
     </table></div>
   </div>` : "";
