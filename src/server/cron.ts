@@ -157,19 +157,86 @@ export async function snapshotPeers(
     console.error("peers cron:", (err as Error).message);
   }
 }
-export async function handleCron(env: Env): Promise<void> {
+
+// A cron invocation records one CronJobStatus per named task. Kept small:
+// cron_runs history is trimmed to a week; cron_jobs keeps only the latest row.
+export interface CronJobStatus {
+  job: string;
+  ok: boolean;
+  ms: number;
+  error?: string;
+}
+
+const CRON_RUN_RETENTION_MS = 7 * 86400_000;
+
+/** Persist this invocation's per-job outcomes and one run-history row. */
+async function recordCronRun(
+  env: Env,
+  schedule: string,
+  startedAt: number,
+  jobs: CronJobStatus[],
+): Promise<void> {
+  if (!jobs.length) return;
+  const ts = Date.now();
+  const failed = jobs.filter((j) => !j.ok);
+  const jobStmt = env.DB.prepare(
+    `INSERT INTO cron_jobs (job, last_ts, last_ok, last_ms, last_error, fail_streak, ok_total, fail_total)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(job) DO UPDATE SET
+       last_ts = excluded.last_ts,
+       last_ok = excluded.last_ok,
+       last_ms = excluded.last_ms,
+       last_error = excluded.last_error,
+       fail_streak = CASE WHEN excluded.last_ok = 1 THEN 0 ELSE cron_jobs.fail_streak + 1 END,
+       ok_total = cron_jobs.ok_total + excluded.ok_total,
+       fail_total = cron_jobs.fail_total + excluded.fail_total`
+  );
+  const stmts = jobs.map((j) =>
+    jobStmt.bind(j.job, ts, j.ok ? 1 : 0, j.ms, j.error?.slice(0, 500) ?? null, j.ok ? 0 : 1, j.ok ? 1 : 0, j.ok ? 0 : 1)
+  );
+  stmts.push(env.DB.prepare(
+    "INSERT INTO cron_runs (ts, schedule, duration_ms, jobs, failed, errors) VALUES (?, ?, ?, ?, ?, ?)"
+  ).bind(
+    ts,
+    schedule,
+    ts - startedAt,
+    jobs.length,
+    failed.length,
+    failed.length ? JSON.stringify(failed.map((j) => ({ job: j.job, error: j.error }))).slice(0, 2000) : null,
+  ));
+  await env.DB.batch(stmts);
+  await env.DB.prepare("DELETE FROM cron_runs WHERE ts < ?").bind(ts - CRON_RUN_RETENTION_MS).run();
+}
+
+export async function handleCron(env: Env, schedule = "unknown"): Promise<void> {
+  const startedAt = Date.now();
+  const jobs: CronJobStatus[] = [];
+  // Each task is timed and its failure captured instead of silently logged, so
+  // /status and /api/cron can surface which scheduled work is unhealthy.
+  const run = async <T>(job: string, fn: () => Promise<T>): Promise<T | null> => {
+    const t0 = Date.now();
+    try {
+      const value = await fn();
+      jobs.push({ job, ok: true, ms: Date.now() - t0 });
+      return value;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      jobs.push({ job, ok: false, ms: Date.now() - t0, error: message });
+      console.error(`${job} cron:`, message);
+      return null;
+    }
+  };
+
   // wake the live collector so indexing continues in the background even with
   // no browser clients connected (the DO reconnects the node socket and runs
   // one incremental indexing pass; its alarm keeps it alive between ticks)
-  try {
+  await run("collector-tick", async () => {
     const stub = env.COLLECTOR.get(env.COLLECTOR.idFromName("global"));
     await stub.fetch("https://collector.internal/tick");
-  } catch (err) {
-    console.error("collector tick:", (err as Error).message);
-  }
+  });
 
   // market snapshot
-  try {
+  await run("market", async () => {
     const tickers = await fetchAllTickers();
     if (tickers.length) {
       const agg = aggregate(tickers);
@@ -181,26 +248,24 @@ export async function handleCron(env: Env): Promise<void> {
       );
       await env.DB.batch(stmts);
     }
-  } catch (err) {
-    console.error("market cron:", (err as Error).message);
-  }
+  });
 
-  // mempool snapshot
-  let info: { mempool_size: number; topoheight: number; top_block_hash: string } | null = null;
-  try {
-    info = await rpc<{ mempool_size: number; topoheight: number; top_block_hash: string }>("get_info", undefined, env.XELIS_NODE);
+  // mempool snapshot; get_info also feeds the peer snapshot below
+  const info = await run("mempool", async () => {
+    const i = await rpc<{ mempool_size: number; topoheight: number; top_block_hash: string }>("get_info", undefined, env.XELIS_NODE);
     await env.DB.prepare("INSERT OR REPLACE INTO mempool_snapshots (ts, size) VALUES (?, ?)")
-      .bind(Date.now(), info.mempool_size).run();
-    // rollupDailyStats binds 11 date params below
-  } catch (err) {
-    console.error("mempool cron:", (err as Error).message);
-  }
+      .bind(Date.now(), i.mempool_size).run();
+    return i;
+  });
 
-  // peer network snapshot (every run)
-  if (info) await snapshotPeers(env, info.topoheight, info.top_block_hash);
+  // peer network snapshot (every run). Skipped when get_info failed — the
+  // mempool job already records that failure, so peers is not double-counted.
+  if (info) {
+    await run("peers", () => snapshotPeers(env, info.topoheight, info.top_block_hash));
+  }
 
   // on-disk chain size snapshot; the node may not expose get_size_on_disk
-  try {
+  await run("chain-size", async () => {
     const size = await getSizeOnDisk(env.XELIS_NODE);
     if (Number.isFinite(size?.size_bytes)) {
       await env.DB.prepare("INSERT OR REPLACE INTO chain_size_snapshots (ts, size_bytes) VALUES (?, ?)")
@@ -208,39 +273,39 @@ export async function handleCron(env: Env): Promise<void> {
       // chain size grows slowly; keep a year of snapshots for long-term trend
       await env.DB.prepare("DELETE FROM chain_size_snapshots WHERE ts < ?").bind(Date.now() - 365 * 86400_000).run();
     }
-  } catch (err) {
-    console.error("chain size cron:", (err as Error).message);
-  }
+  });
 
   // reconcile the full asset registry so /assets is complete even for assets
   // the tx-detail pass never saw in a transfer/burn (cheap when unchanged)
-  try {
+  await run("asset-registry", async () => {
     const written = await syncAssetRegistry(env);
     if (written) console.log(`asset registry: synced ${written} rows`);
-  } catch (err) {
-    console.error("asset registry cron:", (err as Error).message);
-  }
+  });
 
   // hourly tasks (single cron schedule; use minute to distinguish — run when minute === 0)
   const minute = new Date().getUTCMinutes();
   if (minute === 0) {
     // asset supply history (the node only exposes the current minted supply)
-    try {
+    await run("asset-supply", async () => {
       const snapped = await snapshotAssetSupply(env);
       if (snapped) console.log(`asset supply: recorded ${snapped} snapshots`);
-    } catch (err) {
-      console.error("asset supply cron:", (err as Error).message);
-    }
+    });
     // daily rollup: recompute today's (and yesterday's) daily_stats row from D1
-    await rollupDailyStats(env, new Date().toISOString().slice(0, 10));
-    await rollupDailyStats(env, new Date(Date.now() - 86400_000).toISOString().slice(0, 10));
+    await run("daily-rollup", async () => {
+      await rollupDailyStats(env, new Date().toISOString().slice(0, 10));
+      await rollupDailyStats(env, new Date(Date.now() - 86400_000).toISOString().slice(0, 10));
+    });
     // D1 10GB workaround: migrate old raw rows into shard databases
-    try {
+    await run("shard-rotation", async () => {
       const result = await rotateShards(env);
       if (result !== "disabled") console.log("shard rotation:", result);
-    } catch (err) {
-      console.error("shard rotation:", (err as Error).message);
-    }
+    });
+  }
+
+  try {
+    await recordCronRun(env, schedule, startedAt, jobs);
+  } catch (err) {
+    console.error("cron monitor:", (err as Error).message);
   }
 }
 

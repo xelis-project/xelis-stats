@@ -220,7 +220,7 @@ app.route("/", seo);
 // Cron entry (market snapshots, mempool, hourly peers, daily rollup)
 export default {
   fetch: app.fetch,
-  scheduled: (_event: ScheduledEvent, env: Env, ctx: ExecutionContext) => {
-    ctx.waitUntil(handleCron(env));
+  scheduled: (event: ScheduledEvent, env: Env, ctx: ExecutionContext) => {
+    ctx.waitUntil(handleCron(env, event.cron));
   },
 };

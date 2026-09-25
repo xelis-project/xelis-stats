@@ -163,3 +163,27 @@ api.get("/api/peers", async (c) => {
     return c.json({ snapshot: null, versions: [], tags: [], prefixes: [], countries: [] }, 503);
   }
 });
+
+api.get("/api/cron", async (c) => {
+  try {
+    const [jobs, runs] = await Promise.all([
+      c.env.DB.prepare(
+        "SELECT job, last_ts, last_ok, last_ms, last_error, fail_streak, ok_total, fail_total FROM cron_jobs ORDER BY job"
+      ).all().then((r) => r.results),
+      c.env.DB.prepare(
+        "SELECT ts, schedule, duration_ms, jobs, failed, errors FROM cron_runs ORDER BY ts DESC LIMIT 50"
+      ).all().then((r) => r.results),
+    ]);
+    const last = runs[0] as Row | undefined;
+    const jobRows = jobs as Array<Row & { last_ok: number }>;
+    return c.json({
+      jobs,
+      runs,
+      last_run_ts: last ? Number(last.ts) : null,
+      healthy: jobRows.length > 0 && jobRows.every((j) => Number(j.last_ok) === 1),
+    });
+  } catch (err) {
+    logErr("api/cron", err);
+    return c.json({ jobs: [], runs: [], last_run_ts: null, healthy: false }, 503);
+  }
+});
