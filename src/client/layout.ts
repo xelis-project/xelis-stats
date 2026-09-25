@@ -43,12 +43,13 @@ export function layout(title: string, content: string, active: string, bodyClass
   <div id="app">
     <header class="site">
       <a class="logo" href="/"><svg width="22" height="21" viewBox="0 0 778 743" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M388.909 742.872L777.817 353.964L424.056 0.202599L478.809 132.737L700.036 353.964L388.909 665.091L77.7817 353.964L299.507 129.121L353.964 0L0 353.964L388.909 742.872Z"/><path d="M388.909 665.091L353.964 0L299.507 129.121L388.909 665.091Z"/><path d="M424.056 0.202599L388.909 665.091L478.809 132.737L424.056 0.202599Z"/></svg><span>XELIS&nbsp;<span style="color:var(--mint)">STATS</span></span></a>
-      <nav id="site-nav">${nav}</nav>
+      <nav id="site-nav"><div class="nav-clip"><div class="nav-grid">${nav}</div><div class="nav-foot"><a href="/api/docs">API</a><a href="/status">Status</a></div></div></nav>
       <button class="searchbox" type="button" onclick="openSearch()" aria-label="Search">${icons.search}<span>Search</span><kbd>Ctrl K</kbd></button>
       <a class="btn ghost icon-btn" href="/settings" title="Settings" aria-label="Settings">${icons.settings}</a>
       <div class="status connecting" id="ws-status"><span class="dot" id="ws-dot"></span><span id="ws-label">connecting</span></div>
       <button class="menu-toggle btn ghost icon-btn" type="button" onclick="toggleNav()" aria-label="Menu" aria-expanded="false" aria-controls="site-nav"><span class="ict-open">${icons.menu}</span><span class="ict-close">${icons.close}</span></button>
     </header>
+    <div class="nav-backdrop" aria-hidden="true" onclick="closeNav()"></div>
     <main id="main">${content}</main>
     <footer class="site">
       <a class="footer-brand" href="/">${XEL_LOGO}<span>XELIS&nbsp;<span style="color:var(--mint)">STATS</span></span></a>
@@ -70,20 +71,24 @@ export function layout(title: string, content: string, active: string, bodyClass
     </div>
   </div>
   <script>
-    function toggleNav() {
+    function setNav(open) {
       var h = document.querySelector("header.site");
       if (!h) return;
-      var open = h.classList.toggle("menu-open");
+      h.classList.toggle("menu-open", open);
+      document.body.classList.toggle("nav-open", open);
       var b = h.querySelector(".menu-toggle");
       if (b) b.setAttribute("aria-expanded", open ? "true" : "false");
+      if (open) {
+        var first = h.querySelector(".nav-grid a");
+        if (first) first.focus();
+      } else if (b && document.activeElement && h.contains(document.activeElement)) {
+        b.focus();
+      }
     }
-    function closeNav() {
-      var h = document.querySelector("header.site");
-      if (!h || !h.classList.contains("menu-open")) return;
-      h.classList.remove("menu-open");
-      var b = h.querySelector(".menu-toggle");
-      if (b) b.setAttribute("aria-expanded", "false");
-    }
+    function toggleNav() { setNav(!document.querySelector("header.site").classList.contains("menu-open")); }
+    function closeNav() { setNav(false); }
+    var siteNav = document.getElementById("site-nav");
+    if (siteNav) siteNav.addEventListener("click", function (e) { if (e.target.closest("a")) closeNav(); });
     function openSearch() {
       var o = document.getElementById("search-overlay");
       o.hidden = false;
@@ -99,10 +104,6 @@ export function layout(title: string, content: string, active: string, bodyClass
     document.addEventListener("keydown", function (e) {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openSearch(); }
       if (e.key === "Escape") { closeNav(); closeSearch(); }
-    });
-    document.addEventListener("click", function (e) {
-      var h = document.querySelector("header.site");
-      if (h && h.classList.contains("menu-open") && !h.contains(e.target)) closeNav();
     });
     document.getElementById("search-overlay").addEventListener("click", function (e) {
       if (e.target === this) closeSearch();
