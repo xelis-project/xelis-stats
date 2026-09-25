@@ -689,6 +689,7 @@ export async function mergeGroups(
   binds: unknown[],
   keyCol: string,
   sumCols: string[],
+  maxCols: string[] = [],
 ): Promise<Row[]> {
   const shards = await getShards(env);
   const rows = await Promise.all(allTargets(shards).map((t) => runOn(env, t, sql, binds)));
@@ -700,9 +701,21 @@ export async function mergeGroups(
       if (!acc) {
         const fresh: Row = { [keyCol]: r[keyCol] };
         for (const c of sumCols) fresh[c] = Number(r[c] ?? 0);
+        // cumulative-style columns (e.g. chain cumulative difficulty) are
+        // monotonic, so merging across shards takes the max, never the sum
+        for (const c of maxCols) {
+          const v = r[c];
+          fresh[c] = v == null ? null : Number(v);
+        }
         byKey.set(key, fresh);
       } else {
         for (const c of sumCols) acc[c] = Number(acc[c] ?? 0) + Number(r[c] ?? 0);
+        for (const c of maxCols) {
+          const v = r[c];
+          if (v == null) continue;
+          const n = Number(v);
+          acc[c] = acc[c] == null ? n : Math.max(Number(acc[c]), n);
+        }
       }
     }
   }

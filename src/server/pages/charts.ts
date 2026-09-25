@@ -24,10 +24,15 @@ charts.get("/charts", async (c) => {
 
   const metrics: Array<[string, string]> = [
     ["txs", "Transactions/day"], ["accounts", "Accounts growth"], ["active-accounts", "Active accounts"], ["miners", "Miners"],
-    ["hashrate", "Hashrate"], ["transfers", "Transfers"], ["fees", "Fees"], ["supply", "Supply"],
+    ["hashrate", "Hashrate"], ["difficulty", "Difficulty"], ["cum-difficulty", "Cumulative difficulty"],
+    ["transfers", "Transfers"], ["fees", "Fees"], ["supply", "Supply"],
     ["burned-supply", "Burned supply"], ["chain-size", "Blockchain size"], ["market-cap", "Market Cap"], ["block-types", "Block types"],
+    ["txs-transfer", "Tx: transfers"], ["txs-burn", "Tx: burns"], ["txs-invoke", "Tx: contract invokes"],
+    ["txs-deploy", "Tx: contract deploys"], ["txs-multisig", "Tx: multisig"],
+    ["contract-invokes", "Contract invokes"], ["contract-gas", "Contract gas"], ["contract-deploys", "Contract deploys"],
+    ["active-contracts", "Active contracts"],
     ["price", "XEL price"], ["quote-volume", "Quote volume"],
-    ["miner-revenue", "Miner revenue"], ["miner-rev-usd", "Miner revenue (USDT)"],
+    ["miner-revenue", "Miner revenue"], ["miner-rev-usd", "Miner revenue (USDT)"], ["hashprice", "Hashprice (USD/TH/day)"],
     ["block-time", "Block time"], ["nakamoto", "Nakamoto coefficient"], ["gini", "Production Gini"], ["encrypted", "Encrypted txs"],
     ["mempool", "Mempool"], ["peers", "Peer count"], ["peers-pruned", "Pruned peers"],
   ];

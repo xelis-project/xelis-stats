@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Env } from "./app";
+import { mergeGroups } from "./shards";
 
 export const history = new Hono<{ Bindings: Env }>();
 
@@ -10,13 +11,17 @@ export const history = new Hono<{ Bindings: Env }>();
 // market_snapshots), transfers, fee percentiles and encrypted (tx_index).
 // supply/burned-supply read the pipeline-populated cumulative daily_stats
 // columns (emitted/burned), reported in whole XEL.
-const METRICS: Record<string, { table: string; col: string; agg?: "sum" | "avg"; div?: number }> = {
+const METRICS: Record<string, { table: string; col: string; agg?: "sum" | "avg" | "max"; div?: number }> = {
   txs: { table: "daily_stats", col: "tx_count", agg: "sum" },
   transfers: { table: "tx_transfers", col: "", agg: "sum" },
   accounts: { table: "daily_stats", col: "new_accounts", agg: "sum" },
   "active-accounts": { table: "daily_stats", col: "active_accounts", agg: "avg" },
   miners: { table: "daily_stats", col: "unique_miners", agg: "avg" },
   hashrate: { table: "daily_stats", col: "hashrate", agg: "avg" },
+  difficulty: { table: "difficulty", col: "", agg: "avg" },
+  "cum-difficulty": { table: "cum-difficulty", col: "", agg: "max" },
+  // daily revenue (USD) per unit of estimated hashrate, scaled to USD per TH/day
+  hashprice: { table: "hashprice", col: "", agg: "avg" },
   // fee columns hold atomic XEL; report whole XEL
   fees: { table: "daily_stats", col: "avg_fee", agg: "avg", div: 1e8 },
   "fees-median": { table: "fee-percentile", col: "median", agg: "avg", div: 1e8 },
@@ -34,6 +39,17 @@ const METRICS: Record<string, { table: string; col: string; agg?: "sum" | "avg";
   gini: { table: "daily_miners", col: "gini", agg: "avg" },
   "encrypted": { table: "tx_encrypted", col: "", agg: "avg" },
   "block-types": { table: "daily_block_types", col: "count", agg: "sum" },
+  // transaction-type breakdown, computed from tx_index (col = tx_type value)
+  "txs-transfer": { table: "tx-type", col: "transfer", agg: "sum" },
+  "txs-burn": { table: "tx-type", col: "burn", agg: "sum" },
+  "txs-invoke": { table: "tx-type", col: "invoke_contract", agg: "sum" },
+  "txs-deploy": { table: "tx-type", col: "deploy_contract", agg: "sum" },
+  "txs-multisig": { table: "tx-type", col: "multisig", agg: "sum" },
+  // contract activity (daily_contracts aggregate; active count is distinct)
+  "contract-invokes": { table: "daily_contracts", col: "invoke_count", agg: "sum" },
+  "contract-gas": { table: "daily_contracts", col: "gas_burned", agg: "sum" },
+  "contract-deploys": { table: "daily_contracts", col: "deploys", agg: "sum" },
+  "active-contracts": { table: "contract-activity", col: "", agg: "avg" },
   "price": { table: "market_snapshots", col: "last", agg: "avg" },
   // market snapshots hold a rolling 24h quote volume, so this metric averages
   // per exchange across the bucket before summing exchanges (see below); the
@@ -69,6 +85,16 @@ function dateFrom(daysAgo: number): string {
 
 function parseDateParam(v: string | undefined): string | null {
   return v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+}
+
+// Conditions over an ms `ts` column: skip corrupt ts=0 rows, then bound by the
+// requested period. `until` is inclusive of its whole day.
+function tsConds(since: string | null, until: string | null): { conds: string[]; binds: (string | number)[] } {
+  const conds = ["ts > 0"];
+  const binds: (string | number)[] = [];
+  if (since) { conds.push("ts >= ?"); binds.push(Date.parse(since)); }
+  if (until) { conds.push("ts < ?"); binds.push(Date.parse(until) + 86400_000); }
+  return { conds, binds };
 }
 
 // Monday-based week bucket matching SQLite strftime('%Y-W%W'): week 01 starts
@@ -136,6 +162,39 @@ history.get("/api/history/:metric", async (c) => {
       rows = await c.env.DB.prepare(
         `SELECT ${bucketTs} bucket, (MAX(ts) - MIN(ts)) / 1000.0 / NULLIF(COUNT(*) - 1, 0) value FROM blocks ${whereTs} GROUP BY bucket ORDER BY bucket`
       ).bind(...binds).all<{ bucket: string; value: number }>().then((r) => r.results ?? []);
+    } catch { rows = []; }
+  } else if (spec.table === "difficulty" || spec.table === "cum-difficulty") {
+    // Per-bucket average network difficulty, or the chain's cumulative
+    // difficulty (monotonic, so merged across shards by max, not sum).
+    try {
+      const { conds, binds } = tsConds(since, until);
+      const where = `WHERE ${conds.join(" AND ")}`;
+      if (spec.table === "cum-difficulty") {
+        const raw = await mergeGroups(
+          c.env,
+          `SELECT ${bucketTs} bucket, MAX(CAST(cum_difficulty AS REAL)) value FROM blocks ${where} GROUP BY bucket`,
+          binds, "bucket", [], ["value"],
+        );
+        rows = raw.map((r) => ({ bucket: String(r.bucket), value: Number(r.value) }));
+      } else {
+        const raw = await mergeGroups(
+          c.env,
+          `SELECT ${bucketTs} bucket, SUM(difficulty) s, COUNT(*) n FROM blocks ${where} GROUP BY bucket`,
+          binds, "bucket", ["s", "n"],
+        );
+        rows = raw.map((r) => ({ bucket: String(r.bucket), value: Number(r.s) / Math.max(1, Number(r.n)) }));
+      }
+    } catch { rows = []; }
+  } else if (spec.table === "tx-type") {
+    // Daily/bucketed count of one transaction type from tx_index (col = type).
+    try {
+      const { conds, binds } = tsConds(since, until);
+      const raw = await mergeGroups(
+        c.env,
+        `SELECT ${bucketTs} bucket, COUNT(*) n FROM tx_index WHERE tx_type = ? AND ${conds.join(" AND ")} GROUP BY bucket`,
+        [spec.col, ...binds], "bucket", ["n"],
+      );
+      rows = raw.map((r) => ({ bucket: String(r.bucket), value: Number(r.n) }));
     } catch { rows = []; }
   } else if (spec.table === "daily_miners") {
     try {
@@ -291,6 +350,54 @@ history.get("/api/history/:metric", async (c) => {
         if (!p || !r.miner_revenue) return [];
         return [{ bucket: r.date, value: (r.miner_revenue / 1e8) * p }];
       });
+    } catch { rows = []; }
+  } else if (spec.table === "hashprice") {
+    // Daily miner revenue (USD) divided by the estimated hashrate, scaled to
+    // USD per TH/s per day. Uses the same hashrate estimate as the hashrate
+    // chart, so the two stay consistent.
+    try {
+      const conds: string[] = [];
+      const binds: (string | number)[] = [];
+      if (since) { conds.push("date >= ?"); binds.push(since); }
+      if (until) { conds.push("date <= ?"); binds.push(until); }
+      const whereDate = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+      const daily = await c.env.DB.prepare(
+        `SELECT date, miner_revenue, hashrate FROM daily_stats ${whereDate} ORDER BY date`
+      ).bind(...binds).all<{ date: string; miner_revenue: number; hashrate: number }>().then((r) => r.results ?? []);
+      if (!daily.length) throw new Error("no daily rows");
+      const snaps = await c.env.DB.prepare(
+        `SELECT date(ts/1000, 'unixepoch') d, AVG(last) p FROM market_snapshots WHERE date(ts/1000, 'unixepoch') >= ? AND date(ts/1000, 'unixepoch') <= ? GROUP BY d`
+      ).bind(daily[0].date, daily[daily.length - 1].date).all<{ d: string; p: number }>().then((r) => r.results ?? []);
+      const prices = new Map<string, number>();
+      for (const s of snaps) if (s.p) prices.set(s.d, Number(s.p));
+      const groupKey = interval === "day" ? (d: string) => d : interval === "week" ? (d: string) => weekBucket(d) : interval === "month" ? (d: string) => d.slice(0, 7) : (d: string) => d.slice(0, 4);
+      const buckets = new Map<string, number[]>();
+      for (const r of daily) {
+        const p = prices.get(r.date);
+        const hr = Number(r.hashrate);
+        const rev = Number(r.miner_revenue);
+        if (!p || !hr || !rev) continue;
+        const k = groupKey(r.date);
+        const list = buckets.get(k) ?? [];
+        list.push((rev / 1e8) * p / hr * 1e12);
+        buckets.set(k, list);
+      }
+      rows = [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([bk, vals]) => ({
+        bucket: bk,
+        value: vals.reduce((a, b) => a + b, 0) / vals.length,
+      }));
+    } catch { rows = []; }
+  } else if (spec.table === "contract-activity") {
+    // Distinct contracts active per bucket, from the daily_contracts rollup.
+    try {
+      const conds: string[] = [];
+      const binds: (string | number)[] = [];
+      if (since) { conds.push("date >= ?"); binds.push(since); }
+      if (until) { conds.push("date <= ?"); binds.push(until); }
+      const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
+      rows = await c.env.DB.prepare(
+        `SELECT ${bucket} bucket, COUNT(DISTINCT contract_id) value FROM daily_contracts ${where} GROUP BY bucket ORDER BY bucket`
+      ).bind(...binds).all<{ bucket: string; value: number }>().then((r) => r.results ?? []);
     } catch { rows = []; }
   } else {
     try {
