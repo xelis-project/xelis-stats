@@ -266,7 +266,7 @@ contracts.get("/contracts/:id", async (c) => {
 
   const totalPages = Math.max(1, Math.ceil(invokeTotal / PAGE_SIZE));
   const pagerBase = `/contracts/${encodeURIComponent(deployHash)}`;
-  const invokesPanel = `<div class="panel"><h2>Invocations ${invokeTotal ? `<span style="color:var(--text-dim)">${fmtInt(invokeTotal)} indexed</span>` : ""}</h2>
+  const invokesPanel = `<div class="panel"><h2>Invocations ${invokeTotal ? `<span style="color:var(--text-dim)">${fmtInt(invokeTotal)}</span>` : ""}</h2>
     <div class="tablewrap"><table>
       <thead><tr><th>Hash</th><th>Block</th><th>Time</th><th>Sender</th><th class="num">Fee (XEL)</th><th>Execution</th></tr></thead>
       <tbody>${invokeRows}</tbody>
