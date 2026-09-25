@@ -1,6 +1,7 @@
 -- Xelis Stats — D1 schema (Cloudflare live side)
 -- Consolidated init schema (merges former migrations: base schema, shards,
--- chain size, exchanges, miner block types, asset details, side_count rename).
+-- chain size, exchanges, miner block types, asset details, side_count rename,
+-- accounts transfer_count, cron monitoring).
 -- sync state: separate per-stage checkpoints
 CREATE TABLE IF NOT EXISTS sync_state (
   stage TEXT PRIMARY KEY,
@@ -77,13 +78,18 @@ CREATE INDEX IF NOT EXISTS idx_tx_assets_asset ON tx_assets(asset);
 -- Transfer amounts/receivers are encrypted on mainnet; per-transfer rows are not indexed.
 -- Asset involvement per tx is public and stored in tx_assets.
 
--- accounts: observed public sender activity only (no balances)
+-- accounts: observed public sender activity only (no balances).
+-- transfer_count is all-time transfer outputs per sender, denormalized like
+-- tx_count so the accounts list can show and sort transfers without aggregating
+-- tx_index (only partially resident in the hot DB once shard rotation seals
+-- older rows).
 CREATE TABLE IF NOT EXISTS accounts (
   address TEXT PRIMARY KEY, first_seen INTEGER, last_active INTEGER,
-  tx_count INTEGER DEFAULT 0,
+  tx_count INTEGER DEFAULT 0, transfer_count INTEGER DEFAULT 0,
   is_labeled INTEGER DEFAULT 0, label TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_accounts_active ON accounts(last_active);
+CREATE INDEX IF NOT EXISTS idx_accounts_transfer_count ON accounts(transfer_count, address);
 
 -- daily aggregates (public, sender-observation metrics only)
 CREATE TABLE IF NOT EXISTS daily_stats (
@@ -238,3 +244,29 @@ CREATE TABLE IF NOT EXISTS daily_peer_countries (
   date TEXT, country TEXT, country_code TEXT, peers INTEGER,
   PRIMARY KEY (date, country)
 );
+
+-- Cron job monitoring. cron_jobs keeps the latest outcome per named task so the
+-- /status page can show which scheduled work is failing and how long it runs.
+-- cron_runs is a bounded history (7 days, trimmed by the cron itself) of whole
+-- invocations, letting the panel show success rate and stall/latency trends.
+CREATE TABLE IF NOT EXISTS cron_jobs (
+  job TEXT PRIMARY KEY,
+  last_ts INTEGER NOT NULL,
+  last_ok INTEGER NOT NULL,
+  last_ms INTEGER NOT NULL,
+  last_error TEXT,
+  fail_streak INTEGER NOT NULL DEFAULT 0,
+  ok_total INTEGER NOT NULL DEFAULT 0,
+  fail_total INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS cron_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts INTEGER NOT NULL,
+  schedule TEXT,
+  duration_ms INTEGER NOT NULL,
+  jobs INTEGER NOT NULL,
+  failed INTEGER NOT NULL,
+  errors TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cron_runs_ts ON cron_runs(ts);
