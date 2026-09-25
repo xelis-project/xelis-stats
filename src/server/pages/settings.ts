@@ -79,6 +79,17 @@ settings.get("/settings", (c) => {
           <option value="both">Both</option>
         </select>
       </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Hash style</div>
+          <div class="setting-desc">How much of a hash or address to show in tables and links. Both ends keeps the start and end; start only keeps the beginning; end only keeps the end. The full value stays available via hover and copy.</div>
+        </div>
+        <select id="pref-hash-style" aria-label="Hash style">
+          <option value="both">Both ends (123456…abcdef)</option>
+          <option value="head">Start only (123456…)</option>
+          <option value="tail">End only (…abcdef)</option>
+        </select>
+      </div>
       ${toggleRow("pref-reduce-motion", "Reduce motion", "Disable animations and transitions for a calmer, lower-motion interface.")}
     </div>
 
