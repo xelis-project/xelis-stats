@@ -253,12 +253,15 @@ function yAxis(fmt: (v: number) => string = fmtAuto): uPlot.Axis {
     stroke: AXIS,
     grid: { stroke: GRID },
     ticks: { stroke: GRID },
-    values: (u: uPlot, splits: number[], axisIdx: number) => {
+    values: (u: uPlot, splits: Array<number | null>, axisIdx: number) => {
       const font = (u.axes[axisIdx].font as unknown as [string, number, number])[0];
-      const full = splits.map((v) => fmt(v));
+      // On log axes uPlot's default filter nulls out splits that are too tightly
+      // spaced before values() runs. Keep those nulls: formatting them would
+      // render a "—" at every skipped tick and make the axis unreadable.
+      const full = splits.map((v) => (v == null ? null : fmt(v)));
       const gutterFull = widestLabel(font, full) + yPad(u.axes[axisIdx]);
       const budget = Math.max(GUTTER_DEFAULT, u.width * GUTTER_MAX_FRAC);
-      return gutterFull > budget ? splits.map((v) => fmtCompact(v)) : full;
+      return gutterFull > budget ? splits.map((v) => (v == null ? null : fmtCompact(v))) : full;
     },
     size: (u: uPlot, values: string[] | null, axisIdx: number): number => {
       if (values == null) return GUTTER_DEFAULT;
