@@ -1,5 +1,6 @@
 -- Xelis Stats — D1 schema (Cloudflare live side)
--- Consolidated init schema (merges former 0001–0007 migrations).
+-- Consolidated init schema (merges former migrations: base schema, shards,
+-- chain size, exchanges, miner block types, asset details, side_count rename).
 -- sync state: separate per-stage checkpoints
 CREATE TABLE IF NOT EXISTS sync_state (
   stage TEXT PRIMARY KEY,
@@ -90,7 +91,7 @@ CREATE TABLE IF NOT EXISTS daily_stats (
   tx_count INTEGER, transfer_count INTEGER,
   avg_fee INTEGER, median_fee INTEGER, fee_p90 INTEGER, fee_p99 INTEGER,
   hashrate INTEGER, unique_miners INTEGER,
-  block_prod_gini REAL, orphan_count INTEGER,
+  block_prod_gini REAL, side_count INTEGER,
   encrypted_tx_pct REAL, fees_vs_rewards_pct REAL,
   miner_revenue INTEGER, fee_total_sum INTEGER, emitted_supply INTEGER, burned_supply INTEGER,
   circulating_supply INTEGER, market_cap_usd REAL,
@@ -160,9 +161,27 @@ CREATE TABLE IF NOT EXISTS tx_route (hash TEXT PRIMARY KEY, block_topo INTEGER N
 CREATE TABLE IF NOT EXISTS block_route (hash TEXT PRIMARY KEY, topoheight INTEGER NOT NULL);
 
 -- entities
+-- max_supply_kind is 'none' | 'fixed' | 'mintable'; max_supply is the cap in
+-- atomic units (NULL when kind is 'none'). owner_contract/owner_asset_id
+-- identify the creator contract and the asset's index within it (NULL when
+-- unowned).
 CREATE TABLE IF NOT EXISTS assets (
-  asset_id TEXT PRIMARY KEY, name TEXT, symbol TEXT, decimals INTEGER, first_seen_topo INTEGER
+  asset_id TEXT PRIMARY KEY, name TEXT, symbol TEXT, decimals INTEGER, first_seen_topo INTEGER,
+  max_supply_kind TEXT, max_supply INTEGER, owner_contract TEXT, owner_asset_id INTEGER
 );
+CREATE INDEX IF NOT EXISTS idx_assets_owner ON assets(owner_contract);
+
+-- Supply history. get_asset_supply only returns the current minted amount (its
+-- topoheight param is ignored), so the cron records snapshots itself. One row
+-- per asset per hourly tick, written only when the value changes.
+CREATE TABLE IF NOT EXISTS asset_supply_snapshots (
+  ts INTEGER NOT NULL,
+  asset_id TEXT NOT NULL,
+  supply INTEGER NOT NULL,
+  PRIMARY KEY (ts, asset_id)
+);
+CREATE INDEX IF NOT EXISTS idx_asset_supply_asset_ts ON asset_supply_snapshots(asset_id, ts);
+
 CREATE TABLE IF NOT EXISTS contracts (
   contract_id TEXT PRIMARY KEY, deployer TEXT, deploy_topo INTEGER, invoke_count INTEGER, gas_total INTEGER, events_count INTEGER
 );
