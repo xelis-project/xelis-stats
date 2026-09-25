@@ -265,7 +265,7 @@ txDetail.get("/tx/:hash", async (c) => {
     : `${fmtInt(otherInBlock)} other tx${otherInBlock === 1 ? "" : "s"} in block`;
 
   const fifthCard = contractId
-    ? statCard("Gas", gas || maxGas ? fmtInt(gas || maxGas) : "—", "contract execution")
+    ? statCard("Gas", gas || maxGas ? `${atomic(gas || maxGas)} XEL` : "—", "contract execution")
     : isBurn
       ? statCard("Burned", burnLabel, "public burn amount")
       : tx.multisig
@@ -324,7 +324,7 @@ txDetail.get("/tx/:hash", async (c) => {
 
   const contractPanel = contractId ? `<div class="panel"><h2>Contract Execution</h2><table class="kv">
     <tr><td>Contract</td><td><a class="mono" href="/contracts/${esc(contractId)}">${shortHash(contractId, 12)}</a> <button class="copybtn" type="button" onclick="blkCopy('${esc(contractId)}', this)">copy</button></td></tr>
-    ${gas || maxGas ? `<tr><td>Gas</td><td>${fmtInt(gas || maxGas)}${maxGas && gas && maxGas !== gas ? ` <span style="color:var(--text-dim)">· max ${fmtInt(maxGas)}</span>` : ""}</td></tr>` : ""}
+    ${gas || maxGas ? `<tr><td>Gas</td><td>${atomic(gas || maxGas)} XEL${maxGas && gas && maxGas !== gas ? ` <span style="color:var(--text-dim)">· max ${atomic(maxGas)} XEL</span>` : ""}</td></tr>` : ""}
     ${contract ? `
       ${num(contract.invoke_count) ? `<tr><td>Invokes seen</td><td>${fmtInt(contract.invoke_count as number)}</td></tr>` : ""}
       ${contract.deployer ? `<tr><td>Deployer</td><td><a class="mono" href="/account/${esc(contract.deployer as string)}">${shortHash(contract.deployer as string, 10)}</a></td></tr>` : ""}
