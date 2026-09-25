@@ -14,9 +14,8 @@ transactions.get("/transactions", async (c) => {
   const TX_TYPES = ["transfer", "burn", "invoke_contract", "deploy_contract", "multisig"];
   const rawType = c.req.query("type") ?? "";
   const type = TX_TYPES.includes(rawType) ? rawType : "";
-  // executed status filter: 1/0 match the recorded flag, "unknown" matches rows
-  // with no recorded status (legacy rows, executed IS NULL)
-  const EXEC_STATES = ["1", "0", "unknown"];
+  // executed status filter: 1/0 match the recorded flag
+  const EXEC_STATES = ["1", "0"];
   const rawExec = c.req.query("executed") ?? "";
   const executed = EXEC_STATES.includes(rawExec) ? rawExec : "";
   const srt = srvSort((n) => c.req.query(n), TX_COLS, "block", "hash", (s) => {
@@ -33,15 +32,11 @@ transactions.get("/transactions", async (c) => {
   if (type) { conds.push("tx_type = ?"); binds.push(type); }
   if (executed === "1") { conds.push("executed = 1"); }
   if (executed === "0") { conds.push("executed = 0"); }
-  if (executed === "unknown") { conds.push("executed IS NULL"); }
   const extra = conds.length ? { sql: conds.join(" AND "), binds } : undefined;
 
   // Default view (newest block first) uses a two-column keyset cursor
   // (block_topo, hash): any depth is an index seek, no offset scan.
-  // The "unknown" filter is exempt: those rows may have a NULL block_topo that
-  // the keyset bounds (block_topo <= cursor) would exclude, so fall back to the
-  // offset pager, which is cheap because the set is tiny.
-  const keyset = srt.key === "block" && srt.dir === "desc" && executed !== "unknown";
+  const keyset = srt.key === "block" && srt.dir === "desc";
   const curRaw = c.req.query("cur") ?? "";
   const [curBt, curHash] = curRaw.includes(":") ? curRaw.split(":") : ["", ""];
   const cursor: [number, string] | null = curBt && curHash ? [Number(curBt), curHash] : null;
@@ -127,7 +122,7 @@ transactions.get("/transactions", async (c) => {
   const fActive = !!type || !!executed;
   const fFields = `
     ${filterField("Transaction type", `<select name="type">${selectOpts(TX_TYPES, type, "all types")}</select>`)}
-    ${filterField("Execution", `<select name="executed"><option value=""${executed === "" ? " selected" : ""}>any status</option><option value="1"${executed === "1" ? " selected" : ""}>executed</option><option value="0"${executed === "0" ? " selected" : ""}>unexecuted</option><option value="unknown"${executed === "unknown" ? " selected" : ""}>unknown</option></select>`)}
+    ${filterField("Execution", `<select name="executed"><option value=""${executed === "" ? " selected" : ""}>any status</option><option value="1"${executed === "1" ? " selected" : ""}>executed</option><option value="0"${executed === "0" ? " selected" : ""}>unexecuted</option></select>`)}
   `;
   const fPop = filterPop("f-txs", "/transactions", fFields, {
     hidden: srt.qs ? { sort: srt.key, dir: srt.dir } : {},
