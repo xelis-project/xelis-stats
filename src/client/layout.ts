@@ -53,7 +53,6 @@ export function layout(title: string, content: string, active: string, bodyClass
       <a class="footer-brand" href="/">${XEL_LOGO}<span>XELIS&nbsp;<span style="color:var(--mint)">STATS</span></span></a>
       <nav class="footer-links">
         <a href="/api/docs">API</a>
-        <a href="/embeds">Embeds</a>
         <a href="/status">Status</a>
         <a href="/settings">Settings</a>
       </nav>

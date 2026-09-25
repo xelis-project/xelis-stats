@@ -8,7 +8,7 @@ import { logErr } from "./shared";
 const FEE_METRICS: Record<string, string> = { fees: "avg", "fees-median": "median", "fee-p90": "p90", "fees-p99": "p99" };
 const MARKET_METRICS = new Set(["price", "quote-volume"]);
 
-// curated metric -> label list shared by the charts hub and the embed builder
+// curated metric -> label list shared by the charts hub
 export const CHART_METRICS: Array<[string, string]> = [
   ["txs", "Transactions/day"], ["accounts", "Accounts growth"], ["active-accounts", "Active accounts"], ["miners", "Miners"],
   ["hashrate", "Hashrate"], ["difficulty", "Difficulty"], ["cum-difficulty", "Cumulative difficulty"],
@@ -77,10 +77,6 @@ charts.get("/charts", async (c) => {
   csvQuery.set("format", "csv");
   if (MARKET_METRICS.has(metric) && exchange) csvQuery.set("exchange", exchange);
   const csvHref = `/api/history/${metric}?${csvQuery.toString()}`;
-  // link to the embed builder with the current selection prefilled
-  const embedQuery = new URLSearchParams({ metric, interval });
-  if (!custom) embedQuery.set("range", range);
-  const embedHref = `/embeds?${embedQuery.toString()}`;
 
   const content = `
     <div class="panel">
@@ -101,7 +97,6 @@ charts.get("/charts", async (c) => {
           <option value="bar" ${chartType === "bar" ? "selected" : ""}>bar</option>
         </select>
         <a class="btn ghost" id="btn-csv" href="${csvHref}">CSV</a>
-        <a class="btn ghost" id="btn-embed" href="${embedHref}" title="Get an iframe snippet for this chart">Embed</a>
       </div>
       <div id="u-chart" style="height:320px"></div>
     </div>`;

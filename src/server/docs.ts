@@ -28,7 +28,6 @@ docs.get("/api/docs", (c) => {
     <div class="tablewrap"><table><thead><tr><th>Method</th><th>Path</th><th>Description</th></tr></thead><tbody>${rows}</tbody></table></div>
     <h2 style="margin-top:2rem">Example</h2>
     <pre class="mono" style="background:hsla(0,0%,100%,.04);padding:1rem;border-radius:.6rem;overflow-x:auto">curl https://&lt;host&gt;/api/summary</pre>
-    <p style="color:var(--text-dim);margin-top:1.5rem">Want these series as ready-made charts on your site? See <a href="/embeds" style="color:var(--mint)">embed charts</a>.</p>
   </div>`;
   return c.html(layout("API", content, ""));
 });

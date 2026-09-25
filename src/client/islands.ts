@@ -19,7 +19,6 @@ function initChartsHub(): void {
   const chkLog = $("chk-log") as HTMLInputElement | null;
   const selType = $("sel-type") as HTMLSelectElement | null;
   const csvBtn = $("btn-csv");
-  const embedBtn = $("btn-embed");
   const chartEl = $("u-chart");
   if (!selMetric || !selRange || !selInterval || !chartEl) return;
   attachDatePickers(document);
@@ -142,11 +141,6 @@ function initChartsHub(): void {
     qs.set("interval", selInterval!.value);
     const query = qs.toString();
     if (csvBtn) csvBtn.setAttribute("href", `/api/history/${m}?${query}&format=csv`);
-    if (embedBtn) {
-      const eq = new URLSearchParams({ metric: m, interval: selInterval!.value });
-      if (selRange!.value !== "custom") eq.set("range", selRange!.value);
-      embedBtn.setAttribute("href", `/embeds?${eq.toString()}`);
-    }
     syncUrl();
     try {
       const res = await fetch(`/api/history/${m}?${query}`);
@@ -349,19 +343,6 @@ function initAssetDetail(): void {
 attachDatePickers(document);
 
 const path = location.pathname;
-if (path.startsWith("/embed/")) {
-  // embeddable mini-chart
-  const el = document.getElementById("u-embed");
-  if (el) {
-    const metric = (window as unknown as { EMBED_METRIC: string }).EMBED_METRIC;
-    const range = (window as unknown as { EMBED_RANGE: string }).EMBED_RANGE;
-    const interval = (window as unknown as { EMBED_INTERVAL: string }).EMBED_INTERVAL;
-    void fetch(`/api/history/${metric}?range=${range}&interval=${interval}`)
-      .then((r) => r.json())
-      .then((j: unknown) => renderChart(el, (j as { points: SeriesPoint[] }).points, metric, metricFormatter(metric)))
-      .catch(() => { el.innerHTML = ""; });
-  }
-}
 if (path === "/charts") initChartsHub();
 if (path === "/market") initMarket();
 if (path.startsWith("/miner/")) initMinerProfile();

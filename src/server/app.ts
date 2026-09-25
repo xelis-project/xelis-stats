@@ -41,9 +41,7 @@ app.use("*", async (c, next) => {
   h.set("Referrer-Policy", "strict-origin-when-cross-origin");
   h.set("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
   h.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
-  // Embeds are meant to be framed by third parties; everything else is not.
-  const embed = c.req.path.startsWith("/embed/");
-  if (!embed) h.set("X-Frame-Options", "DENY");
+  h.set("X-Frame-Options", "DENY");
   // Inline event handlers and inline <script> blocks are still used, so
   // script-src cannot be tightened without a nonce/handler refactor; the rest
   // of the policy still blocks plugin content, base-tag hijacks and framing.
@@ -57,7 +55,7 @@ app.use("*", async (c, next) => {
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-    `frame-ancestors ${embed ? "*" : "'none'"}`,
+    "frame-ancestors 'none'",
   ].join("; "));
   // Short-lived caching for GETs; never cache the WebSocket upgrade or the
   // RPC-backed storage fragment.
@@ -216,7 +214,7 @@ app.onError((err, c) => {
 // Rankings (period leaderboards)
 app.route("/", top);
 
-// Embeds / SEO
+// SEO
 app.route("/", seo);
 
 // Cron entry (market snapshots, mempool, hourly peers, daily rollup)

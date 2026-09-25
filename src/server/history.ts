@@ -152,7 +152,7 @@ history.get("/api/history/:metric", async (c) => {
   const agg = spec.agg ?? "avg";
 
   // Heavy series are recomputed per request; cache the JSON points briefly in
-  // KV keyed by the full query so dashboards and embeds do not re-scan D1.
+  // KV keyed by the full query so dashboards do not re-scan D1.
   const cacheKey = `hist:v3:${metric}|${range}|${interval}|${from ?? ""}|${to ?? ""}|${exchange}`;
   if (format !== "csv") {
     const hit = await c.env.KV.get<Array<{ date: string; value: number }>>(cacheKey, "json").catch(() => null);

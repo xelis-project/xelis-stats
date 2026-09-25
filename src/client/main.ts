@@ -16,12 +16,10 @@ initFormatDisplay();
 // list/detail pages do not download the whole charting stack.
 const path = location.pathname;
 const needsIslands = path === "/charts" || path === "/market" || path.startsWith("/miner/")
-  || path.startsWith("/asset/") || path.startsWith("/embed/")
+  || path.startsWith("/asset/")
   || document.querySelector("[data-datepicker]") !== null;
 if (path === "/") {
   void import("./dashboard").then((m) => m.initDashboard()).catch(() => { /* dashboard unavailable */ });
-} else if (path === "/embeds") {
-  void import("./embed-builder");
 } else if (needsIslands) {
   void import("./islands");
 }
