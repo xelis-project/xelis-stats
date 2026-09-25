@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout } from "../../client/layout";
+import { logErr } from "./shared";
 
 export const market = new Hono<{ Bindings: Env }>();
 
@@ -11,7 +12,7 @@ market.get("/market", async (c) => {
       "SELECT name, added_ts, retired_ts FROM exchanges WHERE status = 'inactive' ORDER BY name",
     ).all<{ name: string; added_ts: number | null; retired_ts: number | null }>();
     retired = (rows.results ?? []).map((r) => ({ name: r.name, addedTs: r.added_ts, retiredTs: r.retired_ts }));
-  } catch { /* db not ready */ }
+  } catch (err) { logErr("page/market", err); }
   const fmtDay = (ts: number | null) => (ts ? new Date(ts).toISOString().slice(0, 10) : "");
   const retiredRows = retired.map((r) => {
     const span = r.addedTs

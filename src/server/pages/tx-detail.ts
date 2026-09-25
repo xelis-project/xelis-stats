@@ -5,7 +5,7 @@ import { icons } from "../../client/icons";
 import { fmt, fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/format";
 import { rpc } from "../xelis";
 import { fetchTx, getShards, targetForTopo, runOn, type RawTarget } from "../shards";
-import { esc, entityTag, blkCopyScript, num, flaggedText } from "./shared";
+import { esc, jsq, entityTag, blkCopyScript, num, flaggedText, logErr } from "./shared";
 
 export const txDetail = new Hono<{ Bindings: Env }>();
 
@@ -30,7 +30,7 @@ const assetCellHtml = (assetId: string, meta: Map<string, AssetMeta>): string =>
   if (!assetId) return '<span style="color:var(--text-dim)">—</span>';
   if (assetId === XEL_ASSET_ID) return '<span class="badge">XEL</span>';
   const symbol = meta.get(assetId)?.symbol;
-  const label = symbol ? flaggedText(symbol) : shortHash(assetId, 6);
+  const label = symbol ? flaggedText(symbol) : esc(shortHash(assetId, 6));
   return `<a class="mono" href="/asset/${esc(assetId)}">${label}</a>`;
 };
 
@@ -50,7 +50,7 @@ const transfersPanelHtml = (list: TransferEntry[], meta: Map<string, AssetMeta> 
   const rows = list.map((tr, i) => `<tr>
     <td class="num">${i + 1}</td>
     <td>${tr.destination
-      ? `<a class="mono" href="/account/${esc(tr.destination)}">${shortHash(tr.destination, 10)}</a>${entityTag(tr.destination)}`
+      ? `<a class="mono" href="/account/${esc(tr.destination)}">${esc(shortHash(tr.destination, 10))}</a>${entityTag(tr.destination)}`
       : '<span style="color:var(--text-dim)">—</span>'}</td>
     <td>${assetCellHtml(tr.asset, meta)}</td>
     <td><span class="badge priv" title="Amount is encrypted on-chain">hidden</span></td>
@@ -77,7 +77,7 @@ txDetail.get("/tx/:hash", async (c) => {
       assets = await runOn(c.env, found.target, "SELECT asset FROM tx_assets WHERE tx_hash = ?", [hash])
         .then((r) => r.map((x) => String(x.asset)));
     }
-  } catch { /* db not ready */ }
+  } catch (err) { logErr("page/tx", err); }
 
   if (!tx) {
     // fallback: live node lookup
@@ -89,7 +89,7 @@ txDetail.get("/tx/:hash", async (c) => {
         const burnData = (data.burn ?? null) as Record<string, unknown> | null;
         const burnAmt = burnData ? num(burnData.amount) : 0;
         const burnAssetId = burnData && typeof burnData.asset === "string" ? burnData.asset : "";
-        const burnLabel = burnAssetId ? `${atomic(burnAmt)} ${shortHash(burnAssetId, 4)}` : `${atomic(burnAmt)} XEL`;
+        const burnLabel = burnAssetId ? `${atomic(burnAmt)} ${esc(shortHash(burnAssetId, 4))}` : `${atomic(burnAmt)} XEL`;
         const type = esc(Object.keys(data)[0] ?? "unknown");
         // contract ids are the deploy tx hash or the invoked contract's id
         const invokeData = (data.invoke_contract ?? null) as Record<string, unknown> | null;
@@ -99,7 +99,7 @@ txDetail.get("/tx/:hash", async (c) => {
             ? invokeData.contract
             : "";
         const contractLink = contractId
-          ? `<a class="mono" href="/contracts/${esc(contractId)}">${shortHash(contractId, 12)}</a> <button class="copybtn" type="button" onclick="blkCopy('${esc(contractId)}', this)">copy</button>`
+          ? `<a class="mono" href="/contracts/${esc(contractId)}">${esc(shortHash(contractId, 12))}</a> <button class="copybtn" type="button" onclick="blkCopy('${jsq(contractId)}', this)">copy</button>`
           : "";
         const fee = num(t.fee_paid ?? t.fee);
         const size = num(t.size);
@@ -116,7 +116,7 @@ txDetail.get("/tx/:hash", async (c) => {
         const hero = `<div class="panel blk-hero">
           <div class="blk-head">
             <div class="blk-id">
-              <h2 class="blk-title">Transaction <span class="mint mono">${shortHash(hash, 12)}</span></h2>
+              <h2 class="blk-title">Transaction <span class="mint mono">${esc(shortHash(hash, 12))}</span></h2>
               <div class="blk-meta">
                 <span class="badge ${type.toLowerCase()}">${type}</span>
                 <span class="badge livesrc">live node</span>
@@ -124,7 +124,7 @@ txDetail.get("/tx/:hash", async (c) => {
               </div>
               <div class="hash-row">
                 <span class="hashline mono">${esc(hash)}</span>
-                <button class="copybtn" type="button" onclick="blkCopy('${esc(hash)}', this)">copy</button>
+                <button class="copybtn" type="button" onclick="blkCopy('${jsq(hash)}', this)">copy</button>
               </div>
             </div>
             ${contractId ? `<div class="blk-nav"><a class="btn ghost" href="/contracts/${esc(contractId)}" title="Open contract">Contract ${icons.chevronRight}</a></div>` : ""}
@@ -140,8 +140,8 @@ txDetail.get("/tx/:hash", async (c) => {
         const overview = `<div class="panel"><h2>Overview</h2><table class="kv">
           <tr><td>Type</td><td><span class="badge ${type.toLowerCase()}">${type}</span></td></tr>
           ${contractId ? `<tr><td>Contract</td><td>${contractLink}</td></tr>` : ""}
-          <tr><td>Sender</td><td>${source ? `<a class="mono" href="/account/${esc(source)}">${shortHash(source, 10)}</a>${entityTag(source)} <button class="copybtn" type="button" onclick="blkCopy('${esc(source)}', this)">copy</button>` : "—"}</td></tr>
-          <tr><td>Block</td><td>${blockTopo > 0 ? `<a href="/block/${blockTopo}"><span class="mint">#${fmtInt(blockTopo)}</span></a>` : blockHash ? `<a class="mono" href="/block/${esc(blockHash)}">${shortHash(blockHash, 10)}</a>` : '<span class="badge">unconfirmed</span>'}</td></tr>
+          <tr><td>Sender</td><td>${source ? `<a class="mono" href="/account/${esc(source)}">${esc(shortHash(source, 10))}</a>${entityTag(source)} <button class="copybtn" type="button" onclick="blkCopy('${jsq(source)}', this)">copy</button>` : "—"}</td></tr>
+          <tr><td>Block</td><td>${blockTopo > 0 ? `<a href="/block/${blockTopo}"><span class="mint">#${fmtInt(blockTopo)}</span></a>` : blockHash ? `<a class="mono" href="/block/${esc(blockHash)}">${esc(shortHash(blockHash, 10))}</a>` : '<span class="badge">unconfirmed</span>'}</td></tr>
           ${burnData ? `<tr><td>Burned</td><td><span class="mint">${esc(burnLabel)}</span> <span style="color:var(--text-dim)">public burn amount</span></td></tr>` : ""}
           <tr><td>Version</td><td>v${num(t.version)}</td></tr>
           <tr><td>Source</td><td><span class="badge livesrc">queried from node just now</span></td></tr>
@@ -160,7 +160,7 @@ txDetail.get("/tx/:hash", async (c) => {
             <span>Transfer amounts are encrypted; receivers and assets are public metadata shown above. This transaction is served straight from the node and is not indexed yet.</span>
           </div>
           <script>${blkCopyScript}</script>`;
-        return c.html(layout(`TX ${shortHash(hash, 8)}`, content, "/transactions"));
+        return c.html(layout(`TX ${esc(shortHash(hash, 8))}`, content, "/transactions"));
       }
     } catch { /* not found anywhere */ }
     return c.html(layout("Not found", notFound("Transaction"), "/transactions"));
@@ -188,7 +188,7 @@ txDetail.get("/tx/:hash", async (c) => {
       }
     } catch { /* keep stored values */ }
   }
-  const sender = esc(tx.sender ?? "");
+  const senderRaw = String(tx.sender ?? "");
   const result = tx.executed === 1 ? "executed" : tx.executed === 0 ? "unexecuted" : "";
   // contract ids are the TXIDs of their deploy transactions; legacy indexed
   // deploy rows may predate per-tx contract storage, so fall back to the hash.
@@ -225,7 +225,7 @@ txDetail.get("/tx/:hash", async (c) => {
       siblings = await runOn(c.env, rawT, "SELECT hash, tx_type, fee, size, executed, sender FROM tx_index WHERE block_topo = ? AND hash != ? ORDER BY ts, hash LIMIT 10", [topo, hash]);
     }
     maxTopo = (await db.prepare("SELECT MAX(topoheight) AS m FROM blocks").first<{ m: number }>())?.m ?? null;
-    if (sender) acct = (await db.prepare("SELECT first_seen, last_active, tx_count FROM accounts WHERE address = ?").bind(sender).first()) ?? undefined;
+    if (senderRaw) acct = (await db.prepare("SELECT first_seen, last_active, tx_count FROM accounts WHERE address = ?").bind(senderRaw).first()) ?? undefined;
     if (assets.length) {
       const rows = await db.prepare(
         `SELECT asset_id, name, symbol, decimals FROM assets WHERE asset_id IN (${assets.map(() => "?").join(",")})`
@@ -239,7 +239,7 @@ txDetail.get("/tx/:hash", async (c) => {
         : (await db.prepare("SELECT max_gas FROM tx_contracts WHERE tx_hash = ?").bind(hash).first<{ max_gas: number }>())?.max_gas ?? null;
       contract = (await db.prepare("SELECT deployer, deploy_topo, invoke_count, gas_total FROM contracts WHERE contract_id = ?").bind(contractId).first()) ?? undefined;
     }
-  } catch { /* db not ready */ }
+  } catch (err) { logErr("page/tx", err); }
 
   // contract execution logs (live from node, best effort)
   type Log = { type: string; value: unknown };
@@ -277,7 +277,7 @@ txDetail.get("/tx/:hash", async (c) => {
   const hero = `<div class="panel blk-hero">
     <div class="blk-head">
       <div class="blk-id">
-        <h2 class="blk-title">Transaction <span class="mint mono">${shortHash(hash, 12)}</span></h2>
+        <h2 class="blk-title">Transaction <span class="mint mono">${esc(shortHash(hash, 12))}</span></h2>
         <div class="blk-meta">
           <span class="badge ${txType}">${txType}</span>
           ${hasResult ? `<span class="badge ${result === "executed" ? "ok" : "fail"}">${result}</span>` : ""}
@@ -287,7 +287,7 @@ txDetail.get("/tx/:hash", async (c) => {
         </div>
         <div class="hash-row">
           <span class="hashline mono">${esc(tx.hash as string)}</span>
-          <button class="copybtn" type="button" onclick="blkCopy('${esc(tx.hash as string)}', this)">copy</button>
+          <button class="copybtn" type="button" onclick="blkCopy('${jsq(tx.hash as string)}', this)">copy</button>
         </div>
       </div>
       ${topo > 0 || contractId ? `<div class="blk-nav">${contractId ? `<a class="btn ghost" href="/contracts/${esc(contractId)}" title="Open contract">Contract ${icons.chevronRight}</a>` : ""}${topo > 0 ? `<a class="btn ghost" href="/block/${topo}" title="Open containing block">Block ${icons.chevronRight}</a>` : ""}</div>` : ""}
@@ -303,8 +303,8 @@ txDetail.get("/tx/:hash", async (c) => {
 
   const overview = `<div class="panel"><h2>Overview</h2><table class="kv">
     <tr><td>Type</td><td><span class="badge ${txType}">${txType}</span>${tx.multisig ? ' <span class="badge">multisig</span>' : ""}</td></tr>
-    <tr><td>Sender</td><td>${sender ? `<a class="mono" href="/account/${sender}">${shortHash(sender, 10)}</a>${entityTag(sender)} <button class="copybtn" type="button" onclick="blkCopy('${sender}', this)">copy</button>` : "—"}</td></tr>
-    ${acct && num(acct.tx_count) > 0 ? `<tr><td>Sender history</td><td><a href="/account/${sender}">${fmtInt(acct.tx_count as number)} observed sent txs</a> · last active ${ago(num(acct.last_active))}</td></tr>` : ""}
+    <tr><td>Sender</td><td>${senderRaw ? `<a class="mono" href="/account/${esc(senderRaw)}">${esc(shortHash(senderRaw, 10))}</a>${entityTag(senderRaw)} <button class="copybtn" type="button" onclick="blkCopy('${jsq(senderRaw)}', this)">copy</button>` : "—"}</td></tr>
+    ${acct && num(acct.tx_count) > 0 ? `<tr><td>Sender history</td><td><a href="/account/${esc(senderRaw)}">${fmtInt(acct.tx_count as number)} observed sent txs</a> · last active ${ago(num(acct.last_active))}</td></tr>` : ""}
     ${isBurn ? `<tr><td>Burned</td><td><span class="mint">${burnLabel}</span> <span style="color:var(--text-dim)">public burn amount</span></td></tr>` : ""}
     <tr><td>Timestamp</td><td>${fmtTime(ts)}</td></tr>
     <tr><td>Age</td><td>${ago(ts)}</td></tr>
@@ -316,18 +316,18 @@ txDetail.get("/tx/:hash", async (c) => {
 
   const statusPanel = `<div class="panel"><h2>Status &amp; Cost</h2><table class="kv">
     <tr><td>Execution</td><td>${hasResult ? `<span class="badge ${result === "executed" ? "ok" : "fail"}">${result}</span>` : '<span class="badge">not recorded</span>'}</td></tr>
-    <tr><td>Block</td><td><a href="/block/${topo}"><span class="mint">#${fmtInt(topo)}</span></a>${blockHash ? ` <span class="hash">${shortHash(blockHash, 6)}</span>` : ""}</td></tr>
+    <tr><td>Block</td><td><a href="/block/${topo}"><span class="mint">#${fmtInt(topo)}</span></a>${blockHash ? ` <span class="hash">${esc(shortHash(blockHash, 6))}</span>` : ""}</td></tr>
     <tr><td>Confirmations</td><td>${conf}</td></tr>
     <tr><td>Fee</td><td>${atomic(fee, 6)} XEL${feeRate ? ` <span style="color:var(--text-dim)">· ${feeRate}</span>` : ""}</td></tr>
     <tr><td>Size</td><td>${fmtInt(size)} bytes${size ? ` (${fmt(size / 1024)} KB)` : ""}</td></tr>
   </table></div>`;
 
   const contractPanel = contractId ? `<div class="panel"><h2>Contract Execution</h2><table class="kv">
-    <tr><td>Contract</td><td><a class="mono" href="/contracts/${esc(contractId)}">${shortHash(contractId, 12)}</a> <button class="copybtn" type="button" onclick="blkCopy('${esc(contractId)}', this)">copy</button></td></tr>
+    <tr><td>Contract</td><td><a class="mono" href="/contracts/${esc(contractId)}">${esc(shortHash(contractId, 12))}</a> <button class="copybtn" type="button" onclick="blkCopy('${jsq(contractId)}', this)">copy</button></td></tr>
     ${gas || maxGas ? `<tr><td>Gas</td><td>${atomic(gas || maxGas)} XEL${maxGas && gas && maxGas !== gas ? ` <span style="color:var(--text-dim)">· max ${atomic(maxGas)} XEL</span>` : ""}</td></tr>` : ""}
     ${contract ? `
       ${num(contract.invoke_count) ? `<tr><td>Invokes seen</td><td>${fmtInt(contract.invoke_count as number)}</td></tr>` : ""}
-      ${contract.deployer ? `<tr><td>Deployer</td><td><a class="mono" href="/account/${esc(contract.deployer as string)}">${shortHash(contract.deployer as string, 10)}</a></td></tr>` : ""}
+      ${contract.deployer ? `<tr><td>Deployer</td><td><a class="mono" href="/account/${esc(contract.deployer as string)}">${esc(shortHash(contract.deployer as string, 10))}</a></td></tr>` : ""}
       ${num(contract.deploy_topo) ? `<tr><td>Deployed at</td><td><a href="/block/${num(contract.deploy_topo)}">#${fmtInt(contract.deploy_topo as number)}</a></td></tr>` : ""}` : ""}
   </table></div>` : "";
 
@@ -337,17 +337,17 @@ txDetail.get("/tx/:hash", async (c) => {
     const v = (l.value ?? {}) as Record<string, unknown>;
     switch (l.type) {
       case "refund_gas": return `<span class="badge ok">gas refund</span> ${atomic(num(v.amount))} XEL gas refunded`;
-      case "transfer": return `transferred <span class="mint">${atomic(num(v.amount))}</span> <span class="mono">${shortHash(String(v.asset ?? ""), 6)}</span> to <a class="mono" href="/account/${esc(String(v.destination ?? ""))}">${shortHash(String(v.destination ?? ""), 8)}</a>`;
-      case "transfer_contract": return `transferred <span class="mint">${atomic(num(v.amount))}</span> <span class="mono">${shortHash(String(v.asset ?? ""), 6)}</span> to contract <a class="mono" href="/contracts/${esc(String(v.destination ?? ""))}">${shortHash(String(v.destination ?? ""), 8)}</a>`;
-      case "transfer_payload": return `transferred <span class="mint">${atomic(num(v.amount))}</span> <span class="mono">${shortHash(String(v.asset ?? ""), 6)}</span> to <a class="mono" href="/account/${esc(String(v.destination ?? ""))}">${shortHash(String(v.destination ?? ""), 8)}</a> with payload`;
-      case "mint": return `minted <span class="mint">${fmtInt(num(v.amount))}</span> <span class="mono">${shortHash(String(v.asset ?? ""), 6)}</span>`;
-      case "burn": return `burned <span class="mint">${atomic(num(v.amount))}</span> <span class="mono">${shortHash(String(v.asset ?? ""), 6)}</span>`;
-      case "new_asset": return `created asset <a class="mono" href="/asset/${esc(String(v.asset ?? ""))}">${shortHash(String(v.asset ?? ""), 10)}</a>`;
+      case "transfer": return `transferred <span class="mint">${atomic(num(v.amount))}</span> <span class="mono">${esc(shortHash(String(v.asset ?? ""), 6))}</span> to <a class="mono" href="/account/${esc(String(v.destination ?? ""))}">${esc(shortHash(String(v.destination ?? ""), 8))}</a>`;
+      case "transfer_contract": return `transferred <span class="mint">${atomic(num(v.amount))}</span> <span class="mono">${esc(shortHash(String(v.asset ?? ""), 6))}</span> to contract <a class="mono" href="/contracts/${esc(String(v.destination ?? ""))}">${esc(shortHash(String(v.destination ?? ""), 8))}</a>`;
+      case "transfer_payload": return `transferred <span class="mint">${atomic(num(v.amount))}</span> <span class="mono">${esc(shortHash(String(v.asset ?? ""), 6))}</span> to <a class="mono" href="/account/${esc(String(v.destination ?? ""))}">${esc(shortHash(String(v.destination ?? ""), 8))}</a> with payload`;
+      case "mint": return `minted <span class="mint">${fmtInt(num(v.amount))}</span> <span class="mono">${esc(shortHash(String(v.asset ?? ""), 6))}</span>`;
+      case "burn": return `burned <span class="mint">${atomic(num(v.amount))}</span> <span class="mono">${esc(shortHash(String(v.asset ?? ""), 6))}</span>`;
+      case "new_asset": return `created asset <a class="mono" href="/asset/${esc(String(v.asset ?? ""))}">${esc(shortHash(String(v.asset ?? ""), 10))}</a>`;
       case "gas_injection": return `injected ${atomic(num(v.amount))} XEL gas into contract`;
       case "scheduled_execution": {
         const kind = (v.kind ?? {}) as Record<string, unknown>;
         const kindLabel = kind.topoheight ? `at topoheight ${fmtInt(num(kind.topoheight))}` : "at block end";
-        return `scheduled execution <span class="mono">${shortHash(String(v.hash ?? ""), 10)}</span> ${kindLabel}`;
+        return `scheduled execution <span class="mono">${esc(shortHash(String(v.hash ?? ""), 10))}</span> ${kindLabel}`;
       }
       case "event": return `emitted event #${fmtInt(num(v.event_id))}`;
       case "exit_code": return num(v) === 0 ? '<span class="badge ok">success</span> exit code 0' : `<span class="badge fail">exit code</span> ${fmtInt(num(v))}`;
@@ -366,7 +366,7 @@ txDetail.get("/tx/:hash", async (c) => {
     : "";
 
   const assetRowsHtml = assetRows.map((a) => `<tr>
-    <td><a class="mono" href="/asset/${esc(a.asset_id)}">${shortHash(a.asset_id, 10)}</a> <button class="copybtn" type="button" onclick="blkCopy('${esc(a.asset_id)}', this)">copy</button></td>
+    <td><a class="mono" href="/asset/${esc(a.asset_id)}">${esc(shortHash(a.asset_id, 10))}</a> <button class="copybtn" type="button" onclick="blkCopy('${jsq(a.asset_id)}', this)">copy</button></td>
     <td>${a.name ? flaggedText(a.name) : "—"}</td>
     <td>${a.symbol ? flaggedText(a.symbol) : "—"}</td>
     <td class="num">${a.decimals !== null && a.decimals !== undefined ? fmtInt(a.decimals) : "—"}</td>
@@ -389,9 +389,9 @@ txDetail.get("/tx/:hash", async (c) => {
          <tbody>${siblings.map((s) => {
            const h = String(s.hash ?? "");
            return `<tr>
-             <td><a class="mono" href="/tx/${esc(h)}">${shortHash(h, 12)}</a></td>
+             <td><a class="mono" href="/tx/${esc(h)}">${esc(shortHash(h, 12))}</a></td>
              <td><span class="badge ${esc(s.tx_type)}">${esc(s.tx_type)}</span></td>
-             <td><a class="mono" href="/account/${esc(s.sender as string)}">${shortHash(s.sender as string, 8)}</a>${entityTag(s.sender as string)}</td>
+             <td><a class="mono" href="/account/${esc(s.sender as string)}">${esc(shortHash(s.sender as string, 8))}</a>${entityTag(s.sender as string)}</td>
              <td class="num">${atomic(num(s.fee), 6)}</td>
              <td class="num">${fmtInt(num(s.size))} B</td>
              <td>${s.executed === 1 ? '<span class="badge ok">executed</span>' : s.executed === 0 ? '<span class="badge fail">unexecuted</span>' : '<span style="color:var(--text-dim)">—</span>'}</td>
@@ -415,5 +415,5 @@ txDetail.get("/tx/:hash", async (c) => {
         : "Xelis is private by design: transfer amounts and balances are encrypted for everyone — including this explorer. Receiver addresses and asset ids are public metadata; only the amounts stay hidden."}</span>
     </div>
     <script>${blkCopyScript}</script>`;
-  return c.html(layout(`TX ${shortHash(hash, 8)}`, content, "/transactions"));
+  return c.html(layout(`TX ${esc(shortHash(hash, 8))}`, content, "/transactions"));
 });

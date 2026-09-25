@@ -1,6 +1,6 @@
 # xelis-stats
 
-Charts and stats for the Xelis network, built with Vite, Hono, and uPlot. Runs on Cloudflare Workers (D1 + KV + R2 + Durable Objects).
+Charts and stats for the Xelis network, built with Vite, Hono, and uPlot. Runs on Cloudflare Workers (D1 + KV + Durable Objects).
 
 ## What it does
 
@@ -14,9 +14,51 @@ Charts and stats for the Xelis network, built with Vite, Hono, and uPlot. Runs o
 ```sh
 npm install
 npm run dev       # local dev server
-npm run preview   # preview the Worker build
-npm run deploy    # deploy to Cloudflare
+npm run preview   # build + preview the Worker output locally
+npm run deploy    # build + deploy to Cloudflare
 ```
+
+## Deploy
+
+The client bundle is built by Vite into the Worker's static assets; `npm run
+deploy` runs `vite build` first. Deploying the Worker without a build ships a
+site whose JavaScript entry does not exist, so always deploy via the script (or
+run `npm run build` before `wrangler deploy`).
+
+1. Create the Cloudflare resources once and fill in the ids in
+   `wrangler.jsonc` (the `TODO_CREATE_WITH_WRANGLER` placeholders):
+
+   ```sh
+   npx wrangler d1 create xelis-stats
+   npx wrangler kv namespace create KV
+   ```
+
+   `XELIS_STATS_DB_ID` must be the hot D1 database uuid (same as
+   `database_id`).
+
+2. Apply the schema to the remote database:
+
+   ```sh
+   npx wrangler d1 migrations apply xelis-stats --remote
+   ```
+
+3. Optional — D1 shard rotation (the 10 GB per-database workaround). Without
+   these secrets rotation is disabled and the app runs in single-DB mode. Use
+   an API token scoped to D1 edit on this account:
+
+   ```sh
+   npx wrangler secret put CLOUDFLARE_ACCOUNT_ID
+   npx wrangler secret put CLOUDFLARE_API_TOKEN
+   ```
+
+4. Deploy and verify:
+
+   ```sh
+   npm run deploy
+   npm run preview
+   ```
+
+For local development, secrets go in `.dev.vars` (gitignored).
 
 ### Scripts
 

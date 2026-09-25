@@ -4,13 +4,13 @@ import { layout } from "../../client/layout";
 import { fmt, fmtInt, shortHash, timeCell, atomic } from "../../client/format";
 import { srvSort, BLOCK_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
-import { PAGE_SIZE, pager, cursorPager, esc } from "./shared";
+import { PAGE_SIZE, pager, cursorPager, esc, clampInt, logErr } from "./shared";
 import { pagedRaw, pagedRawAsc, topNRaw, countRaw, mergeAgg } from "../shards";
 
 export const blocks = new Hono<{ Bindings: Env }>();
 
 blocks.get("/blocks", async (c) => {
-  const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
+  const page = clampInt(c.req.query("page"), 1, 100_000);
   // table filters: block type (case-insensitive, like /api/blocks) + min txs
   const typeRaw = (c.req.query("type") ?? "").toLowerCase();
   const type = ["normal", "side", "sync"].includes(typeRaw) ? typeRaw[0].toUpperCase() + typeRaw.slice(1) : "";
@@ -115,7 +115,7 @@ blocks.get("/blocks", async (c) => {
         const type = esc(String(b.block_type ?? "normal"));
         return `<tr>
           <td><a href="/block/${topo}"><span class="mint">${fmtInt(topo)}</span></a></td>
-          <td><span class="hash">${shortHash(b.hash as string)}</span></td>
+          <td><span class="hash">${esc(shortHash(b.hash as string))}</span></td>
           <td>${timeCell(ts)}</td>
           <td class="num">${fmtInt(b.tx_count as number)}</td>
           <td class="num">${fmt((b.difficulty as number) ?? 0)}</td>

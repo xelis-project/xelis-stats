@@ -5,12 +5,12 @@ import { fmtInt, shortHash, fmtTime, timeCell, ago } from "../../client/format";
 import { srvSort, ACCT_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
 import { knownEntity, knownEntities } from "../entities";
-import { PAGE_SIZE, pager, esc } from "./shared";
+import { PAGE_SIZE, pager, esc, clampInt, logErr } from "./shared";
 
 export const accounts = new Hono<{ Bindings: Env }>();
 
 accounts.get("/accounts", async (c) => {
-  const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
+  const page = clampInt(c.req.query("page"), 1, 100_000);
   // legacy ?sort=active|txs|first URLs map onto the same columns and defaults
   const minTxsRaw = Number(c.req.query("min_txs") ?? "");
   const minTxs = Number.isFinite(minTxsRaw) && minTxsRaw > 0 ? Math.floor(minTxsRaw) : 0;
@@ -60,7 +60,7 @@ accounts.get("/accounts", async (c) => {
         const addr = a.address as string;
         const e = knownEntity(addr);
         return `<tr>
-          <td><a href="/account/${addr}"><span class="hash">${shortHash(addr)}</span></a>${e ? ` <span class="badge entity ${esc(e.kind)}">${esc(e.label)}</span>` : ""}</td>
+          <td><a href="/account/${esc(addr)}"><span class="hash">${esc(shortHash(addr))}</span></a>${e ? ` <span class="badge entity ${esc(e.kind)}">${esc(e.label)}</span>` : ""}</td>
           <td>${timeCell(a.first_seen as number)}</td>
           <td>${timeCell((a.last_active as number) ?? null)}</td>
           <td class="num">${fmtInt(a.tx_count as number)}</td>

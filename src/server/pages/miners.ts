@@ -4,14 +4,17 @@ import { layout } from "../../client/layout";
 import { fmt, fmtInt, shortHash } from "../../client/format";
 import { srvSort, TOP_COLS } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
-import { entityTag, esc, num, PAGE_SIZE, pager } from "./shared";
+import { entityTag, esc, num, PAGE_SIZE, pager, clampInt, logErr } from "./shared";
 
 export const miners = new Hono<{ Bindings: Env }>();
 
 miners.get("/miners", async (c) => {
-  const period = c.req.query("period") ?? "all";
-  const date = c.req.query("date") ?? "";
-  const page = Math.max(1, Number(c.req.query("page")) || 1);
+  const periodRaw = c.req.query("period") ?? "all";
+  const period = ["day", "week", "month", "all"].includes(periodRaw) ? periodRaw : "all";
+  const dateRaw = c.req.query("date") ?? "";
+  // only YYYY-MM / YYYY-MM-DD anchors reach links and SQL
+  const date = /^\d{4}-\d{2}(-\d{2})?$/.test(dateRaw) ? dateRaw : "";
+  const page = clampInt(c.req.query("page"), 1, 100_000);
   const db = c.env.DB;
   const srt = srvSort((n) => c.req.query(n), TOP_COLS.miners, "blocks", "address", (s) => {
     const p = new URLSearchParams();
@@ -77,7 +80,7 @@ miners.get("/miners", async (c) => {
         .all<Record<string, unknown>>().then((r) => r.results ?? []);
       rangeLabel = day;
     }
-  } catch { /* db not ready */ }
+  } catch (err) { logErr("page/miners", err); }
 
   const dateHint = period === "month" ? "YYYY-MM" : period === "day" || period === "week" ? "YYYY-MM-DD" : "";
 
@@ -87,7 +90,7 @@ miners.get("/miners", async (c) => {
   const body = rows.length
     ? rows.map((r, i) => `<tr>
         <td class="num">${(page - 1) * PAGE_SIZE + i + 1}</td>
-        <td><a class="mono" href="/miner/${r.address}">${shortHash(r.address as string, 10)}</a>${entityTag(r.address as string)}</td>
+        <td><a class="mono" href="/miner/${esc(r.address as string)}">${esc(shortHash(r.address as string, 10))}</a>${entityTag(r.address as string)}</td>
         <td class="num">${fmtInt(r.blocks as number)}</td>
         <td class="num">${fmtInt(r.normal as number)}</td>
         <td class="num">${fmtInt(r.sync as number)}</td>
@@ -99,7 +102,7 @@ miners.get("/miners", async (c) => {
   const fActive = period !== "all" || !!date;
   const fFields = `
     ${filterField("Period", `<select name="period">${periodOpts}</select>`)}
-    ${dateHint ? filterField(`Anchor date <span class="f-hint">(${dateHint})</span>`, `<input type="text" name="date" data-datepicker placeholder="${dateHint}" value="${date || (period === "day" ? resolvedDay : "")}" />`) : ""}
+    ${dateHint ? filterField(`Anchor date <span class="f-hint">(${dateHint})</span>`, `<input type="text" name="date" data-datepicker placeholder="${dateHint}" value="${esc(date || (period === "day" ? resolvedDay : ""))}" />`) : ""}
   `;
   const fPop = filterPop("f-miners", "/miners", fFields, {
     hidden: srt.qs ? { sort: srt.key, dir: srt.dir } : {},

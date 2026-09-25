@@ -4,13 +4,13 @@ import { layout } from "../../client/layout";
 import { fmtInt, shortHash, timeCell, atomic } from "../../client/format";
 import { srvSort, TX_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
-import { PAGE_SIZE, pager, cursorPager, entityTag, esc } from "./shared";
+import { PAGE_SIZE, pager, cursorPager, entityTag, esc, clampInt, logErr } from "./shared";
 import { pagedCompositeRaw, topNRaw, countRaw } from "../shards";
 
 export const transactions = new Hono<{ Bindings: Env }>();
 
 transactions.get("/transactions", async (c) => {
-  const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
+  const page = clampInt(c.req.query("page"), 1, 100_000);
   const TX_TYPES = ["transfer", "burn", "invoke_contract", "deploy_contract", "multisig"];
   const rawType = c.req.query("type") ?? "";
   const type = TX_TYPES.includes(rawType) ? rawType : "";
@@ -97,7 +97,7 @@ transactions.get("/transactions", async (c) => {
       hasNext = rows.length > PAGE_SIZE;
       rows = rows.slice(0, PAGE_SIZE);
     }
-  } catch { /* db not ready */ }
+  } catch (err) { logErr("page/transactions", err); }
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const qlink = (params: Record<string, string>): string => {
@@ -138,11 +138,11 @@ transactions.get("/transactions", async (c) => {
         const txType = String(t.tx_type ?? "");
         const sender = String(t.sender ?? "");
         return `<tr>
-        <td><a class="mono" href="/tx/${esc(hash)}">${shortHash(hash)}</a></td>
+        <td><a class="mono" href="/tx/${esc(hash)}">${esc(shortHash(hash))}</a></td>
         <td>${Number.isFinite(topo) ? `<a href="/block/${topo}"><span class="mint">${fmtInt(topo)}</span></a>` : dim("—")}</td>
         <td>${Number.isFinite(ts) ? timeCell(ts) : dim("—")}</td>
         <td>${txType ? `<span class="badge ${esc(txType)}">${esc(txType)}</span>` : dim("—")}</td>
-        <td>${sender ? `<a class="mono" href="/account/${esc(sender)}">${shortHash(sender, 8)}</a>${entityTag(sender)}` : dim("—")}</td>
+        <td>${sender ? `<a class="mono" href="/account/${esc(sender)}">${esc(shortHash(sender, 8))}</a>${entityTag(sender)}` : dim("—")}</td>
         <td class="num"${Number(t.transfer_count) === 0 ? ' style="color:var(--text-dim)"' : ""}>${fmtInt(Number(t.transfer_count))}</td>
         <td class="num">${atomic(t.fee as number, 6)}</td>
       </tr>`;

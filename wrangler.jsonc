@@ -2,10 +2,12 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "xelis-stats",
   "main": "src/server/index.ts",
-  "compatibility_date": "2025-09-01",
+  "compatibility_date": "2026-09-25",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
-    "not_found_handling": "single-page-application"
+    // SSR app: unmatched navigations must reach the Worker (app.notFound),
+    // never the SPA fallback.
+    "not_found_handling": "none"
   },
   "observability": {
     "enabled": true
@@ -14,12 +16,14 @@
     {
       "binding": "DB",
       "database_name": "xelis-stats",
+      // `wrangler d1 create xelis-stats` — see README "Deploy"
       "database_id": "TODO_CREATE_WITH_WRANGLER"
     }
   ],
   "kv_namespaces": [
     {
       "binding": "KV",
+      // `wrangler kv namespace create KV` — see README "Deploy"
       "id": "TODO_CREATE_WITH_WRANGLER"
     }
   ],
@@ -35,6 +39,18 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["StatsCollector"]
+    }
+  ],
+  "ratelimits": [
+    {
+      "name": "API_RATE",
+      "namespace_id": "1001",
+      "simple": { "limit": 120, "period": 60 }
+    },
+    {
+      "name": "EXPENSIVE_RATE",
+      "namespace_id": "1002",
+      "simple": { "limit": 30, "period": 60 }
     }
   ],
   "triggers": {

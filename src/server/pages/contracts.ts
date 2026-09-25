@@ -7,7 +7,7 @@ import { srvSort } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
 import { rpc } from "../xelis";
 import { fetchBlockTimes } from "../shards";
-import { esc, entityTag, blkCopyScript, flaggedText, num, PAGE_SIZE, pager } from "./shared";
+import { esc, jsq, entityTag, blkCopyScript, flaggedText, num, PAGE_SIZE, pager, clampInt, logErr } from "./shared";
 import { fetchStorage, storageBatchHtml, storageEntry, storageHeadText } from "./storage";
 
 export const contracts = new Hono<{ Bindings: Env }>();
@@ -31,8 +31,7 @@ contracts.get("/contracts", async (c) => {
   });
   let rows: Record<string, unknown>[] = [];
   let total = 0;
-  const pageRaw = Number(c.req.query("page") ?? 1);
-  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1;
+  const page = clampInt(c.req.query("page"), 1, 100_000);
   try {
     const where = minInv ? "WHERE invoke_count >= ?" : "";
     const binds = minInv ? [minInv] : [];
@@ -40,7 +39,7 @@ contracts.get("/contracts", async (c) => {
       .bind(...binds).first<{ n: number }>())?.n ?? 0;
     rows = await c.env.DB.prepare(`SELECT * FROM contracts ${where} ORDER BY ${srt.order} LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}`)
       .bind(...binds).all<Record<string, unknown>>().then((r) => r.results ?? []);
-  } catch { /* not ready */ }
+  } catch (err) { logErr("page/contracts", err); }
   const p = new URLSearchParams();
   if (minInv) p.set("min_invokes", String(minInv));
   if (srt.qs) for (const [k, v] of new URLSearchParams(srt.qs)) p.set(k, v);
@@ -63,8 +62,8 @@ contracts.get("/contracts", async (c) => {
     ? rows.map((ct) => {
         const ts = times.get(num(ct.deploy_topo));
         return `<tr>
-        <td><a class="mono" href="/contracts/${ct.contract_id}">${shortHash(ct.contract_id as string, 10)}</a></td>
-        <td><a class="mono" href="/account/${ct.deployer}">${shortHash(ct.deployer as string, 8)}</a></td>
+        <td><a class="mono" href="/contracts/${esc(ct.contract_id as string)}">${esc(shortHash(ct.contract_id as string, 10))}</a></td>
+        <td><a class="mono" href="/account/${esc(ct.deployer as string)}">${esc(shortHash(ct.deployer as string, 8))}</a></td>
         <td class="num">${fmtInt(ct.deploy_topo as number)}</td>
         <td>${ts ? timeCell(ts) : "—"}</td>
         <td class="num">${fmtInt(ct.invoke_count as number)}</td>
@@ -90,7 +89,7 @@ contracts.get("/contracts", async (c) => {
 contracts.get("/contracts/:id", async (c) => {
   const id = c.req.param("id");
   const db = c.env.DB;
-  const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
+  const page = clampInt(c.req.query("page"), 1, 100_000);
 
   let ct: Record<string, unknown> | undefined;
   let invokes: Record<string, unknown>[] = [];
@@ -101,7 +100,7 @@ contracts.get("/contracts/:id", async (c) => {
     invokes = await db.prepare(
       `SELECT hash, block_topo, ts, fee, executed, sender FROM tx_index WHERE contract_id = ? ORDER BY block_topo DESC LIMIT ? OFFSET ?`
     ).bind(id, PAGE_SIZE, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>().then((r) => r.results ?? []);
-  } catch { /* db not ready */ }
+  } catch (err) { logErr("page/contract", err); }
 
   if (!ct) return c.html(layout("Not found", notFound("Contract"), "/contracts"));
 
@@ -185,14 +184,14 @@ contracts.get("/contracts/:id", async (c) => {
   const hero = `<div class="panel blk-hero">
     <div class="blk-head">
       <div class="blk-id">
-        <h2 class="blk-title">Contract <span class="mint mono" style="font-size:0.72em">${shortHash(deployHash, 12)}</span></h2>
+        <h2 class="blk-title">Contract <span class="mint mono" style="font-size:0.72em">${esc(shortHash(deployHash, 12))}</span></h2>
         <div class="blk-meta">
           ${invokeCount > 0 ? `<span class="badge">${fmtInt(invokeCount)} invoke${invokeCount === 1 ? "" : "s"}</span>` : '<span class="badge">no invokes observed</span>'}
           ${lastTs ? `<span class="blk-when">last invoked ${ago(lastTs)}</span>` : ""}
         </div>
         <div class="hash-row">
           <a class="hashline mono" href="/tx/${esc(deployHash)}" title="Deploy transaction">${esc(deployHash)}</a>
-          <button class="copybtn" type="button" onclick="blkCopy('${esc(deployHash)}', this)">copy</button>
+          <button class="copybtn" type="button" onclick="blkCopy('${jsq(deployHash)}', this)">copy</button>
         </div>
       </div>
       <div class="blk-nav"><a class="btn ghost" href="/contracts" title="All indexed contracts">Contracts ${icons.chevronRight}</a></div>
@@ -200,15 +199,15 @@ contracts.get("/contracts/:id", async (c) => {
     <div class="cards blk-cards">
       ${statCard("Invokes", invokeCount > 0 ? fmtInt(invokeCount) : "—", "indexed contract calls")}
       ${statCard("Gas Total", gasTotal > 0 ? `${atomic(gasTotal)} XEL` : "—", "sum of max_gas across invokes")}
-      ${statCard("Deployer", shownDeployer ? `<a class="mono" href="/account/${esc(shownDeployer)}">${shortHash(shownDeployer, 8)}</a>` : "—", shownDeployer && !deployer ? "resolved on-chain" : "account that deployed")}
+      ${statCard("Deployer", shownDeployer ? `<a class="mono" href="/account/${esc(shownDeployer)}">${esc(shortHash(shownDeployer, 8))}</a>` : "—", shownDeployer && !deployer ? "resolved on-chain" : "account that deployed")}
       ${statCard("Deployed", shownDeployTopo > 0 ? `<a href="/block/${shownDeployTopo}">#${fmtInt(shownDeployTopo)}</a>` : "—", "deploy tx block")}
       ${statCard("Last Invoke", lastTs ? ago(lastTs) : "—", lastTs ? fmtTime(lastTs) : "not observed")}
     </div>
   </div>`;
 
   const overview = `<div class="panel"><h2>Overview</h2><table class="kv">
-    <tr><td>Contract ID</td><td><a class="mono" href="/tx/${esc(deployHash)}" title="Deploy transaction">${esc(deployHash)}</a> <button class="copybtn" type="button" onclick="blkCopy('${esc(deployHash)}', this)">copy</button></td></tr>
-    <tr><td>Deployer</td><td>${shownDeployer ? `<a class="mono" href="/account/${esc(shownDeployer)}">${shortHash(shownDeployer, 10)}</a>${entityTag(shownDeployer)} <button class="copybtn" type="button" onclick="blkCopy('${esc(shownDeployer)}', this)">copy</button>${!deployer ? ' <span style="color:var(--text-dim)">(resolved on-chain)</span>' : ""}` : "—"}</td></tr>
+    <tr><td>Contract ID</td><td><a class="mono" href="/tx/${esc(deployHash)}" title="Deploy transaction">${esc(deployHash)}</a> <button class="copybtn" type="button" onclick="blkCopy('${jsq(deployHash)}', this)">copy</button></td></tr>
+    <tr><td>Deployer</td><td>${shownDeployer ? `<a class="mono" href="/account/${esc(shownDeployer)}">${esc(shortHash(shownDeployer, 10))}</a>${entityTag(shownDeployer)} <button class="copybtn" type="button" onclick="blkCopy('${jsq(shownDeployer)}', this)">copy</button>${!deployer ? ' <span style="color:var(--text-dim)">(resolved on-chain)</span>' : ""}` : "—"}</td></tr>
     ${shownDeployTopo > 0 ? `<tr><td>Deployed at</td><td><a href="/block/${shownDeployTopo}"><span class="mint">#${fmtInt(shownDeployTopo)}</span></a>${deployTopo > 0 && moduleTopo && moduleTopo !== deployTopo ? ` <a href="/block/${moduleTopo}"><span class="mint">#${fmtInt(moduleTopo)}</span></a> <span style="color:var(--text-dim)">(on-chain)</span>` : ""}</td></tr>` : ""}
     ${codeSize ? `<tr><td>Module code</td><td><span class="mono">~${fmtInt(codeSize)} bytes (serialized)</span></td></tr>` : ""}
     ${deployFee ? `<tr><td>Deploy fee</td><td>${atomic(deployFee, 6)} XEL</td></tr>` : ""}
@@ -225,7 +224,7 @@ contracts.get("/contracts/:id", async (c) => {
         const amount = b.balance !== null ? `<td class="num">${fmt(b.balance / 10 ** dec, Math.min(dec, 6))}</td>` : `<td class="num" style="color:var(--text-dim)">—</td>`;
         const assetCell = b.asset === xel
           ? `<span class="badge">XEL</span>`
-          : `<a class="mono" href="/asset/${esc(b.asset)}">${shortHash(b.asset, 10)}</a>`;
+          : `<a class="mono" href="/asset/${esc(b.asset)}">${esc(shortHash(b.asset, 10))}</a>`;
         const nameCell = b.name ? flaggedText(b.name) : "—";
         const tickerCell = b.symbol ? `<span class="mono">${flaggedText(b.symbol)}</span>` : "—";
         return `<tr><td>${assetCell}</td><td>${nameCell}</td><td>${tickerCell}</td>${amount}<td class="num">${b.topo ? `<a href="/block/${b.topo}">${fmtInt(b.topo)}</a>` : "—"}</td></tr>`;
@@ -274,10 +273,10 @@ contracts.get("/contracts/:id", async (c) => {
         const h = String(t.hash ?? "");
         const result = t.executed === 1 ? "executed" : t.executed === 0 ? "unexecuted" : "";
         return `<tr>
-          <td><a class="mono" href="/tx/${esc(h)}">${shortHash(h, 12)}</a></td>
+          <td><a class="mono" href="/tx/${esc(h)}">${esc(shortHash(h, 12))}</a></td>
           <td><a href="/block/${num(t.block_topo)}"><span class="mint">${fmtInt(num(t.block_topo))}</span></a></td>
           <td>${fmtTime(num(t.ts))}</td>
-          <td><a class="mono" href="/account/${esc(t.sender as string)}">${shortHash(t.sender as string, 8)}</a>${entityTag(t.sender as string)}</td>
+          <td><a class="mono" href="/account/${esc(t.sender as string)}">${esc(shortHash(t.sender as string, 8))}</a>${entityTag(t.sender as string)}</td>
           <td class="num">${atomic(num(t.fee), 6)}</td>
           <td>${result ? `<span class="badge ${result === "executed" ? "ok" : "fail"}">${result}</span>` : '<span style="color:var(--text-dim)">—</span>'}</td>
         </tr>`;
@@ -301,14 +300,15 @@ contracts.get("/contracts/:id", async (c) => {
     ${storagePanel}
     ${bytecodePanel}
     <script>${blkCopyScript}</script>`;
-  return c.html(layout(`Contract ${shortHash(deployHash, 8)}`, content, "/contracts"));
+  return c.html(layout(`Contract ${esc(shortHash(deployHash, 8))}`, content, "/contracts"));
 });
 
 // HTML fragment of the next storage batch, appended by the load-more script
 contracts.get("/contracts/:id/storage", async (c) => {
   const id = c.req.param("id");
-  const skipRaw = Number(c.req.query("skip") ?? 0);
-  const skip = Number.isFinite(skipRaw) && skipRaw > 0 ? Math.floor(skipRaw) : 0;
+  // RPC-backed batch; cap the skip so deep offsets cannot walk the contract's
+  // whole storage from a single request
+  const skip = clampInt(c.req.query("skip"), 0, 10_000);
   const { entries, more } = await fetchStorage(id, skip);
   return c.html(storageBatchHtml(entries, more));
 });

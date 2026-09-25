@@ -1,7 +1,13 @@
 import { XEL_LOGO } from "./format";
 import { icons } from "./icons";
+import { mainScriptUrl } from "./entry-url";
 import appCss from "./style.css?inline";
 import flatpickrCss from "flatpickr/dist/flatpickr.min.css?inline";
+import uplotCss from "uplot/dist/uPlot.min.css?inline";
+
+// HTML-escape every untrusted value before interpolating it into a template.
+export const escHtml = (v: unknown): string =>
+  String(v ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] as string));
 
 export function layout(title: string, content: string, active: string, bodyClass = ""): string {
   const nav = [
@@ -23,17 +29,17 @@ export function layout(title: string, content: string, active: string, bodyClass
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${title} · Xelis Stats</title>
+  <title>${escHtml(title)} · Xelis Stats</title>
   <meta name="description" content="Xelis blockchain statistics, market data and explorer" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <script>try{var s=localStorage,d=document.documentElement;if(s.getItem("xelis:reveal-flags")==="1")d.classList.add("reveal-flags");if(s.getItem("xelis:density")==="compact")d.classList.add("density-compact");if(s.getItem("xelis:reduce-motion")==="1")d.classList.add("reduce-motion");}catch(e){}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Jura:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
-  <style>${flatpickrCss}${appCss}</style>
-  <script type="module" src="/src/client/main.ts"></script>
+  <style>${flatpickrCss}${uplotCss}${appCss}</style>
+  <script type="module" src="${mainScriptUrl}"></script>
 </head>
-<body class="${bodyClass}">
+<body class="${escHtml(bodyClass)}">
   <div id="app">
     <header class="site">
       <a class="logo" href="/"><svg width="22" height="21" viewBox="0 0 778 743" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M388.909 742.872L777.817 353.964L424.056 0.202599L478.809 132.737L700.036 353.964L388.909 665.091L77.7817 353.964L299.507 129.121L353.964 0L0 353.964L388.909 742.872Z"/><path d="M388.909 665.091L353.964 0L299.507 129.121L388.909 665.091Z"/><path d="M424.056 0.202599L388.909 665.091L478.809 132.737L424.056 0.202599Z"/></svg><span>XELIS&nbsp;<span style="color:var(--mint)">STATS</span></span></a>
@@ -100,7 +106,7 @@ export function statCard(label: string, value: string, sub = "", small = false, 
 }
 
 export function notFound(what: string): string {
-  return `<div class="err404"><h1>404</h1><p style="margin-top:1rem;color:var(--text-dim)">${what} not found</p><p style="margin-top:2rem"><a class="btn" href="/">${icons.arrowLeft} Dashboard</a></p></div>`;
+  return `<div class="err404"><h1>404</h1><p style="margin-top:1rem;color:var(--text-dim)">${escHtml(what)} not found</p><p style="margin-top:2rem"><a class="btn" href="/">${icons.arrowLeft} Dashboard</a></p></div>`;
 }
 
 export { XEL_LOGO };

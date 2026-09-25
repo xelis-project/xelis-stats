@@ -16,6 +16,10 @@ export interface Env {
   KV: KVNamespace;
   COLLECTOR: DurableObjectNamespace;
   XELIS_NODE: string;
+  // native rate-limit bindings (see wrangler.jsonc); optional so local/dev or
+  // older configs fail open instead of crashing
+  API_RATE?: RateLimit;
+  EXPENSIVE_RATE?: RateLimit;
   // D1 shard rotation (optional; unset secrets = single-DB mode)
   CLOUDFLARE_ACCOUNT_ID?: string;
   CLOUDFLARE_API_TOKEN?: string;
@@ -25,16 +29,65 @@ export interface Env {
 
 const app = new Hono<{ Bindings: Env }>();
 
-// ---------- rate limiting (per-IP, KV counters) ----------
+// ---------- security headers ----------
 
-app.use("/api/*", async (c, next) => {
-  const ip = c.req.header("CF-Connecting-IP") ?? "anon";
-  const key = `rl:${ip}:${Math.floor(Date.now() / 60_000)}`; // per-minute window
-  const count = Number(await c.env.KV.get(key) ?? 0);
-  if (count > 120) {
-    return c.json({ error: "rate limit exceeded (120 req/min)" }, 429);
+app.use("*", async (c, next) => {
+  await next();
+  const h = c.res.headers;
+  h.set("X-Content-Type-Options", "nosniff");
+  h.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  h.set("Permissions-Policy", "geolocation=(), microphone=(), camera=()");
+  h.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  // Embeds are meant to be framed by third parties; everything else is not.
+  const embed = c.req.path.startsWith("/embed/");
+  if (!embed) h.set("X-Frame-Options", "DENY");
+  // Inline event handlers and inline <script> blocks are still used, so
+  // script-src cannot be tightened without a nonce/handler refactor; the rest
+  // of the policy still blocks plugin content, base-tag hijacks and framing.
+  h.set("Content-Security-Policy", [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "img-src 'self' data:",
+    "connect-src 'self' ws: wss:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    `frame-ancestors ${embed ? "*" : "'none'"}`,
+  ].join("; "));
+  // Short-lived caching for GETs; never cache the WebSocket upgrade or the
+  // RPC-backed storage fragment.
+  const noStore = c.req.path === "/ws" || /^\/contracts\/[^/]+\/storage$/.test(c.req.path);
+  if (c.req.method === "GET" && !noStore) {
+    if (c.req.path.startsWith("/api/")) {
+      h.set("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
+    } else if (h.get("Content-Type")?.includes("text/html")) {
+      h.set("Cache-Control", "public, max-age=15, stale-while-revalidate=45");
+    }
   }
-  await c.env.KV.put(key, String(count + 1), { expirationTtl: 120 });
+});
+
+// ---------- rate limiting (native, atomic per-IP limiters) ----------
+
+// Expensive SSR routes that hit node RPC per request; everything else is
+// either static, cached or cheap enough to serve without a per-IP cap.
+const EXPENSIVE_SSR = /^\/contracts\/[^/]+\/storage$/;
+
+app.use("*", async (c, next) => {
+  if (c.req.method !== "GET") return next();
+  const isApi = c.req.path.startsWith("/api/");
+  const expensive = EXPENSIVE_SSR.test(c.req.path);
+  if (!isApi && !expensive) return next();
+  const limiter = isApi ? c.env.API_RATE : c.env.EXPENSIVE_RATE;
+  if (limiter) {
+    const key = `${c.req.header("CF-Connecting-IP") ?? "anon"}:${isApi ? "api" : "ssr"}`;
+    const { success } = await limiter.limit({ key });
+    if (!success) {
+      c.header("Retry-After", "60");
+      return c.json({ error: "rate limit exceeded" }, 429);
+    }
+  }
   await next();
 });
 
@@ -143,8 +196,19 @@ app.route("/", docs);
 app.route("/", pages);
 
 // 404
-app.notFound((c) => c.html(layout("Not found",
-  `<div class="err404"><h1>404</h1><p style="margin-top:1rem;color:var(--text-dim)">Page not found</p><p style="margin-top:2rem"><a class="btn" href="/">${icons.arrowLeft} Dashboard</a></p></div>`, ""), 404));
+app.notFound((c) => {
+  if (c.req.path.startsWith("/api/")) return c.json({ error: "not found" }, 404);
+  return c.html(layout("Not found",
+    `<div class="err404"><h1>404</h1><p style="margin-top:1rem;color:var(--text-dim)">Page not found</p><p style="margin-top:2rem"><a class="btn" href="/">${icons.arrowLeft} Dashboard</a></p></div>`, ""), 404);
+});
+
+// Unhandled errors: log with request context and return a safe response
+app.onError((err, c) => {
+  console.error(`unhandled error on ${c.req.method} ${c.req.path}:`, err instanceof Error ? (err.stack ?? err.message) : String(err));
+  if (c.req.path.startsWith("/api/")) return c.json({ error: "internal error" }, 500);
+  return c.html(layout("Error",
+    `<div class="err404"><h1>500</h1><p style="margin-top:1rem;color:var(--text-dim)">Something went wrong. Try again shortly.</p><p style="margin-top:2rem"><a class="btn" href="/">${icons.arrowLeft} Dashboard</a></p></div>`, ""), 500);
+});
 
 // Rankings (period leaderboards)
 app.route("/", top);

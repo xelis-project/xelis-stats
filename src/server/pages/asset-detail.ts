@@ -7,7 +7,7 @@ import { rpc, getInfo } from "../xelis";
 import { parseMaxSupply, parseOwner, type AssetMaxSupply, type AssetOwner } from "../asset-registry";
 import { srvSort, TX_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
-import { esc, flaggedText, blkCopyScript, num, PAGE_SIZE, pager } from "./shared";
+import { esc, jsq, flaggedText, blkCopyScript, num, PAGE_SIZE, pager, clampInt, logErr } from "./shared";
 import { topNRaw, countRaw, mergeAgg } from "../shards";
 
 export const assetDetail = new Hono<{ Bindings: Env }>();
@@ -75,7 +75,7 @@ assetDetail.get("/asset/:id", async (c) => {
   const id = c.req.param("id");
   const db = c.env.DB;
   const isXel = id === XEL_ASSET_ID;
-  const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
+  const page = clampInt(c.req.query("page"), 1, 100_000);
   const rawType = c.req.query("type") ?? "";
   const type = TX_TYPES.includes(rawType) ? rawType : "";
   const srt = srvSort((n) => c.req.query(n), TX_COLS, "block", "hash", (s) => {
@@ -83,13 +83,13 @@ assetDetail.get("/asset/:id", async (c) => {
     if (type) p.set("type", type);
     if (s) for (const [k, v] of new URLSearchParams(s)) p.set(k, v);
     const q = p.toString();
-    return q ? `/asset/${id}?${q}` : `/asset/${id}`;
+    return q ? `/asset/${esc(id)}?${q}` : `/asset/${esc(id)}`;
   });
 
   let asset: Record<string, unknown> | undefined;
   try {
     asset = (await db.prepare("SELECT * FROM assets WHERE asset_id = ?").bind(id).first()) ?? undefined;
-  } catch { /* db not ready */ }
+  } catch (err) { logErr("page/asset", err); }
 
   let nodeAsset: NodeAsset | null = null;
   try {
@@ -104,7 +104,7 @@ assetDetail.get("/asset/:id", async (c) => {
   const firstTopo = num(asset?.first_seen_topo) || num(nodeAsset?.topoheight) || 0;
   const unit = 10 ** decimals;
   const amount = (v: number | null | undefined): string => (v == null || !Number.isFinite(v) ? "—" : fmt(v / unit, 2));
-  const label = symbol ? flaggedText(symbol) : shortHash(id, 8);
+  const label = symbol ? flaggedText(symbol) : esc(shortHash(id, 8));
 
   // max supply + owner: stored registry metadata first, live node fallback
   const max: AssetMaxSupply = asset?.max_supply_kind
@@ -181,7 +181,7 @@ assetDetail.get("/asset/:id", async (c) => {
       extra,
       floorCol: "t.block_topo",
     });
-  } catch { /* db not ready */ }
+  } catch (err) { logErr("page/asset", err); }
 
   // publicly burned amount of this asset
   let burnedTotal = 0;
@@ -231,7 +231,7 @@ assetDetail.get("/asset/:id", async (c) => {
         </div>
         <div class="hash-row">
           <span class="hashline mono">${esc(id)}</span>
-          <button class="copybtn" type="button" onclick="blkCopy('${esc(id)}', this)">copy</button>
+          <button class="copybtn" type="button" onclick="blkCopy('${jsq(id)}', this)">copy</button>
         </div>
       </div>
       <div class="blk-nav">
@@ -249,11 +249,11 @@ assetDetail.get("/asset/:id", async (c) => {
   </div>`;
 
   const ownerValue = owner.contract
-    ? `<a class="mono" href="/contracts/${esc(owner.contract)}">${shortHash(owner.contract, 10)}</a>${owner.assetId != null ? ` <span style="color:var(--text-dim)">asset #${fmtInt(owner.assetId)}</span>` : ""} <button class="copybtn" type="button" onclick="blkCopy('${esc(owner.contract)}', this)">copy</button>`
+    ? `<a class="mono" href="/contracts/${esc(owner.contract)}">${esc(shortHash(owner.contract, 10))}</a>${owner.assetId != null ? ` <span style="color:var(--text-dim)">asset #${fmtInt(owner.assetId)}</span>` : ""} <button class="copybtn" type="button" onclick="blkCopy('${jsq(owner.contract)}', this)">copy</button>`
     : '<span style="color:var(--text-dim)">unowned</span>';
 
   const overview = `<div class="panel"><h2>Overview</h2><table class="kv">
-    <tr><td>Asset ID</td><td><span class="mono">${esc(id)}</span> <button class="copybtn" type="button" onclick="blkCopy('${esc(id)}', this)">copy</button></td></tr>
+    <tr><td>Asset ID</td><td><span class="mono">${esc(id)}</span> <button class="copybtn" type="button" onclick="blkCopy('${jsq(id)}', this)">copy</button></td></tr>
     <tr><td>Name</td><td>${name ? flaggedText(name) : "—"}</td></tr>
     <tr><td>Symbol</td><td>${symbol ? flaggedText(symbol) : "—"}</td></tr>
     <tr><td>Decimals</td><td>${fmtInt(decimals)}</td></tr>
@@ -279,9 +279,9 @@ assetDetail.get("/asset/:id", async (c) => {
   const fFields = `
     ${filterField("Transaction type", `<select name="type">${selectOpts(TX_TYPES, type, "all types")}</select>`)}
   `;
-  const fPop = filterPop("f-asset-txs", `/asset/${id}`, fFields, {
+  const fPop = filterPop("f-asset-txs", `/asset/${esc(id)}`, fFields, {
     hidden: srt.qs ? { sort: srt.key, dir: srt.dir } : {},
-    reset: `/asset/${id}${srt.qs ? `?${srt.qs}` : ""}`,
+    reset: `/asset/${esc(id)}${srt.qs ? `?${srt.qs}` : ""}`,
   });
 
   const txRows = txs.length
@@ -289,11 +289,11 @@ assetDetail.get("/asset/:id", async (c) => {
         const hash = String(t.hash ?? "");
         const result = t.executed === 1 ? "executed" : t.executed === 0 ? "unexecuted" : "";
         return `<tr>
-          <td><a class="mono" href="/tx/${esc(hash)}">${shortHash(hash, 10)}</a></td>
+          <td><a class="mono" href="/tx/${esc(hash)}">${esc(shortHash(hash, 10))}</a></td>
           <td><a href="/block/${num(t.block_topo)}"><span class="mint">${fmtInt(num(t.block_topo))}</span></a></td>
           <td>${fmtTime(num(t.ts))}</td>
           <td><span class="badge ${esc(t.tx_type ?? "other")}">${esc(t.tx_type ?? "other")}</span></td>
-          <td><a class="mono" href="/account/${esc(t.sender as string)}">${shortHash(t.sender as string, 8)}</a></td>
+          <td><a class="mono" href="/account/${esc(t.sender as string)}">${esc(shortHash(t.sender as string, 8))}</a></td>
           <td class="num">${fmtInt(num(t.transfer_count))}</td>
           <td>${result ? `<span class="badge ${result === "executed" ? "ok" : "fail"}">${result}</span>` : '<span style="color:var(--text-dim)">—</span>'}</td>
           <td class="num">${atomic(num(t.fee), 6)}</td>
@@ -317,7 +317,7 @@ assetDetail.get("/asset/:id", async (c) => {
 
   const holdingRows = holdings.length
     ? holdings.map((h) => `<tr>
-        <td><a class="mono" href="/contracts/${esc(h.contract)}">${shortHash(h.contract, 12)}</a></td>
+        <td><a class="mono" href="/contracts/${esc(h.contract)}">${esc(shortHash(h.contract, 12))}</a></td>
         <td class="num">${amount(h.balance)}</td>
         <td class="num">${h.topo ? `<a href="/block/${h.topo}">${fmtInt(h.topo)}</a>` : "—"}</td>
       </tr>`).join("")
@@ -333,8 +333,8 @@ assetDetail.get("/asset/:id", async (c) => {
   const relatedPanel = owner.contract
     ? `<div class="panel"><h2>Creator &amp; Related Assets</h2>
       <table class="kv">
-        <tr><td>Creator contract</td><td><a class="mono" href="/contracts/${esc(owner.contract)}">${shortHash(owner.contract, 12)}</a> <button class="copybtn" type="button" onclick="blkCopy('${esc(owner.contract)}', this)">copy</button></td></tr>
-        ${creator?.deployer ? `<tr><td>Deployer</td><td><a class="mono" href="/account/${esc(creator.deployer as string)}">${shortHash(creator.deployer as string, 10)}</a></td></tr>` : ""}
+        <tr><td>Creator contract</td><td><a class="mono" href="/contracts/${esc(owner.contract)}">${esc(shortHash(owner.contract, 12))}</a> <button class="copybtn" type="button" onclick="blkCopy('${jsq(owner.contract)}', this)">copy</button></td></tr>
+        ${creator?.deployer ? `<tr><td>Deployer</td><td><a class="mono" href="/account/${esc(creator.deployer as string)}">${esc(shortHash(creator.deployer as string, 10))}</a></td></tr>` : ""}
         ${num(creator?.deploy_topo) ? `<tr><td>Contract deployed</td><td><a href="/block/${num(creator?.deploy_topo)}">#${fmtInt(num(creator?.deploy_topo))}</a></td></tr>` : ""}
         ${num(creator?.invoke_count) ? `<tr><td>Contract invokes</td><td><a href="/contracts/${esc(owner.contract)}">${fmtInt(num(creator?.invoke_count))} indexed</a></td></tr>` : ""}
         ${owner.assetId != null ? `<tr><td>Asset index</td><td>#${fmtInt(owner.assetId)}</td></tr>` : ""}
@@ -343,7 +343,7 @@ assetDetail.get("/asset/:id", async (c) => {
       <div class="tablewrap"><table>
         <thead><tr><th>Asset</th><th>Symbol</th><th class="num">Created (topo)</th></tr></thead>
         <tbody>${related.map((r) => `<tr>
-          <td><a class="mono" href="/asset/${esc(r.asset_id as string)}">${shortHash(r.asset_id as string, 10)}</a></td>
+          <td><a class="mono" href="/asset/${esc(r.asset_id as string)}">${esc(shortHash(r.asset_id as string, 10))}</a></td>
           <td>${r.symbol ? flaggedText(r.symbol) : "—"}</td>
           <td class="num">${num(r.first_seen_topo) ? `<a href="/block/${num(r.first_seen_topo)}">${fmtInt(num(r.first_seen_topo))}</a>` : "—"}</td>
         </tr>`).join("")}</tbody>
@@ -364,7 +364,7 @@ assetDetail.get("/asset/:id", async (c) => {
     </div>
     <script>${blkCopyScript}</script>
     <script type="application/json" id="asset-series">${seriesJson}</script>`;
-  return c.html(layout(`Asset ${shortHash(id, 8)}`, content, "/assets"));
+  return c.html(layout(`Asset ${esc(shortHash(id, 8))}`, content, "/assets"));
 });
 
 // placeholder so the overview/related grid stays balanced when there is no owner

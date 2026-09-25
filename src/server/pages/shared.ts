@@ -1,9 +1,23 @@
 import { fmtInt } from "../../client/format";
 import { icons } from "../../client/icons";
+import { escHtml } from "../../client/layout";
 import { containsBadWord } from "../../client/badwords";
 import { knownEntity } from "../entities";
 
 export const PAGE_SIZE = 25;
+
+// Bound a numeric query param: finite, integer, within [1, max]; falls back to
+// the default for garbage input (NaN, negatives, floats, Infinity).
+export const clampInt = (value: string | undefined, def: number, max: number): number => {
+  const n = Number(value ?? def);
+  return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), max) : def;
+};
+
+// Log swallowed page errors with a scope tag so observability can distinguish
+// "empty data" from a failing query.
+export const logErr = (scope: string, err: unknown): void => {
+  console.error(`${scope}:`, err instanceof Error ? err.message : String(err));
+};
 
 export function pager(base: string, page: number, totalPages: number): string {
   if (totalPages <= 1) return "";
@@ -49,8 +63,23 @@ export function cursorPager(opts: {
   </div>`;
 }
 
-export const esc = (v: unknown): string =>
-  String(v ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] as string));
+// Single source of truth for HTML escaping (defined next to the layout).
+export const esc = escHtml;
+
+// Safe interpolation into a single-quoted JS string inside a double-quoted HTML
+// attribute (inline handlers such as onclick). HTML-escapes first, then
+// neutralises backslashes, quotes and newlines so the value cannot break out of
+// the JS string once the HTML parser decodes the attribute.
+export const jsq = (v: unknown): string =>
+  String(v ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\x27")
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n");
 
 export const entityTag = (address: string): string => {
   const e = knownEntity(address);

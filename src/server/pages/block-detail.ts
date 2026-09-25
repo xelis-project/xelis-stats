@@ -5,7 +5,7 @@ import { icons } from "../../client/icons";
 import { fmt, fmtInt, fmtPct, shortHash, fmtTime, ago, atomic, atomicPrecise } from "../../client/format";
 import { rpc } from "../xelis";
 import { fetchBlock, runOn, type RawTarget } from "../shards";
-import { PAGE_SIZE, pager, esc, entityTag, resultBadge, blkCopyScript, num } from "./shared";
+import { PAGE_SIZE, pager, esc, jsq, entityTag, resultBadge, blkCopyScript, num, logErr } from "./shared";
 
 export const blockDetail = new Hono<{ Bindings: Env }>();
 
@@ -17,7 +17,7 @@ blockDetail.get("/block/:id", async (c) => {
   try {
     const found = await fetchBlock(c.env, id);
     if (found) { block = found.row; blockTarget = found.target; }
-  } catch { /* db not ready */ }
+  } catch (err) { logErr("page/block", err); }
 
   let source: "indexed" | "live" = "indexed";
   if (!block) {
@@ -113,8 +113,8 @@ blockDetail.get("/block/:id", async (c) => {
           <span class="blk-when">${fmtTime(view.ts)} · ${ago(view.ts)}</span>
         </div>
         <div class="hash-row">
-          <span class="hashline mono">${view.hash}</span>
-          <button class="copybtn" type="button" onclick="blkCopy('${view.hash}', this)">copy</button>
+          <span class="hashline mono">${esc(view.hash)}</span>
+          <button class="copybtn" type="button" onclick="blkCopy('${jsq(view.hash)}', this)">copy</button>
         </div>
       </div>
       ${nav}
@@ -138,9 +138,9 @@ blockDetail.get("/block/:id", async (c) => {
     <tr><td>Nonce</td><td><span class="mono">${view.nonce}</span></td></tr>
     <tr><td>Size</td><td>${fmtInt(view.size)} bytes (${fmt(view.size / 1024)} KB)</td></tr>
     <tr><td>Difficulty</td><td>${fmtInt(view.difficulty)}</td></tr>
-    ${view.cumDifficulty ? `<tr><td>Cumulative Difficulty</td><td><span class="mono">${view.cumDifficulty}</span></td></tr>` : ""}
+    ${view.cumDifficulty ? `<tr><td>Cumulative Difficulty</td><td><span class="mono">${esc(view.cumDifficulty)}</span></td></tr>` : ""}
     <tr><td>Block Type</td><td>${typeBadge}</td></tr>
-    <tr><td>Miner</td><td>${view.miner ? `<a class="mono" href="/miner/${view.miner}">${shortHash(view.miner, 10)}</a>` : "—"}</td></tr>
+    <tr><td>Miner</td><td>${view.miner ? `<a class="mono" href="/miner/${esc(view.miner)}">${esc(shortHash(view.miner, 10))}</a>` : "—"}</td></tr>
     <tr><td>DAG Tips</td><td>${fmtInt(view.tips.length)}</td></tr>
   </table></div>`;
 
@@ -174,14 +174,14 @@ blockDetail.get("/block/:id", async (c) => {
     </div>
     <div class="rw-fees ctx">
       <div class="rw-chip"><div class="t">24h Avg Reward</div><div class="v">${avgReward24h !== null ? `${atomicPrecise(avgReward24h)} <span class="unit">XEL</span>` : "—"}</div>${avgReward24h ? `<div class="s">this block ${fmtPct(((totalReward - avgReward24h) / avgReward24h) * 100)}</div>` : ""}</div>
-      <div class="rw-chip"><div class="t">Miner Blocks · 24h</div><div class="v">${minerBlocks24h !== null ? fmtInt(minerBlocks24h) : "—"}</div><div class="s">${view.miner ? shortHash(view.miner, 8) : "no miner address"}</div></div>
+      <div class="rw-chip"><div class="t">Miner Blocks · 24h</div><div class="v">${minerBlocks24h !== null ? fmtInt(minerBlocks24h) : "—"}</div><div class="s">${view.miner ? esc(shortHash(view.miner, 8)) : "no miner address"}</div></div>
       <div class="rw-chip"><div class="t">Fee per Byte</div><div class="v">${feePerByte !== null && view.fees > 0 ? `${atomicPrecise(feePerByte)} <span class="unit">XEL</span>` : "—"}</div><div class="s">collected fees ÷ block size</div></div>
     </div>
   </div>`;
 
   const tipsHtml = view.tips.length
     ? `<div class="panel"><h2>DAG Tips <span style="color:var(--text-dim)">(parent blocks)</span></h2><div class="tips-list">${view.tips.map((h) =>
-        `<div class="tip-item"><a class="mono" href="/block/${h}">${shortHash(h, 12)}</a></div>`).join("")}</div></div>`
+        `<div class="tip-item"><a class="mono" href="/block/${esc(h)}">${esc(shortHash(h, 12))}</a></div>`).join("")}</div></div>`
     : "";
 
   // join block tx hashes against the tx index for richer rows (chunked: D1 param limit)
@@ -215,8 +215,8 @@ blockDetail.get("/block/:id", async (c) => {
       ? `topoheight ${fmtInt(num((kind as { topoheight?: number }).topoheight))}`
       : "block end";
     return `<tr>
-      <td><span class="mono">${shortHash(String(s.hash ?? ""), 10)}</span></td>
-      <td><a class="mono" href="/contracts/${esc(String(s.contract ?? ""))}">${shortHash(String(s.contract ?? ""), 10)}</a></td>
+      <td><span class="mono">${esc(shortHash(String(s.hash ?? ""), 10))}</span></td>
+      <td><a class="mono" href="/contracts/${esc(String(s.contract ?? ""))}">${esc(shortHash(String(s.contract ?? ""), 10))}</a></td>
       <td class="num">${fmtInt(num(s.chunk_id))}</td>
       <td class="num">${atomic(num(s.max_gas))} XEL</td>
       <td><span class="badge">${kindLabel}</span></td>
@@ -233,10 +233,10 @@ blockDetail.get("/block/:id", async (c) => {
     ? view.txHashes.map((h) => {
         const t = known.get(h);
         return `<tr>
-          <td><a class="mono" href="/tx/${h}">${shortHash(h, 12)}</a></td>
+          <td><a class="mono" href="/tx/${esc(h)}">${esc(shortHash(h, 12))}</a></td>
           ${t
             ? `<td><span class="badge ${esc(t.tx_type)}">${esc(t.tx_type)}</span></td>
-               <td><a class="mono" href="/account/${t.sender}">${shortHash(t.sender, 8)}</a>${entityTag(t.sender)}</td>
+               <td><a class="mono" href="/account/${esc(t.sender)}">${esc(shortHash(t.sender, 8))}</a>${entityTag(t.sender)}</td>
                <td class="num">${atomic(t.fee, 6)}</td>
                <td class="num">${fmtInt(t.size)} B</td>
                <td>${resultBadge(t.executed)}</td>`

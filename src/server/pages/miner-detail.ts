@@ -5,7 +5,7 @@ import { icons } from "../../client/icons";
 import { fmt, fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/format";
 import { srvSort, BLOCK_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
-import { esc, entityTag, blkCopyScript, num, PAGE_SIZE, pager } from "./shared";
+import { esc, jsq, entityTag, blkCopyScript, num, PAGE_SIZE, pager, clampInt, logErr } from "./shared";
 import { topNRaw, countRaw, mergeAgg } from "../shards";
 
 interface MinerTotals {
@@ -31,7 +31,7 @@ minerDetail.get("/miner/:address", async (c) => {
   const anchorDay = (d: string | null | undefined): string => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : today);
 
   // blocks table: pagination + filters (block type, min txs) + SQL sorting
-  const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
+  const page = clampInt(c.req.query("page"), 1, 100_000);
   const typeRaw = (c.req.query("type") ?? "").toLowerCase();
   const bType = ["normal", "side", "sync"].includes(typeRaw) ? typeRaw[0].toUpperCase() + typeRaw.slice(1) : "";
   const minTxsRaw = Number(c.req.query("min_txs") ?? "");
@@ -112,7 +112,7 @@ minerDetail.get("/miner/:address", async (c) => {
       `SELECT date, blocks_found, rewards_earned FROM daily_miners
        WHERE address = ? AND date > date(?, '-90 days') ORDER BY date DESC LIMIT 90`
     ).bind(address, anchor).all<Record<string, unknown>>().then((r) => r.results ?? []);
-  } catch { /* db not ready — page falls back to empty state */ }
+  } catch (err) { logErr("page/miner", err); }
 
   const dailyBlocks = num(dailyMiner?.ball);
   const dailyRewards = num(dailyMiner?.rall);
@@ -138,7 +138,7 @@ minerDetail.get("/miner/:address", async (c) => {
     const content = `<div class="panel blk-hero">
       <div class="blk-head">
         <div class="blk-id">
-          <h2 class="blk-title">Miner <span class="mint mono" style="font-size:0.72em">${shortHash(address, 10)}</span></h2>
+          <h2 class="blk-title">Miner <span class="mint mono" style="font-size:0.72em">${esc(shortHash(address, 10))}</span></h2>
           <div class="blk-meta">
             ${entityTag(address)}
             <span class="badge">no mining activity</span>
@@ -146,7 +146,7 @@ minerDetail.get("/miner/:address", async (c) => {
           </div>
           <div class="hash-row">
             <span class="hashline mono">${addr}</span>
-            <button class="copybtn" type="button" onclick="blkCopy('${addr}', this)">copy</button>
+            <button class="copybtn" type="button" onclick="blkCopy('${jsq(address)}', this)">copy</button>
           </div>
         </div>
         <div class="blk-nav"><a class="btn ghost" href="/account/${addr}" title="Sender activity for this address">Account ${icons.chevronRight}</a></div>
@@ -158,7 +158,7 @@ minerDetail.get("/miner/:address", async (c) => {
       <p style="margin-top:1rem"><a class="btn ghost" href="/miners">Back to miner leaderboard ${icons.arrowRight}</a></p>
     </div>
     ${copyNote}`;
-    return c.html(layout(`Miner ${shortHash(address, 8)}`, content, "/miners"));
+    return c.html(layout(`Miner ${esc(shortHash(address, 8))}`, content, "/miners"));
   }
 
   // ---- period breakdown from daily rollups ----
@@ -202,7 +202,7 @@ minerDetail.get("/miner/:address", async (c) => {
   const hero = `<div class="panel blk-hero">
     <div class="blk-head">
       <div class="blk-id">
-        <h2 class="blk-title">Miner <span class="mint mono" style="font-size:0.72em">${shortHash(address, 10)}</span></h2>
+        <h2 class="blk-title">Miner <span class="mint mono" style="font-size:0.72em">${esc(shortHash(address, 10))}</span></h2>
         <div class="blk-meta">
           ${rank !== null ? `<span class="badge rank">Rank #${fmtInt(rank)}${totalMiners ? ` of ${fmtInt(totalMiners)}` : ""}</span>` : ""}
           ${share30 !== null ? `<span class="badge">${share30.toFixed(1)}% of blocks · 30d</span>` : ""}
@@ -211,7 +211,7 @@ minerDetail.get("/miner/:address", async (c) => {
         </div>
         <div class="hash-row">
           <span class="hashline mono">${addr}</span>
-          <button class="copybtn" type="button" onclick="blkCopy('${addr}', this)">copy</button>
+          <button class="copybtn" type="button" onclick="blkCopy('${jsq(address)}', this)">copy</button>
         </div>
       </div>
       <div class="blk-nav">
@@ -280,7 +280,7 @@ minerDetail.get("/miner/:address", async (c) => {
         const hash = String(b.hash ?? "");
         return `<tr>
           <td><a href="/block/${topo}"><span class="mint">${fmtInt(topo)}</span></a></td>
-          <td><a class="mono" href="/block/${esc(hash)}">${shortHash(hash, 10)}</a></td>
+          <td><a class="mono" href="/block/${esc(hash)}">${esc(shortHash(hash, 10))}</a></td>
           <td>${fmtTime(num(b.ts))}</td>
           <td class="num">${fmtInt(num(b.tx_count))}</td>
           <td class="num">${fmt(num(b.difficulty))}</td>
@@ -319,5 +319,5 @@ minerDetail.get("/miner/:address", async (c) => {
     ${lockNote}
     ${copyNote}
     ${hasSeries ? `<script type="application/json" id="miner-series">${seriesJson}</script>` : ""}`;
-  return c.html(layout(`Miner ${shortHash(address, 8)}`, content, "/miners"));
+  return c.html(layout(`Miner ${esc(shortHash(address, 8))}`, content, "/miners"));
 });

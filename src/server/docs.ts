@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "./app";
-import { layout } from "../client/layout";
+import { layout, escHtml } from "../client/layout";
+import { getStatsCached } from "./cache";
 
 export const docs = new Hono<{ Bindings: Env }>();
 
@@ -32,13 +33,17 @@ docs.get("/api/docs", (c) => {
 });
 
 docs.get("/status", async (c) => {
-  let stats: Record<string, unknown> | null = null;
+  // read the cached stats directly instead of making a subrequest to /api/summary
+  let s: { topoheight?: number; stable_topoheight?: number; network?: string; node_version?: string } | null = null;
   try {
-    const res = await fetch(new URL("/api/summary", c.req.url));
-    stats = (await res.json()) as Record<string, unknown>;
-  } catch { /* ignore */ }
-
-  const s = stats as null | { topoheight?: number; stable_topoheight?: number; network?: string; node_version?: string };
+    const stats = await getStatsCached(c.env);
+    s = {
+      topoheight: stats.info.topoheight,
+      stable_topoheight: stats.info.stable_topoheight,
+      network: stats.info.network,
+      node_version: stats.info.version,
+    };
+  } catch { /* node unreachable */ }
   const lag = s?.topoheight && s?.stable_topoheight ? s.topoheight - s.stable_topoheight : null;
 
   const rows = [
@@ -48,7 +53,7 @@ docs.get("/status", async (c) => {
     ["Stable topoheight", s?.stable_topoheight?.toLocaleString() ?? "—"],
     ["Stability lag", lag !== null ? `${lag} topoheights` : "—"],
     ["Indexer WS", "see live dot in header"],
-  ].map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+  ].map(([k, v]) => `<tr><td>${escHtml(k)}</td><td>${escHtml(v)}</td></tr>`).join("");
 
   const content = `<div class="panel"><h2>Status</h2><table class="kv">${rows}</table></div>`;
   return c.html(layout("Status", content, ""));

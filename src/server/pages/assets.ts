@@ -4,7 +4,7 @@ import { layout, notFound } from "../../client/layout";
 import { fmtInt, shortHash, timeCell } from "../../client/format";
 import { srvSort } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
-import { esc, flaggedText, num } from "./shared";
+import { esc, flaggedText, num, clampInt, logErr } from "./shared";
 import { PAGE_SIZE, pager } from "./shared";
 import { fetchBlock, fetchBlockTimes, fetchTx } from "../shards";
 
@@ -28,8 +28,7 @@ assets.get("/assets", async (c) => {
   });
   let rows: Record<string, unknown>[] = [];
   let total = 0;
-  const pageRaw = Number(c.req.query("page") ?? 1);
-  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 1;
+  const page = clampInt(c.req.query("page"), 1, 100_000);
   try {
     const where = q ? "WHERE (name LIKE ? OR symbol LIKE ? OR asset_id LIKE ?)" : "";
     const binds = q ? [`%${q}%`, `%${q}%`, `%${q}%`] : [];
@@ -37,7 +36,7 @@ assets.get("/assets", async (c) => {
       .bind(...binds).first<{ n: number }>())?.n ?? 0;
     rows = await c.env.DB.prepare(`SELECT * FROM assets ${where} ORDER BY ${srt.order} LIMIT ${PAGE_SIZE} OFFSET ${(page - 1) * PAGE_SIZE}`)
       .bind(...binds).all<Record<string, unknown>>().then((r) => r.results ?? []);
-  } catch { /* table empty or missing */ }
+  } catch (err) { logErr("page/assets", err); }
   const p = new URLSearchParams();
   if (q) p.set("q", q);
   if (srt.qs) for (const [k, v] of new URLSearchParams(srt.qs)) p.set(k, v);
@@ -59,7 +58,7 @@ assets.get("/assets", async (c) => {
     ? rows.map((a) => {
         const ts = times.get(num(a.first_seen_topo));
         return `<tr>
-        <td><a class="mono" href="/asset/${esc(a.asset_id as string)}">${shortHash(a.asset_id as string, 8)}</a></td>
+        <td><a class="mono" href="/asset/${esc(a.asset_id as string)}">${esc(shortHash(a.asset_id as string, 8))}</a></td>
         <td>${a.name ? `<a href="/asset/${esc(a.asset_id as string)}">${flaggedText(a.name)}</a>` : "—"}</td>
         <td>${a.symbol ? flaggedText(a.symbol) : "—"}</td>
         <td class="num">${fmtInt(a.decimals as number)}</td>
@@ -86,31 +85,35 @@ assets.get("/assets", async (c) => {
 export const search = new Hono<{ Bindings: Env }>();
 
 search.get("/search/:query", async (c) => {
-  const q = decodeURIComponent(c.req.param("query"));
+  // Hono has already URL-decoded the path param; decoding again throws on "%"
+  const q = c.req.param("query");
   const db = c.env.DB;
+  // every redirect target is path-segment encoded so crafted input cannot alter
+  // the Location header
+  const seg = encodeURIComponent(q);
   // heuristic routing
-  if (/^\d+$/.test(q)) return c.redirect(`/block/${q}`);
+  if (/^\d+$/.test(q)) return c.redirect(`/block/${seg}`);
   if (q.startsWith("xel:")) {
     // miner addresses get the mining profile; everyone else the account page
     try {
       const inWindow = await db.prepare("SELECT 1 AS m FROM blocks WHERE miner_address = ? LIMIT 1").bind(q).first();
       const inRollups = inWindow ? null : await db.prepare("SELECT 1 AS m FROM daily_miners WHERE address = ? LIMIT 1").bind(q).first();
-      if (inWindow || inRollups) return c.redirect(`/miner/${q}`);
-    } catch { /* db not ready */ }
-    return c.redirect(`/account/${q}`);
+      if (inWindow || inRollups) return c.redirect(`/miner/${seg}`);
+    } catch (err) { logErr("search/miner", err); }
+    return c.redirect(`/account/${seg}`);
   }
   // try tx hash (routes across hot + shard databases)
   try {
     const foundTx = await fetchTx(c.env, q);
-    if (foundTx) return c.redirect(`/tx/${q}`);
+    if (foundTx) return c.redirect(`/tx/${seg}`);
     const foundBlock = await fetchBlock(c.env, q);
     if (foundBlock) return c.redirect(`/block/${foundBlock.row.topoheight}`);
     const acct = await db.prepare("SELECT address FROM accounts WHERE address = ?").bind(q).first();
-    if (acct) return c.redirect(`/account/${q}`);
+    if (acct) return c.redirect(`/account/${seg}`);
     const ct = await db.prepare("SELECT contract_id FROM contracts WHERE contract_id = ?").bind(q).first();
-    if (ct) return c.redirect(`/contracts/${q}`);
+    if (ct) return c.redirect(`/contracts/${seg}`);
     const asset = await db.prepare("SELECT asset_id FROM assets WHERE asset_id = ?").bind(q).first();
-    if (asset) return c.redirect(`/asset/${q}`);
-  } catch { /* db not ready */ }
+    if (asset) return c.redirect(`/asset/${seg}`);
+  } catch (err) { logErr("search/resolve", err); }
   return c.html(layout("Search", notFound(`"${q.slice(0, 20)}"`), ""));
 });

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout } from "../../client/layout";
 import { icons } from "../../client/icons";
+import { logErr } from "./shared";
 
 // metrics with special filters
 const FEE_METRICS: Record<string, string> = { fees: "avg", "fees-median": "median", "fee-p90": "p90", "fees-p99": "p99" };
@@ -10,18 +11,6 @@ const MARKET_METRICS = new Set(["price", "quote-volume"]);
 export const charts = new Hono<{ Bindings: Env }>();
 
 charts.get("/charts", async (c) => {
-  const metric = c.req.query("metric") ?? "txs";
-  const range = c.req.query("range") ?? "90d";
-  const interval = c.req.query("interval") ?? "day";
-  // strict YYYY-MM-DD validation doubles as HTML-attribute sanitization
-  const isDate = (v: string | undefined) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
-  const from = isDate(c.req.query("from")) ? c.req.query("from")! : "";
-  const to = isDate(c.req.query("to")) ? c.req.query("to")! : "";
-  const custom = range === "custom";
-  const cum = c.req.query("cum") === "1";
-  const log = c.req.query("log") === "1";
-  const chartType = c.req.query("type") === "bar" ? "bar" : "line";
-
   const metrics: Array<[string, string]> = [
     ["txs", "Transactions/day"], ["accounts", "Accounts growth"], ["active-accounts", "Active accounts"], ["miners", "Miners"],
     ["hashrate", "Hashrate"], ["difficulty", "Difficulty"], ["cum-difficulty", "Cumulative difficulty"],
@@ -36,6 +25,22 @@ charts.get("/charts", async (c) => {
     ["block-time", "Block time"], ["nakamoto", "Nakamoto coefficient"], ["gini", "Production Gini"], ["encrypted", "Encrypted txs"],
     ["mempool", "Mempool"], ["peers", "Peer count"], ["peers-pruned", "Pruned peers"],
   ];
+  // whitelist every selector param before it reaches links/attributes
+  const metricParam = c.req.query("metric") ?? "txs";
+  const metric = metrics.some(([m]) => m === metricParam) ? metricParam : "txs";
+  const rangeParam = c.req.query("range") ?? "90d";
+  const range = ["7d", "30d", "90d", "1y", "all", "custom"].includes(rangeParam) ? rangeParam : "90d";
+  const intervalParam = c.req.query("interval") ?? "day";
+  const interval = ["day", "week", "month", "year"].includes(intervalParam) ? intervalParam : "day";
+  // strict YYYY-MM-DD validation doubles as HTML-attribute sanitization
+  const isDate = (v: string | undefined) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
+  const from = isDate(c.req.query("from")) ? c.req.query("from")! : "";
+  const to = isDate(c.req.query("to")) ? c.req.query("to")! : "";
+  const custom = range === "custom";
+  const cum = c.req.query("cum") === "1";
+  const log = c.req.query("log") === "1";
+  const chartType = c.req.query("type") === "bar" ? "bar" : "line";
+
   const metricOpts = metrics.map(([m, name]) => `<option value="${m}" ${metric === m ? "selected" : ""}>${name}</option>`).join("");
   const rangeOpts = ["7d", "30d", "90d", "1y", "all", "custom"].map((r) => `<option value="${r}" ${range === r ? "selected" : ""}>${r === "custom" ? "custom period" : r}</option>`).join("");
   const intervalOpts = ["day", "week", "month", "year"].map((i) => `<option value="${i}" ${interval === i ? "selected" : ""}>${i}</option>`).join("");
@@ -53,7 +58,7 @@ charts.get("/charts", async (c) => {
       const distinct = await c.env.DB.prepare("SELECT DISTINCT exchange FROM market_snapshots ORDER BY exchange").all<{ exchange: string }>();
       exchanges = (distinct.results ?? []).map((r) => r.exchange).filter((e) => e && e.length <= 64);
     }
-  } catch { /* db not ready */ }
+  } catch (err) { logErr("page/charts", err); }
   const exchange = exchanges.includes(exchangeParam) ? exchangeParam : "";
   const exchangeOpts = ['<option value="">all exchanges</option>', ...exchanges.map((e) => `<option value="${e}" ${exchange === e ? "selected" : ""}>${e}</option>`)].join("");
 

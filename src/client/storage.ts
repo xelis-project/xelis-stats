@@ -12,6 +12,10 @@ interface Rec {
   vk: string;
 }
 
+// value-type keys come from node RPC field names; escape before building option HTML
+const escAttr = (v: string): string =>
+  v.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] as string));
+
 function copyText(text: string, btn: HTMLElement): void {
   const done = (): void => {
     const prev = btn.textContent;
@@ -81,7 +85,7 @@ export function initStorage(): void {
     for (const r of recs) if (r.vk) kinds.add(r.vk);
     const cur = typeSel.value;
     const opts = ['<option value="">all value types</option>'];
-    for (const k of [...kinds].sort()) opts.push(`<option value="${k}">${k}</option>`);
+    for (const k of [...kinds].sort()) opts.push(`<option value="${escAttr(k)}">${escAttr(k)}</option>`);
     typeSel.innerHTML = opts.join("");
     if (cur && kinds.has(cur)) typeSel.value = cur;
   };

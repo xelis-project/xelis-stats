@@ -6,7 +6,7 @@ import { fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/format";
 import { knownEntity } from "../entities";
 import { srvSort, TX_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
-import { PAGE_SIZE, pager, esc, blkCopyScript, num } from "./shared";
+import { PAGE_SIZE, pager, esc, jsq, clampInt, logErr, blkCopyScript, num } from "./shared";
 import { topNRaw, countRaw, mergeAgg, mergeGroups } from "../shards";
 
 export const account = new Hono<{ Bindings: Env }>();
@@ -16,7 +16,7 @@ account.get("/account/:address", async (c) => {
   const db = c.env.DB;
 
   // history section: full sent-tx list with pagination, sorting and filters
-  const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
+  const page = clampInt(c.req.query("page"), 1, 100_000);
   const TX_TYPES = ["transfer", "burn", "invoke_contract", "deploy_contract", "multisig"];
   const rawType = c.req.query("type") ?? "";
   const type = TX_TYPES.includes(rawType) ? rawType : "";
@@ -27,7 +27,7 @@ account.get("/account/:address", async (c) => {
     if (executed) p.set("executed", executed);
     if (s) for (const [k, v] of new URLSearchParams(s)) p.set(k, v);
     const q = p.toString();
-    return q ? `/account/${address}?${q}` : `/account/${address}`;
+    return q ? `/account/${esc(address)}?${q}` : `/account/${esc(address)}`;
   });
 
   let acct: Record<string, unknown> | undefined;
@@ -82,7 +82,7 @@ account.get("/account/:address", async (c) => {
     types.sort((a, b) => num(b.c) - num(a.c));
     minedAll = Number(minedAllRow?.c) || 0;
     maxTopo = maxTopoRow?.m ?? null;
-  } catch { /* db not ready */ }
+  } catch (err) { logErr("page/account", err); }
   const histPages = Math.max(1, Math.ceil(histTotal / PAGE_SIZE));
 
   const txCount = num(acct?.tx_count) || num(agg?.c);
@@ -109,7 +109,7 @@ account.get("/account/:address", async (c) => {
   const hero = `<div class="panel blk-hero">
     <div class="blk-head">
       <div class="blk-id">
-        <h2 class="blk-title">Account <span class="mint mono" style="font-size:0.72em">${shortHash(address, 10)}</span></h2>
+        <h2 class="blk-title">Account <span class="mint mono" style="font-size:0.72em">${esc(shortHash(address, 10))}</span></h2>
         <div class="blk-meta">
           ${entityBadge}
           ${txCount > 0 ? `<span class="badge">${fmtInt(txCount)} sent tx${txCount === 1 ? "" : "s"}</span>` : '<span class="badge">no observed activity</span>'}
@@ -118,7 +118,7 @@ account.get("/account/:address", async (c) => {
         </div>
         <div class="hash-row">
           <span class="hashline mono">${esc(address)}</span>
-          <button class="copybtn" type="button" onclick="blkCopy('${esc(address)}', this)">copy</button>
+          <button class="copybtn" type="button" onclick="blkCopy('${jsq(address)}', this)">copy</button>
         </div>
       </div>
       <div class="blk-nav">
@@ -136,7 +136,7 @@ account.get("/account/:address", async (c) => {
   </div>`;
 
   const overview = `<div class="panel"><h2>Overview</h2><table class="kv">
-    <tr><td>Address</td><td><span class="mono">${esc(address)}</span> <button class="copybtn" type="button" onclick="blkCopy('${esc(address)}', this)">copy</button></td></tr>
+    <tr><td>Address</td><td><span class="mono">${esc(address)}</span> <button class="copybtn" type="button" onclick="blkCopy('${jsq(address)}', this)">copy</button></td></tr>
     <tr><td>Label</td><td>${labelValue}</td></tr>
     <tr><td>First seen</td><td>${firstSeen ? fmtTime(firstSeen) : "—"}</td></tr>
     <tr><td>Last active</td><td>${lastActive ? `${fmtTime(lastActive)} (${ago(lastActive)})` : "—"}</td></tr>
@@ -173,7 +173,7 @@ account.get("/account/:address", async (c) => {
         const hash = String(t.hash ?? "");
         const result = t.executed === 1 ? "executed" : t.executed === 0 ? "unexecuted" : "";
         return `<tr>
-          <td><a class="mono" href="/tx/${esc(hash)}">${shortHash(hash, 10)}</a></td>
+          <td><a class="mono" href="/tx/${esc(hash)}">${esc(shortHash(hash, 10))}</a></td>
           <td><a href="/block/${num(t.block_topo)}"><span class="mint">${fmtInt(num(t.block_topo))}</span></a></td>
           <td>${fmtTime(num(t.ts))}</td>
           <td><span class="badge ${esc(t.tx_type ?? "other")}">${esc(t.tx_type ?? "other")}</span></td>
@@ -215,5 +215,5 @@ account.get("/account/:address", async (c) => {
       <span>Sender-observation page: shows this address's publicly visible sending activity. Xelis balances and transfer amounts are encrypted; receiver addresses are public and shown on transaction pages.</span>
     </div>
     <script>${blkCopyScript}</script>`;
-  return c.html(layout(`Account ${shortHash(address, 6)}`, content, "/accounts"));
+  return c.html(layout(`Account ${esc(shortHash(address, 6))}`, content, "/accounts"));
 });
