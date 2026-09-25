@@ -33,6 +33,9 @@ const app = new Hono<{ Bindings: Env }>();
 
 app.use("*", async (c, next) => {
   await next();
+  // WebSocket upgrade responses proxied from the Durable Object have immutable
+  // headers (and a 101 status), so they cannot be modified here.
+  if (c.req.path === "/ws" || c.res.status === 101) return;
   const h = c.res.headers;
   h.set("X-Content-Type-Options", "nosniff");
   h.set("Referrer-Policy", "strict-origin-when-cross-origin");
