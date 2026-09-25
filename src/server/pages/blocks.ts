@@ -44,40 +44,72 @@ blocks.get("/blocks", async (c) => {
   let hasNext = false;
   let minTopo: number | null = null;
   try {
-    total = await countRaw(c.env, { table: "blocks", extra, floorCol: "topoheight" });
-    if (keyset) {
-      if (after > 0) {
+    if (keyset && !fActive) {
+      // Default view. Topoheights form a contiguous range, so the exact total is
+      // MAX-MIN+1: two O(1) index seeks instead of a COUNT(*) scan over the hot
+      // DB and every shard. COUNT only runs for filtered or offset-paged views
+      // below. The bounds lookup and the page read are independent, so run them
+      // concurrently — the first load used to pay for both in sequence.
+      const boundsP = mergeAgg(
+        c.env,
+        "SELECT (SELECT MIN(topoheight) FROM blocks) AS mn, (SELECT MAX(topoheight) FROM blocks) AS mx",
+        [],
+        { sum: [], min: "mn", max: "mx" },
+      );
+      const readP = after > 0
         // stateless "newer" page: take the rows immediately above the cursor
-        const asc = await pagedRawAsc(c.env, {
-          table: "blocks", cursorCol: "topoheight", select: "*", after, limit: PAGE_SIZE + 1, extra,
-        });
-        rows = asc.slice(0, PAGE_SIZE).reverse();
-        hasPrev = asc.length > PAGE_SIZE;
-        hasNext = asc.length > 0;
+        ? pagedRawAsc(c.env, {
+            table: "blocks", cursorCol: "topoheight", select: "*", after, limit: PAGE_SIZE + 1, extra,
+          }).then((r) => ({ asc: r, desc: null as typeof r | null }))
+        : pagedRaw(c.env, {
+            table: "blocks", cursorCol: "topoheight", select: "*", before, limit: PAGE_SIZE + 1, extra,
+          }).then((r) => ({ asc: null as typeof r | null, desc: r }));
+      const [bounds, read] = await Promise.all([boundsP, readP]);
+      minTopo = Number.isFinite(bounds.mn) ? bounds.mn : null;
+      total = minTopo != null && Number.isFinite(bounds.mx) && bounds.mx >= minTopo
+        ? bounds.mx - minTopo + 1
+        : 0;
+      if (read.asc) {
+        rows = read.asc.slice(0, PAGE_SIZE).reverse();
+        hasPrev = read.asc.length > PAGE_SIZE;
+        hasNext = read.asc.length > 0;
       } else {
-        const desc = await pagedRaw(c.env, {
-          table: "blocks", cursorCol: "topoheight", select: "*", before, limit: PAGE_SIZE + 1, extra,
-        });
+        const desc = read.desc ?? [];
         rows = desc.slice(0, PAGE_SIZE);
         hasNext = desc.length > PAGE_SIZE;
         hasPrev = before > 0;
       }
-      if (!fActive) {
-        const mv = (await mergeAgg(c.env, "SELECT MIN(topoheight) AS m FROM blocks", [], { sum: [], min: "m" })).m;
-        minTopo = Number.isFinite(mv) ? mv : null;
-      }
     } else {
-      rows = await topNRaw(c.env, {
-        table: "blocks",
-        select: "*",
-        order: srt.order,
-        limit: PAGE_SIZE + 1,
-        skip: (page - 1) * PAGE_SIZE,
-        extra,
-        floorCol: "topoheight",
-      });
-      hasNext = rows.length > PAGE_SIZE;
-      rows = rows.slice(0, PAGE_SIZE);
+      total = await countRaw(c.env, { table: "blocks", extra, floorCol: "topoheight" });
+      if (keyset) {
+        if (after > 0) {
+          const asc = await pagedRawAsc(c.env, {
+            table: "blocks", cursorCol: "topoheight", select: "*", after, limit: PAGE_SIZE + 1, extra,
+          });
+          rows = asc.slice(0, PAGE_SIZE).reverse();
+          hasPrev = asc.length > PAGE_SIZE;
+          hasNext = asc.length > 0;
+        } else {
+          const desc = await pagedRaw(c.env, {
+            table: "blocks", cursorCol: "topoheight", select: "*", before, limit: PAGE_SIZE + 1, extra,
+          });
+          rows = desc.slice(0, PAGE_SIZE);
+          hasNext = desc.length > PAGE_SIZE;
+          hasPrev = before > 0;
+        }
+      } else {
+        rows = await topNRaw(c.env, {
+          table: "blocks",
+          select: "*",
+          order: srt.order,
+          limit: PAGE_SIZE + 1,
+          skip: (page - 1) * PAGE_SIZE,
+          extra,
+          floorCol: "topoheight",
+        });
+        hasNext = rows.length > PAGE_SIZE;
+        rows = rows.slice(0, PAGE_SIZE);
+      }
     }
   } catch {
     rows = [];
