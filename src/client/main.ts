@@ -20,6 +20,8 @@ const needsIslands = path === "/charts" || path === "/market" || path.startsWith
   || document.querySelector("[data-datepicker]") !== null;
 if (path === "/") {
   void import("./dashboard").then((m) => m.initDashboard()).catch(() => { /* dashboard unavailable */ });
+} else if (path === "/embeds") {
+  void import("./embed-builder");
 } else if (needsIslands) {
   void import("./islands");
 }

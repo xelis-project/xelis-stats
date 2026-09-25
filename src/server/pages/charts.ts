@@ -8,23 +8,26 @@ import { logErr } from "./shared";
 const FEE_METRICS: Record<string, string> = { fees: "avg", "fees-median": "median", "fee-p90": "p90", "fees-p99": "p99" };
 const MARKET_METRICS = new Set(["price", "quote-volume"]);
 
+// curated metric -> label list shared by the charts hub and the embed builder
+export const CHART_METRICS: Array<[string, string]> = [
+  ["txs", "Transactions/day"], ["accounts", "Accounts growth"], ["active-accounts", "Active accounts"], ["miners", "Miners"],
+  ["hashrate", "Hashrate"], ["difficulty", "Difficulty"], ["cum-difficulty", "Cumulative difficulty"],
+  ["transfers", "Transfers"], ["fees", "Fees"], ["supply", "Supply"],
+  ["burned-supply", "Burned supply"], ["chain-size", "Blockchain size"], ["market-cap", "Market Cap"], ["block-types", "Block types"],
+  ["txs-transfer", "Tx: transfers"], ["txs-burn", "Tx: burns"], ["txs-invoke", "Tx: contract invokes"],
+  ["txs-deploy", "Tx: contract deploys"], ["txs-multisig", "Tx: multisig"], ["tx-types", "Tx types"],
+  ["contract-invokes", "Contract invokes"], ["contract-gas", "Contract gas"], ["contract-deploys", "Contract deploys"],
+  ["active-contracts", "Active contracts"],
+  ["price", "XEL price"], ["quote-volume", "Quote volume"],
+  ["miner-revenue", "Miner revenue"], ["miner-rev-usd", "Miner revenue (USDT)"], ["hashprice", "Hashprice (USD/TH/day)"],
+  ["block-time", "Block time"], ["nakamoto", "Nakamoto coefficient"], ["gini", "Production Gini"], ["encrypted", "Encrypted txs"],
+  ["mempool", "Mempool"], ["peers", "Peer count"], ["peers-pruned", "Pruned peers"],
+];
+
 export const charts = new Hono<{ Bindings: Env }>();
 
 charts.get("/charts", async (c) => {
-  const metrics: Array<[string, string]> = [
-    ["txs", "Transactions/day"], ["accounts", "Accounts growth"], ["active-accounts", "Active accounts"], ["miners", "Miners"],
-    ["hashrate", "Hashrate"], ["difficulty", "Difficulty"], ["cum-difficulty", "Cumulative difficulty"],
-    ["transfers", "Transfers"], ["fees", "Fees"], ["supply", "Supply"],
-    ["burned-supply", "Burned supply"], ["chain-size", "Blockchain size"], ["market-cap", "Market Cap"], ["block-types", "Block types"],
-    ["txs-transfer", "Tx: transfers"], ["txs-burn", "Tx: burns"], ["txs-invoke", "Tx: contract invokes"],
-    ["txs-deploy", "Tx: contract deploys"], ["txs-multisig", "Tx: multisig"], ["tx-types", "Tx types"],
-    ["contract-invokes", "Contract invokes"], ["contract-gas", "Contract gas"], ["contract-deploys", "Contract deploys"],
-    ["active-contracts", "Active contracts"],
-    ["price", "XEL price"], ["quote-volume", "Quote volume"],
-    ["miner-revenue", "Miner revenue"], ["miner-rev-usd", "Miner revenue (USDT)"], ["hashprice", "Hashprice (USD/TH/day)"],
-    ["block-time", "Block time"], ["nakamoto", "Nakamoto coefficient"], ["gini", "Production Gini"], ["encrypted", "Encrypted txs"],
-    ["mempool", "Mempool"], ["peers", "Peer count"], ["peers-pruned", "Pruned peers"],
-  ];
+  const metrics = CHART_METRICS;
   // whitelist every selector param before it reaches links/attributes
   const metricParam = c.req.query("metric") ?? "txs";
   const metric = metrics.some(([m]) => m === metricParam) ? metricParam : "txs";
@@ -74,6 +77,10 @@ charts.get("/charts", async (c) => {
   csvQuery.set("format", "csv");
   if (MARKET_METRICS.has(metric) && exchange) csvQuery.set("exchange", exchange);
   const csvHref = `/api/history/${metric}?${csvQuery.toString()}`;
+  // link to the embed builder with the current selection prefilled
+  const embedQuery = new URLSearchParams({ metric, interval });
+  if (!custom) embedQuery.set("range", range);
+  const embedHref = `/embeds?${embedQuery.toString()}`;
 
   const content = `
     <div class="panel">
@@ -94,6 +101,7 @@ charts.get("/charts", async (c) => {
           <option value="bar" ${chartType === "bar" ? "selected" : ""}>bar</option>
         </select>
         <a class="btn ghost" id="btn-csv" href="${csvHref}">CSV</a>
+        <a class="btn ghost" id="btn-embed" href="${embedHref}" title="Get an iframe snippet for this chart">Embed</a>
       </div>
       <div id="u-chart" style="height:320px"></div>
     </div>`;

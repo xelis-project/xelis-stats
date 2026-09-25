@@ -1160,3 +1160,33 @@ html.reduce-motion *::after {
   transition-duration: 0.001ms !important;
   scroll-behavior: auto !important;
 }
+
+/* ---------- Embed builder (/embeds) ---------- */
+
+.emb-controls { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 1rem 1.6rem; margin-bottom: 1.4rem; }
+.emb-controls label, .emb-field > span:first-child {
+  display: flex; flex-direction: column; gap: 0.4rem;
+  font-size: 1.05rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim);
+}
+.emb-field { display: flex; flex-direction: column; gap: 0.4rem; }
+.emb-num { display: inline-flex; align-items: center; gap: 0.5rem; font-size: 1.2rem; color: var(--text-dim); }
+.emb-num input {
+  width: 8rem; font-family: var(--font); font-size: 1.25rem; font-weight: 700; color: var(--mint);
+  background: hsla(0, 0%, 100%, 0.04); border: 1px solid rgba(2, 255, 207, 0.3);
+  border-radius: 0.5rem; padding: 0.5rem 0.8rem;
+}
+.emb-preview {
+  display: flex; justify-content: center;
+  border: 1px dashed var(--border); border-radius: var(--radius);
+  padding: 1rem; overflow: auto; margin-bottom: 1rem;
+}
+.emb-preview iframe { display: block; max-width: 100%; }
+.emb-pre { max-height: none; margin-bottom: 1rem; }
+.emb-params td:last-child { word-break: normal; }
+.emb-params .mono { font-size: 1.15rem; }
+.emb-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
+.emb-hint { font-size: 1.15rem; color: var(--text-dim); }
+#emb-metrics td:first-child { white-space: nowrap; }
+#emb-metrics td:last-child { white-space: nowrap; }
+#emb-metrics .btn { padding: 0.4rem 1rem; font-size: 1.15rem; }
+

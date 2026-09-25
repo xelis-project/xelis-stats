@@ -19,6 +19,7 @@ function initChartsHub(): void {
   const chkLog = $("chk-log") as HTMLInputElement | null;
   const selType = $("sel-type") as HTMLSelectElement | null;
   const csvBtn = $("btn-csv");
+  const embedBtn = $("btn-embed");
   const chartEl = $("u-chart");
   if (!selMetric || !selRange || !selInterval || !chartEl) return;
   attachDatePickers(document);
@@ -141,6 +142,11 @@ function initChartsHub(): void {
     qs.set("interval", selInterval!.value);
     const query = qs.toString();
     if (csvBtn) csvBtn.setAttribute("href", `/api/history/${m}?${query}&format=csv`);
+    if (embedBtn) {
+      const eq = new URLSearchParams({ metric: m, interval: selInterval!.value });
+      if (selRange!.value !== "custom") eq.set("range", selRange!.value);
+      embedBtn.setAttribute("href", `/embeds?${eq.toString()}`);
+    }
     syncUrl();
     try {
       const res = await fetch(`/api/history/${m}?${query}`);

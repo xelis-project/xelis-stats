@@ -16,7 +16,7 @@ interface Rec {
 const escAttr = (v: string): string =>
   v.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] as string));
 
-function copyText(text: string, btn: HTMLElement): void {
+export function copyText(text: string, btn: HTMLElement): void {
   const done = (): void => {
     const prev = btn.textContent;
     btn.textContent = "copied";
