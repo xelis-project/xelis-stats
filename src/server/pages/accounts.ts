@@ -39,9 +39,7 @@ accounts.get("/accounts", async (c) => {
     }
     const where = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
     total = await db.prepare(`SELECT COUNT(*) AS n FROM accounts ${where}`).bind(...binds).first<{ n: number }>().then((r) => r?.n ?? 0);
-    rows = await db.prepare(`SELECT address, first_seen, last_active, tx_count,
-        (SELECT COALESCE(SUM(t.transfer_count), 0) FROM tx_index t WHERE t.sender = accounts.address) AS transfer_count
-      FROM accounts ${where} ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
+    rows = await db.prepare(`SELECT address, first_seen, last_active, tx_count, transfer_count FROM accounts ${where} ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
       .bind(...binds, PAGE_SIZE, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>().then((r) => r.results ?? []);
   } catch {
     rows = [];

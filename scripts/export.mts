@@ -339,8 +339,15 @@ const AGG_JOBS: Array<[string, string, string[], string]> = [
      FROM blocks WHERE miner_address != '' GROUP BY 1,2 ORDER BY 1`],
   ["daily_block_types", "daily_block_types", ["date", "block_type", "count"],
     `SELECT date(ts/1000,'unixepoch') date, block_type, COUNT(*) count FROM blocks GROUP BY 1,2 ORDER BY 1`],
-  ["accounts", "accounts", ["address", "first_seen", "last_active", "tx_count"],
-    `SELECT address, first_seen, last_active, tx_count FROM accounts ORDER BY first_seen`],
+  // transfer_count is derived from full local tx history rather than the stored
+  // accounts column so a re-export refreshes it even on older backfill DBs
+  ["accounts", "accounts", ["address", "first_seen", "last_active", "tx_count", "transfer_count"],
+    `SELECT a.address, a.first_seen, a.last_active, a.tx_count,
+            COALESCE(t.transfers, 0) transfer_count
+     FROM accounts a
+     LEFT JOIN (SELECT sender, SUM(transfer_count) transfers FROM tx_index GROUP BY sender) t
+       ON t.sender = a.address
+     ORDER BY a.first_seen`],
   ["daily_address_stats", "daily_address_stats", ["date", "address", "tx_count", "transfer_outputs"],
     `SELECT date(ts/1000,'unixepoch') date, sender address, COUNT(*) tx_count,
             SUM(transfer_count) transfer_outputs
