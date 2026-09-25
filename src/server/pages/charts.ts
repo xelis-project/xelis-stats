@@ -28,7 +28,7 @@ charts.get("/charts", async (c) => {
     ["transfers", "Transfers"], ["fees", "Fees"], ["supply", "Supply"],
     ["burned-supply", "Burned supply"], ["chain-size", "Blockchain size"], ["market-cap", "Market Cap"], ["block-types", "Block types"],
     ["txs-transfer", "Tx: transfers"], ["txs-burn", "Tx: burns"], ["txs-invoke", "Tx: contract invokes"],
-    ["txs-deploy", "Tx: contract deploys"], ["txs-multisig", "Tx: multisig"],
+    ["txs-deploy", "Tx: contract deploys"], ["txs-multisig", "Tx: multisig"], ["tx-types", "Tx types"],
     ["contract-invokes", "Contract invokes"], ["contract-gas", "Contract gas"], ["contract-deploys", "Contract deploys"],
     ["active-contracts", "Active contracts"],
     ["price", "XEL price"], ["quote-volume", "Quote volume"],

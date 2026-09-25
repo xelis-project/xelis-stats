@@ -51,27 +51,23 @@ export function cumulativePoints(points: SeriesPoint[]): SeriesPoint[] {
   return points.map((p) => ({ date: p.date, value: (sum += p.value) }));
 }
 
-// The block-types metric keys each point "YYYY-MM-DD-Type". Drawn as a single
-// series, every type of a day collapses onto the same x and uPlot connects the
-// counts into a zig-zag, so split them into one series per type instead.
-const BLOCK_TYPE_ORDER = ["Normal", "Side", "Sync"];
-
-export function splitBlockTypes(points: SeriesPoint[]): Array<{ label: string; points: SeriesPoint[] }> {
+// Metrics like block-types and tx-types key each point "<bucket>-<type>" (e.g.
+// "2026-09-20-Sync", "2026-W38-transfer"). Drawn as a single series, every type
+// of a bucket collapses onto the same x and uPlot connects the counts into a
+// zig-zag, so split them into one series per type instead.
+export function splitByType(points: SeriesPoint[]): Array<{ label: string; points: SeriesPoint[] }> {
   const groups = new Map<string, SeriesPoint[]>();
   for (const p of points) {
-    const m = /^(\d{4}-\d{2}-\d{2})-(.+)$/.exec(p.date);
-    const type = m ? m[2] : "Normal";
-    const date = m ? m[1] : p.date;
+    // the type never contains a dash, so the last one separates it from the bucket
+    const i = p.date.lastIndexOf("-");
+    const type = i > 0 ? p.date.slice(i + 1) : "";
+    const date = i > 0 ? p.date.slice(0, i) : p.date;
     const list = groups.get(type) ?? [];
     list.push({ date, value: p.value });
     groups.set(type, list);
   }
-  const rank = (t: string) => {
-    const i = BLOCK_TYPE_ORDER.indexOf(t);
-    return i < 0 ? BLOCK_TYPE_ORDER.length : i;
-  };
   return [...groups.keys()]
-    .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+    .sort((a, b) => a.localeCompare(b))
     .map((t) => ({ label: t, points: groups.get(t)! }));
 }
 

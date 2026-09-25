@@ -1,4 +1,4 @@
-import { renderChart, renderCompare, cumulativePoints, splitBlockTypes, ACCENTS, accentHex, type SeriesPoint, type LineWidth } from "./charts";
+import { renderChart, renderCompare, cumulativePoints, splitByType, ACCENTS, accentHex, type SeriesPoint, type LineWidth } from "./charts";
 import { fmt, fmtInt, fmtPct, fmtBytes, shortHash, atomic, ago, metricFormatter } from "./format";
 import { icons, gripIcon } from "./icons";
 import { containsBadWord } from "./badwords";
@@ -157,6 +157,7 @@ const CATALOG: CatalogItem[] = [
   { key: "chart-miner-rev-usd", kind: "chart", metric: "miner-rev-usd", label: "Miner revenue (USDT)", desc: "Rewards valued where price covered", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-burned", kind: "chart", metric: "burned-supply", label: "Burned supply", desc: "Cumulative publicly burned XEL", range: "1y", interval: "week", w: 6, h: 5 },
   { key: "chart-block-types", kind: "chart", metric: "block-types", label: "Block types", desc: "Normal/Side/Sync counts per day", range: "30d", interval: "day", w: 6, h: 5 },
+  { key: "chart-tx-types", kind: "chart", metric: "tx-types", label: "Tx types", desc: "Transfer/Burn/Invoke/Deploy/Multisig counts per day", range: "30d", interval: "day", w: 6, h: 5 },
   { key: "chart-mempool", kind: "chart", metric: "mempool", label: "Mempool", desc: "Pending tx count over time", range: "3d", interval: "day", w: 6, h: 5 },
   { key: "chart-chainsize", kind: "chart", metric: "chain-size", label: "Blockchain size", desc: "Node on-disk chain size over time", range: "1y", interval: "week", w: 6, h: 5 },
   { key: "chart-peers", kind: "chart", metric: "peers", label: "Peer count", desc: "Connected peers over time", range: "7d", interval: "day", w: 6, h: 5 },
@@ -224,6 +225,7 @@ const EXPLAIN: Record<string, string> = {
   "chart-miner-rev-usd": "Daily miner revenue valued in USDT using the market price where coverage exists.",
   "chart-burned": "Cumulative publicly burned XEL read from the burned-supply column.",
   "chart-block-types": "Daily counts of Normal, Side and Sync blocks, so you can see the mix of block types over time.",
+  "chart-tx-types": "Daily counts of each transaction type (transfer, burn, contract invoke, contract deploy, multisig), so you can see the mix of activity over time.",
   "chart-mempool": "Average pending transaction count from periodic mempool snapshots.",
   "chart-chainsize": "On-disk blockchain size sampled from the node's get_size_on_disk RPC, averaged within the bucket. Grows with chain history and pruning is not reflected until a node prunes.",
   "chart-peers": "Average number of connected peers from periodic peer snapshots.",
@@ -1041,9 +1043,10 @@ async function mountTable(w: Widget): Promise<void> {
   }
 }
 
-// "block-types" returns one row per (day, type) as "YYYY-MM-DD-Type". Rendered
-// as a single series, uPlot maps all of a day's types to the same x and draws a
-// zig-zag between the counts. Split them into one series per type instead.
+// "block-types" and "tx-types" return one row per (bucket, type) keyed
+// "bucket-Type". Rendered as a single series, uPlot maps a bucket's types to the
+// same x and draws a zig-zag between the counts. Split them into one series per
+// type instead.
 function mountChart(w: Widget): void {
   const item = byKey.get(w.key);
   const body = chartBody(w);
@@ -1069,10 +1072,10 @@ function mountChart(w: Widget): void {
         body.innerHTML = '<p class="w-empty">No data for this range yet.</p>';
         return;
       }
-      if (item.metric === "block-types") {
-        const series = splitBlockTypes(points);
+      if (item.metric === "block-types" || item.metric === "tx-types") {
+        const series = splitByType(points);
         if (o.cum) for (const s of series) s.points = cumulativePoints(s.points);
-        const inst = renderCompare(body, series, { type: o.type, log: o.log, accent: o.accent, fill: o.fill, points: o.points, lineWidth: o.lineWidth, fmt: metricFormatter(item.metric ?? "block-types") });
+        const inst = renderCompare(body, series, { type: o.type, log: o.log, accent: o.accent, fill: o.fill, points: o.points, lineWidth: o.lineWidth, fmt: metricFormatter(item.metric ?? "") });
         if (inst) charts.set(w.id, inst);
         return;
       }

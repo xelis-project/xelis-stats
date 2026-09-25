@@ -45,6 +45,8 @@ const METRICS: Record<string, { table: string; col: string; agg?: "sum" | "avg" 
   "txs-invoke": { table: "tx-type", col: "invoke_contract", agg: "sum" },
   "txs-deploy": { table: "tx-type", col: "deploy_contract", agg: "sum" },
   "txs-multisig": { table: "tx-type", col: "multisig", agg: "sum" },
+  // every transaction type at once, keyed "<bucket>-<type>" like block-types
+  "tx-types": { table: "tx-type", col: "all", agg: "sum" },
   // contract activity (daily_contracts aggregate; active count is distinct)
   "contract-invokes": { table: "daily_contracts", col: "invoke_count", agg: "sum" },
   "contract-gas": { table: "daily_contracts", col: "gas_burned", agg: "sum" },
@@ -186,15 +188,25 @@ history.get("/api/history/:metric", async (c) => {
       }
     } catch { rows = []; }
   } else if (spec.table === "tx-type") {
-    // Daily/bucketed count of one transaction type from tx_index (col = type).
+    // Bucketed counts from tx_index: one type per point, or all types keyed
+    // "<bucket>-<type>" for the combined tx-types series.
     try {
       const { conds, binds } = tsConds(since, until);
-      const raw = await mergeGroups(
-        c.env,
-        `SELECT ${bucketTs} bucket, COUNT(*) n FROM tx_index WHERE tx_type = ? AND ${conds.join(" AND ")} GROUP BY bucket`,
-        [spec.col, ...binds], "bucket", ["n"],
-      );
-      rows = raw.map((r) => ({ bucket: String(r.bucket), value: Number(r.n) }));
+      if (spec.col === "all") {
+        const raw = await mergeGroups(
+          c.env,
+          `SELECT ${bucketTs} || '-' || tx_type bucket, COUNT(*) n FROM tx_index WHERE ${conds.join(" AND ")} GROUP BY bucket, tx_type`,
+          binds, "bucket", ["n"],
+        );
+        rows = raw.map((r) => ({ bucket: String(r.bucket), value: Number(r.n) }));
+      } else {
+        const raw = await mergeGroups(
+          c.env,
+          `SELECT ${bucketTs} bucket, COUNT(*) n FROM tx_index WHERE tx_type = ? AND ${conds.join(" AND ")} GROUP BY bucket`,
+          [spec.col, ...binds], "bucket", ["n"],
+        );
+        rows = raw.map((r) => ({ bucket: String(r.bucket), value: Number(r.n) }));
+      }
     } catch { rows = []; }
   } else if (spec.table === "daily_miners") {
     try {
