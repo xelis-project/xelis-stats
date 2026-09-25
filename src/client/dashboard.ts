@@ -2044,7 +2044,7 @@ export function initDashboard(): void {
   };
   menuToggle?.addEventListener("click", (ev) => {
     ev.stopPropagation();
-    toggleMenu(menuItems?.hidden ?? false);
+    toggleMenu(Boolean(menuItems?.hidden));
   });
   menuItems?.addEventListener("click", (ev) => {
     if ((ev.target as HTMLElement).closest("button")) toggleMenu(false);
