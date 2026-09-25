@@ -115,6 +115,7 @@ async function cfFetch(env: Env, path: string, init?: RequestInit): Promise<Reco
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
     },
+    signal: AbortSignal.timeout(15_000),
   });
   const json = await res.json() as { success?: boolean; errors?: { message: string }[]; result?: unknown };
   if (!res.ok || json.success === false) {
@@ -730,7 +731,10 @@ function sqlVal(v: any): string {
   if (typeof v === "number") return String(v);
   if (typeof v === "boolean") return v ? "1" : "0";
   if (typeof v === "bigint") return String(v);
-  return "'" + String(v).replace(/'/g, "''") + "'";
+  // REST-side bulk inserts cannot use bound params (D1 allows only 100/query
+  // and batches hold 200 rows), so literals are quoted here; NUL is stripped
+  // because SQLite treats it as a statement terminator.
+  return "'" + String(v).replace(/\u0000/g, "").replace(/'/g, "''") + "'";
 }
 
 function insertLiteral(table: string, rows: Row[]): string {

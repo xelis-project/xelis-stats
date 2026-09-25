@@ -15,7 +15,8 @@ type QueryFn = (name: string) => string | undefined;
 // `(sortCol, tiebreak)` serves both ASC and DESC via forward/reverse scans.
 export function parseSort(query: QueryFn, cols: Record<string, SortCol>, defKey: string, tiebreak: string): { order: string; key: string; dir: "asc" | "desc" } {
   const reqKey = query("sort") ?? "";
-  const key = cols[reqKey] ? reqKey : defKey;
+  // hasOwn: prototype keys like "constructor" must not resolve to a column
+  const key = Object.hasOwn(cols, reqKey) ? reqKey : defKey;
   const dir: "asc" | "desc" = query("dir") === "asc" || query("dir") === "desc" ? (query("dir") as "asc" | "desc") : cols[key].def;
   const tb = tiebreak.replace(/\s+(?:ASC|DESC)\s*$/i, "").trim();
   const hasDir = /\s+(?:ASC|DESC)\s*$/i.test(tiebreak);

@@ -75,14 +75,18 @@ const METRICS: Record<string, { table: string; col: string; agg?: "sum" | "avg" 
 
 function rangeToDays(range: string): number {
   if (range === "all") return Number.POSITIVE_INFINITY;
-  const m = /^(\d+)([dmy])$/.exec(range);
+  const m = /^(\d{1,4})([dmy])$/.exec(range);
   if (!m) return 90;
-  const n = Number(m[1]);
+  // cap at ~10 years so an absurd ?range=NNNNd cannot overflow Date
+  const n = Math.min(Number(m[1]), 3650);
   return m[2] === "d" ? n : m[2] === "m" ? n * 30 : n * 365;
 }
 
-function dateFrom(daysAgo: number): string {
-  return new Date(Date.now() - daysAgo * 86400_000).toISOString().slice(0, 10);
+function dateFrom(daysAgo: number): string | null {
+  const t = Date.now() - daysAgo * 86400_000;
+  if (!Number.isFinite(t)) return null;
+  const d = new Date(t);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 }
 
 function parseDateParam(v: string | undefined): string | null {
@@ -146,6 +150,14 @@ history.get("/api/history/:metric", async (c) => {
   const until = to;
   const exchange = (c.req.query("exchange") ?? "").slice(0, 64);
   const agg = spec.agg ?? "avg";
+
+  // Heavy series are recomputed per request; cache the JSON points briefly in
+  // KV keyed by the full query so dashboards and embeds do not re-scan D1.
+  const cacheKey = `hist:v3:${metric}|${range}|${interval}|${from ?? ""}|${to ?? ""}|${exchange}`;
+  if (format !== "csv") {
+    const hit = await c.env.KV.get<Array<{ date: string; value: number }>>(cacheKey, "json").catch(() => null);
+    if (hit) return c.json({ metric, interval, range, ...(exchange ? { exchange } : {}), points: hit });
+  }
 
   // date bucket format by interval
   const bucket = interval === "day" ? "date" : interval === "week" ? "strftime('%Y-W%W', date)" : interval === "month" ? "substr(date,1,7)" : "substr(date,1,4)";
@@ -502,16 +514,20 @@ history.get("/api/history/:metric", async (c) => {
 
   if (format === "csv") {
     const periodLabel = from || to ? `${from ?? "start"}_${to ?? "latest"}` : range;
-    const exLabel = exchange ? `-${exchange}` : "";
+    const exLabel = exchange ? `-${exchange.replace(/[^\w.-]+/g, "").slice(0, 32)}` : "";
     const csv = ["bucket,value", ...rows.map((r) => `${r.bucket},${r.value}`)].join("\n");
     return c.body(csv, 200, { "Content-Type": "text/csv", "Content-Disposition": `attachment; filename="${metric}${exLabel}-${periodLabel}.csv"` });
   }
 
+  const points = rows.map((r) => ({ date: r.bucket, value: Number(r.value) }));
+  if (points.length) {
+    await c.env.KV.put(cacheKey, JSON.stringify(points), { expirationTtl: 120 }).catch(() => { /* cache best effort */ });
+  }
   return c.json({
     metric,
     interval,
     range,
     ...(exchange ? { exchange } : {}),
-    points: rows.map((r) => ({ date: r.bucket, value: Number(r.value) })),
+    points,
   });
 });

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "./app";
 import { knownEntity } from "./entities";
 import { parseSort, TOP_COLS, TOP_DEFAULT, TOP_TIEBREAK } from "./sort";
+import { clampInt } from "./api";
 
 export const top = new Hono<{ Bindings: Env }>();
 
@@ -53,10 +54,12 @@ top.get("/api/top/:kind", async (c) => {
   }
   const periodParam = c.req.query("period") ?? "day";
   const period: Period = (["day", "week", "month", "all"].includes(periodParam) ? periodParam : "day") as Period;
-  const requested = c.req.query("date") ?? null;
+  // only YYYY-MM / YYYY-MM-DD anchors; anything else falls back to the latest day
+  const rawDate = c.req.query("date") ?? "";
+  const requested = /^\d{4}-\d{2}(-\d{2})?$/.test(rawDate) ? rawDate : null;
   const date = requested ?? (period === "all" ? null : await latestDataDay(c.env, kind));
   const { dim, binds } = whereFor(period, date);
-  const limit = Math.min(Number(c.req.query("limit") ?? 50), 200);
+  const limit = clampInt(c.req.query("limit"), 50, 200);
   const cols = TOP_COLS[kind];
   const { order } = parseSort((n) => c.req.query(n), cols, TOP_DEFAULT[kind], TOP_TIEBREAK[kind]);
 
@@ -70,6 +73,7 @@ top.get("/api/top/:kind", async (c) => {
     });
     return c.json({ kind, period, date, rows: tagged });
   } catch (err) {
-    return c.json({ error: "rollup data not available", detail: (err as Error).message }, 503);
+    console.error("api/top:", err instanceof Error ? err.message : String(err));
+    return c.json({ error: "rollup data not available" }, 503);
   }
 });

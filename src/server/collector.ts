@@ -10,17 +10,18 @@ export interface CollectorEnv {
  * StatsCollector Durable Object:
  * - maintains one outbound WS to the xelis node (reconnect w/ backoff)
  * - tracks live chain state (height, topoheight, mempool)
- * - polls get_info every 30s as fallback
- * - fans out events to browser WS clients
+ * - polls get_info every 30s via alarms as fallback (alarms allow hibernation)
+ * - fans out events to browser WS clients via state.getWebSockets(), so
+ *   broadcasts survive hibernation and process restarts
  */
+const POLL_MS = 30_000;
+
 export class StatsCollector {
   private state: DurableObjectState;
   private env: CollectorEnv;
-  private clients: Set<WebSocket> = new Set();
   private nodeWs: WebSocket | null = null;
   private retry = 0;
   private live = { topoheight: 0, height: 0, stable_topoheight: 0, mempool: 0 };
-  private pollTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(state: DurableObjectState, env: CollectorEnv) {
     this.state = state;
@@ -33,7 +34,6 @@ export class StatsCollector {
     if (url.pathname === "/ws") {
       const pair = new WebSocketPair();
       this.state.acceptWebSocket(pair[1]);
-      this.clients.add(pair[1]);
       pair[1].send(JSON.stringify({ type: "hello", ...this.live }));
       this.ensureNodeConnection();
       return new Response(null, { status: 101, webSocket: pair[0] });
@@ -41,16 +41,34 @@ export class StatsCollector {
     return new Response("not found", { status: 404 });
   }
 
-  // Called by hibernation runtime on node WS / client close
+  // Called by the hibernation runtime on client close/error. The client list is
+  // read from state at broadcast time, so there is nothing to clean up here.
   async webSocketClose(ws: WebSocket): Promise<void> {
-    this.clients.delete(ws);
+    try { ws.close(1000, "closed"); } catch { /* already closed */ }
+  }
+
+  async webSocketError(ws: WebSocket): Promise<void> {
+    try { ws.close(1011, "error"); } catch { /* already closed */ }
   }
 
   private ensureNodeConnection(): void {
-    if (this.nodeWs && (this.nodeWs.readyState === 0 || this.nodeWs.readyState === 1)) return;
-    this.connectNode();
-    if (!this.pollTimer) {
-      this.pollTimer = setInterval(() => void this.pollOnce(), 30_000);
+    if (!this.nodeWs || (this.nodeWs.readyState !== 0 && this.nodeWs.readyState !== 1)) {
+      this.connectNode();
+    }
+    this.armPoll();
+  }
+
+  private armPoll(): void {
+    void this.state.storage.getAlarm().then((at) => {
+      if (at == null) return this.state.storage.setAlarm(Date.now() + POLL_MS);
+    }).catch(() => { /* best effort */ });
+  }
+
+  // Alarm fallback poll; re-arms while there are clients or a node socket.
+  async alarm(): Promise<void> {
+    await this.pollOnce();
+    if (this.state.getWebSockets().length > 0 || this.nodeWs) {
+      await this.state.storage.setAlarm(Date.now() + POLL_MS);
     }
   }
 
@@ -159,11 +177,16 @@ export class StatsCollector {
           }
         }
         await this.env.DB.batch(inserts);
-      }
-      if (stable > cursor) {
-        await this.env.DB.prepare(`INSERT INTO sync_state (stage, cursor, updated_at) VALUES ('live_blocks', ?, ?)
-          ON CONFLICT(stage) DO UPDATE SET cursor = excluded.cursor, updated_at = excluded.updated_at`)
-          .bind(stable, Date.now()).run();
+        // advance only over data actually written; an empty/failed range must
+        // not move the checkpoint (that would create a permanent gap)
+        const lastTopo = Number(blocks[blocks.length - 1].topoheight);
+        if (Number.isFinite(lastTopo) && lastTopo > cursor) {
+          await this.env.DB.prepare(`INSERT INTO sync_state (stage, cursor, updated_at) VALUES ('live_blocks', ?, ?)
+            ON CONFLICT(stage) DO UPDATE SET cursor = excluded.cursor, updated_at = excluded.updated_at`)
+            .bind(lastTopo, Date.now()).run();
+        }
+      } else if (stable > cursor) {
+        console.error(`indexNewBlock: empty block range ${from}..${to} (stable ${stable}); checkpoint left at ${cursor}`);
       }
       await this.enrichPendingTxs(stable);
     } catch (err) {
@@ -379,8 +402,8 @@ export class StatsCollector {
 
   private broadcast(msg: unknown): void {
     const data = JSON.stringify(msg);
-    for (const ws of this.clients) {
-      try { ws.send(data); } catch { this.clients.delete(ws); }
+    for (const ws of this.state.getWebSockets()) {
+      try { ws.send(data); } catch { /* client gone; runtime cleans up */ }
     }
   }
 }

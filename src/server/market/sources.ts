@@ -29,7 +29,9 @@ export interface MarketAggregate {
 }
 
 async function json<T>(url: string): Promise<T> {
-  const res = await fetch(url, { headers: { "Content-Type": "application/json" } });
+  // third-party APIs can hang; fail fast so the cron tick and page requests
+  // are not held up indefinitely
+  const res = await fetch(url, { headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(8000) });
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
   return res.json() as Promise<T>;
 }
@@ -51,7 +53,7 @@ async function mexc(): Promise<Ticker> {
     ask: +t.askPrice,
     high24h: +t.highPrice,
     low24h: +t.lowPrice,
-    changePct24h: +t.priceChangePercent * 100,
+    changePct24h: +t.priceChangePercent,
     baseVolume: +t.volume,
     quoteVolume: +t.quoteVolume,
     timestamp: +t.closeTime,
