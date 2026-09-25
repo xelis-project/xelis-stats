@@ -19,6 +19,7 @@ contracts.get("/contracts", async (c) => {
     contract: { sql: "contract_id", def: "asc" },
     deployer: { sql: "deployer", def: "asc" },
     deployed: { sql: "deploy_topo", def: "desc" },
+    time: { sql: "deploy_topo", def: "desc" },
     invokes: { sql: "invoke_count", def: "desc" },
     gas: { sql: "gas_total", def: "desc" },
   }, "deployed", "contract_id", (s) => {
@@ -79,7 +80,7 @@ contracts.get("/contracts", async (c) => {
       ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
-    <thead><tr>${srt.th("contract", "Contract")}${srt.th("deployer", "Deployer")}${srt.th("deployed", "Deployed (topo)", true)}<th>Time</th>${srt.th("invokes", "Invokes", true)}${srt.th("gas", "Gas (XEL)", true)}</tr></thead>
+    <thead><tr>${srt.th("contract", "Contract")}${srt.th("deployer", "Deployer")}${srt.th("deployed", "Deployed (topo)", true)}${srt.th("time", "Time")}${srt.th("invokes", "Invokes", true)}${srt.th("gas", "Gas (XEL)", true)}</tr></thead>
     <tbody>${body}</tbody></table></div>
     ${pager(pagerBase, page, totalPages)}
   </div>`;

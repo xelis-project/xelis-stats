@@ -18,6 +18,7 @@ assets.get("/assets", async (c) => {
     symbol: { sql: "symbol", def: "asc" },
     decimals: { sql: "decimals", def: "asc" },
     first: { sql: "first_seen_topo", def: "desc" },
+    time: { sql: "first_seen_topo", def: "desc" },
   }, "first", "asset_id", (s) => {
     const p = new URLSearchParams();
     if (q) p.set("q", q);
@@ -75,7 +76,7 @@ assets.get("/assets", async (c) => {
       ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
-    <thead><tr>${srt.th("asset", "Asset ID")}${srt.th("name", "Name")}${srt.th("symbol", "Symbol")}${srt.th("decimals", "Decimals", true)}${srt.th("first", "First seen (topo)", true)}<th>Time</th></tr></thead>
+    <thead><tr>${srt.th("asset", "Asset ID")}${srt.th("name", "Name")}${srt.th("symbol", "Symbol")}${srt.th("decimals", "Decimals", true)}${srt.th("first", "First seen (topo)", true)}${srt.th("time", "Time")}</tr></thead>
     <tbody>${body}</tbody></table></div>
     ${pager(pagerBase, page, totalPages)}
   </div>`;
