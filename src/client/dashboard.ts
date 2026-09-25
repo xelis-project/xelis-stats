@@ -1001,6 +1001,37 @@ function wireSortClicks(w: Widget, body: HTMLElement): void {
   });
 }
 
+// In-flight de-dup + short-lived JSON cache. Re-entering a tab remounts every
+// widget, and two widgets can request the same series (e.g. quote-volume in a
+// chart and in a compare), so without this the same URL is fetched repeatedly —
+// and on a cold server cache several identical requests stampede the upstream
+// fan-out at once. History changes at most daily, so a brief TTL is safe.
+const jsonCache = new Map<string, { at: number; value: unknown }>();
+const jsonInflight = new Map<string, Promise<unknown>>();
+const HISTORY_TTL = 60_000;
+
+function fetchJson<T>(url: string): Promise<T> {
+  const ttl = url.startsWith("/api/history/") ? HISTORY_TTL : 0;
+  if (ttl > 0) {
+    const hit = jsonCache.get(url);
+    if (hit && Date.now() - hit.at < ttl) return Promise.resolve(hit.value as T);
+  }
+  const pending = jsonInflight.get(url);
+  if (pending) return pending as Promise<T>;
+  const p = fetch(url)
+    .then((r) => {
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json() as Promise<T>;
+    })
+    .then((value) => {
+      if (ttl > 0) jsonCache.set(url, { at: Date.now(), value });
+      return value;
+    })
+    .finally(() => { jsonInflight.delete(url); });
+  jsonInflight.set(url, p);
+  return p;
+}
+
 // Per-widget fetch generation: a slow response for an older request must not
 // overwrite the DOM after a newer request (refresh timer, sort click) landed.
 const mountGen = new Map<string, number>();
@@ -1035,7 +1066,7 @@ async function mountTable(w: Widget): Promise<void> {
               : `/api/blocks?limit=${limit}${o.blockType ? `&type=${o.blockType}` : ""}${sp}`;
   if (!body.querySelector("table")) setLoading(w, true);
   try {
-    const j = await fetch(url).then((r) => r.json()) as Record<string, unknown[]>;
+    const j = await fetchJson<Record<string, unknown[]>>(url);
     const rows = (item.src === "peer-tags"
       ? j.tags
       : item.src === "peer-prefixes"
@@ -1076,12 +1107,11 @@ function mountChart(w: Widget): void {
   }
   p.set("interval", o.interval ?? item.interval ?? "day");
   setLoading(w, true);
-  void fetch(`/api/history/${item.metric}?${p.toString()}`)
-    .then((r) => r.json())
-    .then((j: unknown) => {
+  void fetchJson<{ points?: SeriesPoint[] }>(`/api/history/${item.metric}?${p.toString()}`)
+    .then((j) => {
       if (mountGen.get(w.id) !== gen) return;
       setLoading(w, false);
-      let points = (j as { points?: SeriesPoint[] }).points ?? [];
+      let points = j.points ?? [];
       if (!points.length) {
         body.innerHTML = '<p class="w-empty">No data for this range yet.</p>';
         return;
@@ -1136,7 +1166,7 @@ async function mountCompare(w: Widget): Promise<void> {
   setLoading(w, true);
   try {
     const series = (await Promise.all(metrics.map(async (m) => {
-      const j = await fetch(`/api/history/${m}?${qs}`).then((r) => r.json()) as { points?: SeriesPoint[] };
+      const j = await fetchJson<{ points?: SeriesPoint[] }>(`/api/history/${m}?${qs}`);
       return { label: metricLabel(m), points: j.points ?? [] };
     }))).filter((s) => s.points.length);
     if (mountGen.get(w.id) !== gen) return;
