@@ -103,7 +103,7 @@ contracts.get("/contracts/:id", async (c) => {
   let moduleRaw: unknown = null;
   let entries: { key: unknown; value: unknown }[] = [];
   let storageMore = false;
-  type Bal = { asset: string; name: string | null; balance: number | null; topo: number | null };
+  type Bal = { asset: string; name: string | null; symbol: string | null; balance: number | null; topo: number | null };
   let balances: Bal[] = [];
   try {
     const mod = await rpc<{ topoheight: number; version: { data?: { module?: unknown } } }>("get_contract_module", { contract: id });
@@ -120,21 +120,24 @@ contracts.get("/contracts/:id", async (c) => {
     balances = await Promise.all(assets.map(async (asset): Promise<Bal> => {
       try {
         const b = await rpc<{ data: number; topoheight: number }>("get_contract_balance", { contract: id, asset });
-        return { asset, name: null, balance: num(b.data), topo: num(b.topoheight) };
-      } catch { return { asset, name: null, balance: null, topo: null }; }
+        return { asset, name: null, symbol: null, balance: num(b.data), topo: num(b.topoheight) };
+      } catch { return { asset, name: null, symbol: null, balance: null, topo: null }; }
     }));
   } catch { /* none */ }
   const xel = "0000000000000000000000000000000000000000000000000000000000000000";
   try {
     const ids = balances.map((b) => b.asset).filter((a) => a !== xel);
-    const byId = new Map<string, string | null>();
+    const byId = new Map<string, { name: string | null; symbol: string | null }>();
     if (ids.length) {
       const rows = await db.prepare(
-        `SELECT asset_id, name FROM assets WHERE asset_id IN (${ids.map(() => "?").join(",")})`
-      ).bind(...ids).all<{ asset_id: string; name: string | null }>();
-      for (const r of rows.results ?? []) byId.set(r.asset_id, r.name);
+        `SELECT asset_id, name, symbol FROM assets WHERE asset_id IN (${ids.map(() => "?").join(",")})`
+      ).bind(...ids).all<{ asset_id: string; name: string | null; symbol: string | null }>();
+      for (const r of rows.results ?? []) byId.set(r.asset_id, { name: r.name, symbol: r.symbol });
     }
-    balances = balances.map((b) => ({ ...b, name: b.asset === xel ? "XEL" : byId.get(b.asset) ?? null }));
+    balances = balances.map((b) => {
+      const meta = b.asset === xel ? { name: "Xelis", symbol: "XEL" } : byId.get(b.asset);
+      return { ...b, name: meta?.name ?? null, symbol: meta?.symbol ?? null };
+    });
   } catch { /* names unavailable */ }
   const deployer = String(ct.deployer ?? "");
 
@@ -212,12 +215,13 @@ contracts.get("/contracts/:id", async (c) => {
           ? `<span class="badge">XEL</span>`
           : `<a class="mono" href="/asset/${esc(b.asset)}">${shortHash(b.asset, 10)}</a>`;
         const nameCell = b.name ? flaggedText(b.name) : "—";
-        return `<tr><td>${assetCell}</td><td>${nameCell}</td>${amount}<td class="num">${b.topo ? `<a href="/block/${b.topo}">${fmtInt(b.topo)}</a>` : "—"}</td></tr>`;
+        const tickerCell = b.symbol ? `<span class="mono">${flaggedText(b.symbol)}</span>` : "—";
+        return `<tr><td>${assetCell}</td><td>${nameCell}</td><td>${tickerCell}</td>${amount}<td class="num">${b.topo ? `<a href="/block/${b.topo}">${fmtInt(b.topo)}</a>` : "—"}</td></tr>`;
       }).join("")
     : "";
   const balancesPanel = balances.length ? `<div class="panel"><h2>Balances</h2>
     <div class="tablewrap"><table>
-      <thead><tr><th>Asset</th><th>Name</th><th class="num">Amount</th><th class="num">Updated (topo)</th></tr></thead>
+      <thead><tr><th>Asset</th><th>Name</th><th>Ticker</th><th class="num">Amount</th><th class="num">Updated (topo)</th></tr></thead>
       <tbody>${balRows}</tbody>
     </table></div>
   </div>` : "";
