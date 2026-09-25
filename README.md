@@ -68,6 +68,25 @@ For local development, secrets go in `.dev.vars` (gitignored).
 | `npm run backfill:monitor` | Backfill progress and ETA                  |
 | `npm run export`           | Export history to D1 SQL / R2 JSONL chunks |
 | `npm run import:history`   | Import legacy market + chain-size CSV into D1 SQL |
+| `npm run import:d1`        | Apply migrations and load `export/*.sql` into D1 |
+
+### Local D1 import
+
+After a backfill + `npm run export`, load the artifacts into the local D1 that
+`npm run dev` uses:
+
+```sh
+npm run import:d1 -- --reset      # local, clean re-init (stop dev/preview first)
+npm run import:d1                 # local, incremental
+npm run import:d1 -- --remote     # deployed D1
+```
+
+`--reset` wipes `.wrangler/state/v3/d1` first. Prefer it after a fresh backfill:
+the aggregate tables are exported with `INSERT OR IGNORE`, so an incremental
+import never refreshes aggregate rows already in the database. The script also
+seeds the `live_blocks`/`live_txs` cursors to the backfill tip so the collector
+resumes from the top instead of re-walking history. Use `--only=a,b`, `--dry-run`,
+`--no-seed`, or `--cursor=N` to control a run.
 
 ### Legacy Postgres history
 
