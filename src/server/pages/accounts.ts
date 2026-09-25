@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout } from "../../client/layout";
-import { fmtInt, shortHash, fmtTime, ago } from "../../client/format";
+import { fmtInt, shortHash, fmtTime, timeCell, ago } from "../../client/format";
 import { srvSort, ACCT_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
 import { knownEntity, knownEntities } from "../entities";
@@ -61,8 +61,8 @@ accounts.get("/accounts", async (c) => {
         const e = knownEntity(addr);
         return `<tr>
           <td><a href="/account/${addr}"><span class="hash">${shortHash(addr)}</span></a>${e ? ` <span class="badge entity ${esc(e.kind)}">${esc(e.label)}</span>` : ""}</td>
-          <td>${fmtTime(a.first_seen as number)}</td>
-          <td>${ago((a.last_active as number) ?? null)}</td>
+          <td>${timeCell(a.first_seen as number)}</td>
+          <td>${timeCell((a.last_active as number) ?? null)}</td>
           <td class="num">${fmtInt(a.tx_count as number)}</td>
         </tr>`;
       }).join("")

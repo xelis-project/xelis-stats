@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout, notFound } from "../../client/layout";
-import { fmtInt, shortHash, fmtTime } from "../../client/format";
+import { fmtInt, shortHash, timeCell } from "../../client/format";
 import { srvSort } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
 import { esc, flaggedText, num } from "./shared";
@@ -64,7 +64,7 @@ assets.get("/assets", async (c) => {
         <td>${a.symbol ? flaggedText(a.symbol) : "—"}</td>
         <td class="num">${fmtInt(a.decimals as number)}</td>
         <td class="num">${fmtInt(a.first_seen_topo as number)}</td>
-        <td>${ts ? fmtTime(ts) : "—"}</td>
+        <td>${ts ? timeCell(ts) : "—"}</td>
       </tr>`;
       }).join("")
     : `<tr><td colspan="6" style="color:var(--text-dim)">No assets indexed yet (populated during tx detail pass).</td></tr>`;
@@ -76,7 +76,7 @@ assets.get("/assets", async (c) => {
       ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
-    <thead><tr>${srt.th("asset", "Asset ID")}${srt.th("name", "Name")}${srt.th("symbol", "Symbol")}${srt.th("decimals", "Decimals", true)}${srt.th("first", "First seen (topo)", true)}${srt.th("time", "Time")}</tr></thead>
+    <thead><tr>${srt.th("asset", "Asset ID")}${srt.th("name", "Name")}${srt.th("symbol", "Symbol")}${srt.th("decimals", "Decimals", true)}${srt.th("first", "First seen (topo)", true)}${srt.th("time", "Age")}</tr></thead>
     <tbody>${body}</tbody></table></div>
     ${pager(pagerBase, page, totalPages)}
   </div>`;

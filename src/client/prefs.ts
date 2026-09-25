@@ -12,12 +12,14 @@ export const PREF_KEYS = {
   numberFormat: "xelis:number-format",
   timezone: "xelis:timezone",
   timeStyle: "xelis:time-style",
+  timeFormat: "xelis:time-format",
 } as const;
 
 export type Density = "comfortable" | "compact";
 export type NumberFormat = "compact" | "plain";
 export type Timezone = "utc" | "local";
 export type TimeStyle = "24" | "12";
+export type TimeFormat = "relative" | "absolute" | "both";
 
 export function getPref(key: string, fallback = ""): string {
   try {
@@ -53,6 +55,11 @@ export function getTimezone(): Timezone {
 
 export function getTimeStyle(): TimeStyle {
   return getPref(PREF_KEYS.timeStyle, "12") === "12" ? "12" : "24";
+}
+
+export function getTimeFormat(): TimeFormat {
+  const v = getPref(PREF_KEYS.timeFormat, "relative");
+  return v === "absolute" || v === "both" ? v : "relative";
 }
 
 // Minimal structural type so this module stays importable from the Worker

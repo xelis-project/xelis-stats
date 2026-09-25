@@ -20,17 +20,20 @@ interface Cell {
 
 const state = new WeakMap<HTMLElement, SortState>();
 const MULTIPLIERS: Record<string, number> = { k: 1e3, m: 1e6, b: 1e9, t: 1e12 };
-const AGO_UNITS: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400 };
+const AGO_UNITS: Record<string, number> = { s: 1, m: 60, h: 3600, d: 86400, w: 604800, mo: 2629800, y: 31536000 };
 const NUM_RE = /^(-?\d+(?:\.\d+)?)([a-z%]*)$/;
-const AGO_RE = /^(\d+(?:\.\d+)?)\s*([dhms])\s*ago$/;
+const AGO_RE = /^(\d+(?:\.\d+)?)\s*(mo|[smhdwy])\s*ago$/;
+const AHEAD_RE = /^in\s+(\d+(?:\.\d+)?)\s*(mo|[smhdwy])$/;
 
 function cellOf(td: HTMLTableCellElement | undefined): Cell {
   const raw = (td?.textContent ?? "").trim().replace(/\s+/g, " ");
   if (!raw || raw === "—" || raw === "-") return { num: null, str: "", kind: "empty" };
   const low = raw.toLowerCase();
-  if (low === "just now") return { num: 0, str: low, kind: "ago" };
+  if (low === "just now" || low === "in a moment") return { num: 0, str: low, kind: "ago" };
   const ago = AGO_RE.exec(low);
   if (ago) return { num: Number(ago[1]) * AGO_UNITS[ago[2]], str: low, kind: "ago" };
+  const ahead = AHEAD_RE.exec(low);
+  if (ahead) return { num: -Number(ahead[1]) * AGO_UNITS[ahead[2]], str: low, kind: "ago" };
   // "$1,234.56", "+2.35%", "0.59 XEL" -> plain number; suffix kept as text tiebreak
   const compact = low.replace(/[$,+\s]/g, "");
   const m = NUM_RE.exec(compact);

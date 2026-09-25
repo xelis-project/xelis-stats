@@ -72,8 +72,15 @@ export function shortHash(h: string | null | undefined, size = 6): string {
   return `${h.slice(0, size)}…${h.slice(-size)}`;
 }
 
-// daemon/collector timestamps are milliseconds; legacy rows may be seconds
-function toMs(ts: number): number {
+// daemon/collector timestamps are milliseconds; legacy rows may be seconds;
+// ISO strings are parsed directly.
+export function toMs(ts: number | string | null | undefined): number {
+  if (ts === null || ts === undefined || ts === "" || ts === 0) return NaN;
+  if (typeof ts === "string") {
+    const parsed = Date.parse(ts);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  }
+  if (!Number.isFinite(ts)) return NaN;
   return ts >= 1e11 ? ts : ts * 1000;
 }
 
@@ -105,8 +112,7 @@ export function formatStamp(d: Date, tz: Timezone, style: TimeStyle): string {
 }
 
 export function fmtTime(ts: number | string | null | undefined): string {
-  if (!ts) return "—";
-  const d = typeof ts === "string" ? new Date(ts) : new Date(toMs(ts));
+  const d = new Date(toMs(ts));
   if (!Number.isFinite(d.getTime())) return "—";
   return formatStamp(d, getTimezone(), getTimeStyle());
 }
@@ -117,12 +123,30 @@ export function fmtPct(n: number | null | undefined): string {
   return `${sign}${n.toFixed(2)}%`;
 }
 
-export function ago(ts: number | null | undefined): string {
-  if (!ts) return "—";
-  const s = Math.floor((Date.now() - toMs(ts)) / 1000);
-  if (s < 0) return "just now";
-  if (s < 60) return `${s}s ago`;
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
+// Compact relative age ("2m ago", "3mo ago", "in 4h") for scanning tables.
+// sortable.ts parses the same units, so keep the two in sync when adding one.
+export function ago(ts: number | string | null | undefined): string {
+  const ms = toMs(ts);
+  if (!Number.isFinite(ms)) return "—";
+  const future = ms > Date.now();
+  const s = Math.floor(Math.abs(Date.now() - ms) / 1000);
+  const stamp = (n: number, u: string): string => (future ? `in ${n}${u}` : `${n}${u} ago`);
+  if (s < 45) return future ? "in a moment" : "just now";
+  if (s < 90) return stamp(s, "s");
+  if (s < 3600) return stamp(Math.round(s / 60), "m");
+  if (s < 86400) return stamp(Math.round(s / 3600), "h");
+  if (s < 604800) return stamp(Math.round(s / 86400), "d");
+  if (s < 2629800) return stamp(Math.round(s / 604800), "w");
+  if (s < 31557600) return stamp(Math.round(s / 2629800), "mo");
+  return stamp(Math.round(s / 31557600), "y");
+}
+
+// Server-rendered time cell: relative age with the exact timestamp in the
+// tooltip. format-display.ts rewrites it in place when the browser's time
+// format, zone or clock preference differs.
+export function timeCell(ts: number | string | null | undefined): string {
+  const ms = toMs(ts);
+  if (!Number.isFinite(ms)) return `<span class="time">—</span>`;
+  const abs = formatStamp(new Date(ms), getTimezone(), getTimeStyle());
+  return `<span class="time" data-ts="${ms}" title="${abs}">${ago(ms)}</span>`;
 }

@@ -1,4 +1,4 @@
-import { PREF_KEYS, getDensity, getNumberFormat, getPref, getTimezone, getTimeStyle, isLiveEnabled, setPref } from "./prefs";
+import { PREF_KEYS, getDensity, getNumberFormat, getPref, getTimeFormat, getTimezone, getTimeStyle, isLiveEnabled, setPref } from "./prefs";
 
 // Wires the controls on /settings. Preferences persist in localStorage and are
 // applied live so the page reflects changes without a reload.
@@ -8,10 +8,11 @@ export function initSettings(): void {
   const numberFormat = document.getElementById("pref-number-format") as HTMLSelectElement | null;
   const timezone = document.getElementById("pref-timezone") as HTMLSelectElement | null;
   const timeStyle = document.getElementById("pref-time-style") as HTMLSelectElement | null;
+  const timeFormat = document.getElementById("pref-time-format") as HTMLSelectElement | null;
   const motion = document.getElementById("pref-reduce-motion") as HTMLInputElement | null;
   const live = document.getElementById("pref-live") as HTMLInputElement | null;
   const reset = document.getElementById("pref-reset") as HTMLButtonElement | null;
-  if (!reveal && !density && !numberFormat && !timezone && !timeStyle && !motion && !live) return;
+  if (!reveal && !density && !numberFormat && !timezone && !timeStyle && !timeFormat && !motion && !live) return;
 
   const root = document.documentElement;
   const syncReveal = (on: boolean): void => { root.classList.toggle("reveal-flags", on); };
@@ -62,6 +63,15 @@ export function initSettings(): void {
     });
   }
 
+  if (timeFormat) {
+    timeFormat.value = getTimeFormat();
+    timeFormat.addEventListener("change", () => {
+      const value = timeFormat.value;
+      setPref(PREF_KEYS.timeFormat, value === "absolute" || value === "both" ? value : "relative");
+      syncFormat();
+    });
+  }
+
   if (motion) {
     motion.checked = getPref(PREF_KEYS.reduceMotion) === "1";
     motion.addEventListener("change", () => {
@@ -94,6 +104,7 @@ export function initSettings(): void {
       if (numberFormat) numberFormat.value = "compact";
       if (timezone) timezone.value = "utc";
       if (timeStyle) timeStyle.value = "24";
+      if (timeFormat) timeFormat.value = "relative";
       syncFormat();
       if (live) {
         live.checked = true;

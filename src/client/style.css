@@ -261,6 +261,8 @@ td { padding: 0.75rem 0.8rem; border-bottom: 1px solid hsla(0, 0%, 100%, 0.05); 
 tbody tr:hover { background: rgba(2, 255, 207, 0.035); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 td .mint { color: var(--mint); }
+/* Relative age cells: keep digits aligned and the tooltip exact */
+.time { font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* Sortable column headers */
 th.sortable { cursor: pointer; user-select: none; }

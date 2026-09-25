@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout } from "../../client/layout";
-import { fmtInt, shortHash, fmtTime, atomic } from "../../client/format";
+import { fmtInt, shortHash, timeCell, atomic } from "../../client/format";
 import { srvSort, TX_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
 import { PAGE_SIZE, pager, cursorPager, entityTag, esc } from "./shared";
@@ -140,7 +140,7 @@ transactions.get("/transactions", async (c) => {
         return `<tr>
         <td><a class="mono" href="/tx/${esc(hash)}">${shortHash(hash)}</a></td>
         <td>${Number.isFinite(topo) ? `<a href="/block/${topo}"><span class="mint">${fmtInt(topo)}</span></a>` : dim("—")}</td>
-        <td>${Number.isFinite(ts) ? fmtTime(ts) : dim("—")}</td>
+        <td>${Number.isFinite(ts) ? timeCell(ts) : dim("—")}</td>
         <td>${txType ? `<span class="badge ${esc(txType)}">${esc(txType)}</span>` : dim("—")}</td>
         <td>${sender ? `<a class="mono" href="/account/${esc(sender)}">${shortHash(sender, 8)}</a>${entityTag(sender)}` : dim("—")}</td>
         <td class="num"${Number(t.transfer_count) === 0 ? ' style="color:var(--text-dim)"' : ""}>${fmtInt(Number(t.transfer_count))}</td>
@@ -156,7 +156,7 @@ transactions.get("/transactions", async (c) => {
       ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
-      <thead><tr><th>Hash</th>${srt.th("block", "Block")}${srt.th("time", "Time")}${srt.th("type", "Type")}${srt.th("sender", "Sender")}${srt.th("transfers", "Transfers", true)}${srt.th("fee", "Fee (XEL)", true)}</tr></thead>
+      <thead><tr><th>Hash</th>${srt.th("block", "Block")}${srt.th("time", "Age")}${srt.th("type", "Type")}${srt.th("sender", "Sender")}${srt.th("transfers", "Transfers", true)}${srt.th("fee", "Fee (XEL)", true)}</tr></thead>
       <tbody>${body}</tbody>
     </table></div>
     ${pagerHtml}

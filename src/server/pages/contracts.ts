@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout, notFound, statCard } from "../../client/layout";
 import { icons } from "../../client/icons";
-import { fmtInt, shortHash, fmtTime, ago, atomic, fmt } from "../../client/format";
+import { fmtInt, shortHash, fmtTime, timeCell, ago, atomic, fmt } from "../../client/format";
 import { srvSort } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
 import { rpc } from "../xelis";
@@ -66,7 +66,7 @@ contracts.get("/contracts", async (c) => {
         <td><a class="mono" href="/contracts/${ct.contract_id}">${shortHash(ct.contract_id as string, 10)}</a></td>
         <td><a class="mono" href="/account/${ct.deployer}">${shortHash(ct.deployer as string, 8)}</a></td>
         <td class="num">${fmtInt(ct.deploy_topo as number)}</td>
-        <td>${ts ? fmtTime(ts) : "—"}</td>
+        <td>${ts ? timeCell(ts) : "—"}</td>
         <td class="num">${fmtInt(ct.invoke_count as number)}</td>
         <td class="num">${num(ct.gas_total) > 0 ? `${atomic(ct.gas_total as number)} XEL` : "—"}</td>
       </tr>`;
@@ -80,7 +80,7 @@ contracts.get("/contracts", async (c) => {
       ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
-    <thead><tr>${srt.th("contract", "Contract")}${srt.th("deployer", "Deployer")}${srt.th("deployed", "Deployed (topo)", true)}${srt.th("time", "Time")}${srt.th("invokes", "Invokes", true)}${srt.th("gas", "Gas (XEL)", true)}</tr></thead>
+    <thead><tr>${srt.th("contract", "Contract")}${srt.th("deployer", "Deployer")}${srt.th("deployed", "Deployed (topo)", true)}${srt.th("time", "Age")}${srt.th("invokes", "Invokes", true)}${srt.th("gas", "Gas (XEL)", true)}</tr></thead>
     <tbody>${body}</tbody></table></div>
     ${pager(pagerBase, page, totalPages)}
   </div>`;

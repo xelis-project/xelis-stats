@@ -68,6 +68,17 @@ settings.get("/settings", (c) => {
           <option value="12">12-hour</option>
         </select>
       </div>
+      <div class="setting-row">
+        <div class="setting-info">
+          <div class="setting-name">Time format</div>
+          <div class="setting-desc">Tables show a relative age (2m ago) by default; hover for the exact timestamp. Both shows the relative age and the clock together.</div>
+        </div>
+        <select id="pref-time-format" aria-label="Time format">
+          <option value="relative">Relative</option>
+          <option value="absolute">Exact time</option>
+          <option value="both">Both</option>
+        </select>
+      </div>
       ${toggleRow("pref-reduce-motion", "Reduce motion", "Disable animations and transitions for a calmer, lower-motion interface.")}
     </div>
 
