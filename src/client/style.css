@@ -690,16 +690,23 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
     margin-bottom: 1.2rem;
   }
   header.site > :not(nav) { grid-row: 1; }
+  /* All header controls share one height so the status pill, search and
+     icon buttons line up as equal pills. */
+  header.site .status,
+  .searchbox,
+  header.site .icon-btn {
+    height: 3.6rem; box-sizing: border-box; align-items: center;
+  }
   header.site .logo { grid-column: 1; font-size: 1.5rem; }
   header.site .status {
     grid-column: 2; justify-self: end; margin-left: 0; min-width: 0; max-width: 100%;
-    padding: 0.4rem 0.9rem; font-size: 1rem;
+    padding: 0 0.9rem; font-size: 1rem;
   }
   header.site .status span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .searchbox { grid-column: 3; padding: 0.5rem; }
+  .searchbox { grid-column: 3; padding: 0 0.7rem; justify-content: center; }
   .searchbox > span { display: none; }
-  header.site .icon-btn { grid-column: 4; padding: 0.5rem; }
-  header.site .menu-toggle { grid-column: 5; display: inline-flex; padding: 0.5rem; }
+  header.site .icon-btn { grid-column: 4; padding: 0 0.7rem; display: inline-flex; justify-content: center; }
+  header.site .menu-toggle { grid-column: 5; display: inline-flex; padding: 0 0.7rem; justify-content: center; }
   header.site nav {
     grid-column: 1 / -1; grid-row: 2;
     display: grid; grid-template-rows: 0fr;
@@ -750,7 +757,7 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
    so keep the colour-coded pulsing dot only. */
 @media (max-width: 360px) {
   header.site .status span:last-child { display: none; }
-  header.site .status { padding: 0.4rem 0.7rem; }
+  header.site .status { padding: 0 0.7rem; }
 }
 /* Big monitors: everything is rem-based, so scaling the root font with
    viewport width zooms the whole UI proportionally (62.5% = desktop 1x,
