@@ -108,6 +108,44 @@ function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit
 return count;
 }
 
+/** Keyset-paginated dump by a TEXT key column (e.g. hashes). Optionally uses a
+ *  second column to break ties, since the value columns of join tables do not
+ *  carry a numeric cursor. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function dumpKeysetText(table: string, keyCol: string, cols: string[], opts: { outFile: string; chunkRows?: number; tieCol?: string }): number {
+  const chunkRows = opts.chunkRows ?? 100_000;
+  const tieCol = opts.tieCol;
+  fresh(opts.outFile);
+  const where = tieCol
+    ? `(${keyCol} > ? OR (${keyCol} = ? AND ${tieCol} > ?))`
+    : `${keyCol} > ?`;
+  const order = tieCol ? `${keyCol} ASC, ${tieCol} ASC` : `${keyCol} ASC`;
+  let count = 0;
+  let lastKey = "";
+  let lastTie = "";
+  const buffer: string[] = [];
+
+  for (;;) {
+    const stmt = db.prepare(`SELECT DISTINCT ${cols.join(", ")} FROM ${table} WHERE ${where} ORDER BY ${order} LIMIT ?`);
+    stmt.setReadBigInts(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows: any[] = tieCol ? stmt.all(lastKey, lastKey, lastTie, chunkRows) : stmt.all(lastKey, chunkRows);
+    if (!rows.length) break;
+    for (const row of rows) {
+      buffer.push(`(${cols.map((c) => esc(row[c])).join(",")})`);
+      count++;
+    }
+    for (let i = 0; i < buffer.length; i += 100) {
+      writeFileSync(opts.outFile, `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${buffer.slice(i, i + 100).join(",\n")};\n`, { flag: "a" });
+    }
+    buffer.length = 0;
+    const last = rows[rows.length - 1];
+    lastKey = String(last[keyCol]);
+    if (tieCol) lastTie = String(last[tieCol]);
+  }
+  return count;
+}
+
 /** JSONL dump (for R2 raw archive). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function dumpJsonl(table: string, keyCol: string, chunkRows: number, dir: string): number {
@@ -244,7 +282,7 @@ for (const [file, table, cols, sql] of AGG_JOBS) {
 
 // ---------- chain data (D1) ----------
 
-console.log("Exporting chain data (D1): all blocks, all txs…");
+console.log("Exporting chain data (D1): all blocks, all txs, tx↔asset and tx↔contract links…");
 if (wanted("blocks")) {
   const nBlocks = dumpKeyset("blocks", "topoheight",
     ["topoheight", "height", "hash", "ts", "version", "nonce", "difficulty", "size", "tx_count", "block_type", "miner_address", "miner_reward", "dev_reward", "burned", "fee_total", "cum_difficulty", "tips"],
@@ -256,11 +294,29 @@ if (wanted("blocks")) {
 
 if (wanted("tx")) {
   const nTxs = dumpKeyset("tx_index", "block_topo",
-    ["hash", "block_topo", "ts", "fee", "size", "tx_type", "sender", "transfer_count", "version", "multisig", "contract_id", "gas", "executed", "encrypted"],
+    ["hash", "block_topo", "ts", "fee", "size", "tx_type", "sender", "transfer_count", "version", "multisig", "contract_id", "gas", "executed", "encrypted", "burn_amount", "burn_asset"],
     { outFile: join(OUT_DIR, "tx.sql"), chunkRows: 100_000, tieCol: "hash", includeNull: true });
   console.log(`  tx: ${nTxs.toLocaleString()} rows`);
 } else {
   console.log("  tx: skipped (--only)");
+}
+
+// join tables: without these the asset/contract detail pages have no tx links
+// (tx_assets is keyed by hash+asset, tx_contracts by hash)
+if (wanted("tx_assets")) {
+  const n = dumpKeysetText("tx_assets", "tx_hash", ["tx_hash", "asset"],
+    { outFile: join(OUT_DIR, "tx_assets.sql"), chunkRows: 100_000, tieCol: "asset" });
+  console.log(`  tx_assets: ${n.toLocaleString()} rows`);
+} else {
+  console.log("  tx_assets: skipped (--only)");
+}
+
+if (wanted("tx_contracts")) {
+  const n = dumpKeysetText("tx_contracts", "tx_hash", ["tx_hash", "contract_id", "max_gas"],
+    { outFile: join(OUT_DIR, "tx_contracts.sql"), chunkRows: 100_000 });
+  console.log(`  tx_contracts: ${n.toLocaleString()} rows`);
+} else {
+  console.log("  tx_contracts: skipped (--only)");
 }
 
 // ---------- full raw archives (R2) ----------
@@ -288,6 +344,8 @@ npx wrangler d1 execute xelis-stats --file export/daily_stats.sql --remote
   npx wrangler d1 execute xelis-stats --file export/daily_contracts.sql --remote
   npx wrangler d1 execute xelis-stats --file export/blocks.sql --remote
   npx wrangler d1 execute xelis-stats --file export/tx.sql --remote
+  npx wrangler d1 execute xelis-stats --file export/tx_assets.sql --remote
+  npx wrangler d1 execute xelis-stats --file export/tx_contracts.sql --remote
 Then seed cursor: sync_state.last_backfill_topoheight = (max stable at export time).
 ${FULL ? "R2: upload export/r2/*.jsonl with wrangler r2 object put." : "(re-run with --full for R2 raw archives)"}`);
 
