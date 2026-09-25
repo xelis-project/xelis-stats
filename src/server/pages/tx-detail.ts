@@ -336,14 +336,14 @@ txDetail.get("/tx/:hash", async (c) => {
     const t = esc(l.type);
     const v = (l.value ?? {}) as Record<string, unknown>;
     switch (l.type) {
-      case "refund_gas": return `<span class="badge ok">gas refund</span> ${fmtInt(num(v.amount))} gas refunded`;
+      case "refund_gas": return `<span class="badge ok">gas refund</span> ${atomic(num(v.amount))} XEL gas refunded`;
       case "transfer": return `transferred <span class="mint">${atomic(num(v.amount))}</span> <span class="mono">${shortHash(String(v.asset ?? ""), 6)}</span> to <a class="mono" href="/account/${esc(String(v.destination ?? ""))}">${shortHash(String(v.destination ?? ""), 8)}</a>`;
       case "transfer_contract": return `transferred <span class="mint">${atomic(num(v.amount))}</span> <span class="mono">${shortHash(String(v.asset ?? ""), 6)}</span> to contract <a class="mono" href="/contracts/${esc(String(v.destination ?? ""))}">${shortHash(String(v.destination ?? ""), 8)}</a>`;
       case "transfer_payload": return `transferred <span class="mint">${atomic(num(v.amount))}</span> <span class="mono">${shortHash(String(v.asset ?? ""), 6)}</span> to <a class="mono" href="/account/${esc(String(v.destination ?? ""))}">${shortHash(String(v.destination ?? ""), 8)}</a> with payload`;
       case "mint": return `minted <span class="mint">${fmtInt(num(v.amount))}</span> <span class="mono">${shortHash(String(v.asset ?? ""), 6)}</span>`;
       case "burn": return `burned <span class="mint">${atomic(num(v.amount))}</span> <span class="mono">${shortHash(String(v.asset ?? ""), 6)}</span>`;
       case "new_asset": return `created asset <a class="mono" href="/asset/${esc(String(v.asset ?? ""))}">${shortHash(String(v.asset ?? ""), 10)}</a>`;
-      case "gas_injection": return `injected ${fmtInt(num(v.amount))} gas into contract`;
+      case "gas_injection": return `injected ${atomic(num(v.amount))} XEL gas into contract`;
       case "scheduled_execution": {
         const kind = (v.kind ?? {}) as Record<string, unknown>;
         const kindLabel = kind.topoheight ? `at topoheight ${fmtInt(num(kind.topoheight))}` : "at block end";

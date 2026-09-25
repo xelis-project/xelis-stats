@@ -49,7 +49,7 @@ const METRICS: Record<string, { table: string; col: string; agg?: "sum" | "avg" 
   "tx-types": { table: "tx-type", col: "all", agg: "sum" },
   // contract activity (daily_contracts aggregate; active count is distinct)
   "contract-invokes": { table: "daily_contracts", col: "invoke_count", agg: "sum" },
-  "contract-gas": { table: "daily_contracts", col: "gas_burned", agg: "sum" },
+  "contract-gas": { table: "daily_contracts", col: "gas_burned", agg: "sum", div: 1e8 },
   "contract-deploys": { table: "daily_contracts", col: "deploys", agg: "sum" },
   "active-contracts": { table: "contract-activity", col: "", agg: "avg" },
   "price": { table: "market_snapshots", col: "last", agg: "avg" },

@@ -218,14 +218,14 @@ blockDetail.get("/block/:id", async (c) => {
       <td><span class="mono">${shortHash(String(s.hash ?? ""), 10)}</span></td>
       <td><a class="mono" href="/contracts/${esc(String(s.contract ?? ""))}">${shortHash(String(s.contract ?? ""), 10)}</a></td>
       <td class="num">${fmtInt(num(s.chunk_id))}</td>
-      <td class="num">${fmtInt(num(s.max_gas))}</td>
+      <td class="num">${atomic(num(s.max_gas))} XEL</td>
       <td><span class="badge">${kindLabel}</span></td>
     </tr>`;
   }).join("");
   const schedPanel = scheduled.length
     ? `<div class="panel"><h2>Scheduled Contract Executions <span style="color:var(--text-dim)">${fmtInt(scheduled.length)} queued${registered ? ` · ${fmtInt(registered)} registered` : ""}</span></h2>
        <div class="tablewrap"><table>
-         <thead><tr><th>Execution Hash</th><th>Contract</th><th class="num">Chunk</th><th class="num">Max Gas</th><th>Trigger</th></tr></thead>
+         <thead><tr><th>Execution Hash</th><th>Contract</th><th class="num">Chunk</th><th class="num">Max Gas (XEL)</th><th>Trigger</th></tr></thead>
          <tbody>${schedRows}</tbody>
        </table></div></div>`
     : "";
