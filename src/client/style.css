@@ -678,8 +678,8 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
   #app { padding: 1rem 1.2rem 4rem; }
   .cards { grid-template-columns: repeat(2, 1fr); }
   /* Header becomes a 2-row grid: one compact control row plus a full-width
-     nav row that expands into the drawer. Explicit column placement keeps the
-     hamburger pinned to the right instead of wrapping onto a line of its own. */
+     nav row that expands into the drawer. Pin controls to the first row because
+     their visual column order differs from their DOM order. */
   header.site {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto auto auto;
@@ -689,6 +689,7 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
     top: 0.6rem;
     margin-bottom: 1.2rem;
   }
+  header.site > :not(nav) { grid-row: 1; }
   header.site .logo { grid-column: 1; font-size: 1.5rem; }
   header.site .status {
     grid-column: 2; justify-self: end; margin-left: 0; min-width: 0; max-width: 100%;
