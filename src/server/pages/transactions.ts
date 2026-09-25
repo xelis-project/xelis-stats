@@ -4,7 +4,7 @@ import { layout } from "../../client/layout";
 import { fmtInt, shortHash, fmtTime, atomic } from "../../client/format";
 import { srvSort, TX_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
-import { PAGE_SIZE, pager, cursorPager, entityTag, resultBadge, esc } from "./shared";
+import { PAGE_SIZE, pager, cursorPager, entityTag, esc } from "./shared";
 import { pagedCompositeRaw, topNRaw, countRaw } from "../shards";
 
 export const transactions = new Hono<{ Bindings: Env }>();
@@ -145,10 +145,9 @@ transactions.get("/transactions", async (c) => {
         <td>${sender ? `<a class="mono" href="/account/${esc(sender)}">${shortHash(sender, 8)}</a>${entityTag(sender)}` : dim("—")}</td>
         <td class="num"${Number(t.transfer_count) === 0 ? ' style="color:var(--text-dim)"' : ""}>${fmtInt(Number(t.transfer_count))}</td>
         <td class="num">${atomic(t.fee as number, 6)}</td>
-        <td>${resultBadge(t.executed)}</td>
       </tr>`;
       }).join("")
-    : `<tr><td colspan="8" style="color:var(--text-dim)">No indexed transactions yet — backfill pending.</td></tr>`;
+    : `<tr><td colspan="7" style="color:var(--text-dim)">No indexed transactions yet — backfill pending.</td></tr>`;
 
   const content = `<div class="panel">
     <div class="panel-head">
@@ -157,7 +156,7 @@ transactions.get("/transactions", async (c) => {
       ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
-      <thead><tr><th>Hash</th>${srt.th("block", "Block")}${srt.th("time", "Time")}${srt.th("type", "Type")}${srt.th("sender", "Sender")}${srt.th("transfers", "Transfers", true)}${srt.th("fee", "Fee (XEL)", true)}${srt.th("executed", "Execution")}</tr></thead>
+      <thead><tr><th>Hash</th>${srt.th("block", "Block")}${srt.th("time", "Time")}${srt.th("type", "Type")}${srt.th("sender", "Sender")}${srt.th("transfers", "Transfers", true)}${srt.th("fee", "Fee (XEL)", true)}</tr></thead>
       <tbody>${body}</tbody>
     </table></div>
     ${pagerHtml}
