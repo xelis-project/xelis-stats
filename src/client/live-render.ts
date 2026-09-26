@@ -139,7 +139,6 @@ export function liveStatsHtml(d: LiveData): string {
     card("Avg block size", w.count ? fmtBytes(w.avgSize) : "—", `mean across ${fmtInt(w.count)} blocks`),
     card("Fees burned", w.count ? `${atomic(w.feesBurned)} XEL` : "—", "across the recent window"),
     card("Peers", peers ? fmtInt(peers.total) : "—", peers ? `${fmtInt(peers.pruned)} pruned · ${fmtInt(peers.hidden)} hidden` : "peer lookup unavailable"),
-    card("DAG tips", fmtInt(d.tips.length), `top ${esc(shortHash(i.top_block_hash, 8))}`),
     card("Node", esc(i.version), esc(i.network) + (i.pruned_topoheight != null ? ` · pruned from ${fmtInt(i.pruned_topoheight)}` : " · full node")),
   ].join("");
 }
