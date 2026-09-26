@@ -1328,14 +1328,6 @@ html.reduce-motion *::after {
 .live-mini .sub { font-size: 1.05rem; color: var(--text-dim2); }
 .live-mempool-head { color: var(--text-dim); font-size: 1.25rem; margin-bottom: 1rem; }
 .live-divider { border-top: 1px solid var(--border); margin: 1.2rem 0; }
-.live-feerates { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-bottom: 1.2rem; }
-.live-fee {
-  display: flex; flex-direction: column; gap: 0.2rem;
-  padding: 0.7rem 1.1rem; border-radius: 0.7rem;
-  border: 1px solid var(--border); background: hsla(0, 0%, 100%, 0.04);
-}
-.live-fee-label { font-size: 1rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); font-weight: 700; }
-.live-fee-value { font-family: var(--mono); font-size: 1.2rem; color: var(--mint); }
 
 .live-split { align-items: start; }
 

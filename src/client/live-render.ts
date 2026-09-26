@@ -227,11 +227,6 @@ export function liveBlocksRowsHtml(d: LiveData): string {
   }).join("");
 }
 
-function feeChip(label: string, value: number, accent = false): string {
-  const cls = `live-fee${accent ? " accent" : ""}`;
-  return `<div class="${cls}"><span class="live-fee-label">${esc(label)}</span><span class="live-fee-value">${atomicPrecise(value)} XEL/KB</span></div>`;
-}
-
 export function liveMempoolSummaryHtml(d: LiveData): string {
   if (!d.ok) return `<p class="live-empty">Node data unavailable.</p>`;
   const { total, transactions, valueFee, bytes } = d.mempool;
@@ -240,19 +235,10 @@ export function liveMempoolSummaryHtml(d: LiveData): string {
     ${mini("Value", `${atomic(valueFee)} XEL`, "sum of fees")}
     ${mini("Size", fmtBytes(bytes), "payload bytes")}
   </div>`;
-  const fees = d.fees;
-  const rates = fees
-    ? `<div class="live-feerates">
-        ${feeChip("Low", fees.low)}
-        ${feeChip("Medium", fees.medium)}
-        ${feeChip("High", fees.high)}
-        ${fees.base_fee_per_kb != null ? `<div class="live-fee"><span class="live-fee-label">Base</span><span class="live-fee-value">${atomicPrecise(fees.base_fee_per_kb)} XEL/KB</span></div>` : ""}
-      </div>`
-    : "";
   const note = total > 0
     ? `<div class="live-mempool-head">Showing newest ${fmtInt(transactions.length)}${total > transactions.length ? ` of ${fmtInt(total)}` : ""}</div>`
     : "";
-  return `${cards}${rates}${note}`;
+  return `${cards}${note}`;
 }
 
 export function liveMempoolRowsHtml(d: LiveData): string {
