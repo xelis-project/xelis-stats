@@ -363,6 +363,7 @@ assetDetail.get("/asset/:id", async (c) => {
 
   const relatedPanel = related.length
     ? `<div class="panel"><h2>Related Assets <span style="color:var(--text-dim)">${fmtInt(related.length)}</span></h2>
+      <p style="color:var(--text-dim);font-size:1.1rem;margin-top:0.8rem">Other assets created by the same creator contract${owner.contract ? ` <a class="mono" href="/contracts/${esc(owner.contract)}">${esc(shortHash(owner.contract, 10))}</a>` : ""}, newest first.</p>
       <div class="tablewrap"><table>
         <thead><tr><th>Asset</th><th>Symbol</th><th class="num">Created (topo)</th></tr></thead>
         <tbody>${related.map((r) => `<tr>
