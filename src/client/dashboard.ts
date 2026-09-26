@@ -2051,18 +2051,26 @@ export function initDashboard(): void {
 
   const toolbar = document.querySelector(".dash-toolbar");
   const sentinel = document.querySelector(".dash-toolbar-sentinel");
-  if (toolbar && sentinel) {
-    new IntersectionObserver(([entry]) => {
-      toolbar.classList.toggle("is-stuck", !entry?.isIntersecting);
-    }).observe(sentinel);
-  }
-
   const header = document.querySelector<HTMLElement>("header.site");
+  let stuckObserver: IntersectionObserver | null = null;
+  let stuckOffset = -1;
+
   const syncToolbarOffset = (): void => {
-    if (!header) return;
-    const top = parseFloat(getComputedStyle(header).top) || 0;
-    const height = header.getBoundingClientRect().height;
-    document.documentElement.style.setProperty("--site-header-offset", `${Math.round(top + height + 8)}px`);
+    const top = header ? parseFloat(getComputedStyle(header).top) || 0 : 0;
+    const height = header ? header.getBoundingClientRect().height : 0;
+    const offset = header ? Math.round(top + height + 8) : 66;
+    if (header) document.documentElement.style.setProperty("--site-header-offset", `${offset}px`);
+    // The bar pins once it reaches `offset` below the viewport top, which is
+    // long before the sentinel (at the top of the content) leaves the viewport.
+    // Inset the observer root by the offset so the pill background appears at
+    // the same moment the bar sticks, not when the sentinel scrolls past 0.
+    if (!toolbar || !sentinel || offset === stuckOffset) return;
+    stuckOffset = offset;
+    stuckObserver?.disconnect();
+    stuckObserver = new IntersectionObserver(([entry]) => {
+      toolbar.classList.toggle("is-stuck", !entry?.isIntersecting);
+    }, { rootMargin: `-${offset}px 0px 0px 0px` });
+    stuckObserver.observe(sentinel);
   };
   syncToolbarOffset();
   window.addEventListener("resize", syncToolbarOffset, { passive: true });
