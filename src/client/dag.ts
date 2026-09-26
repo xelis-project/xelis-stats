@@ -85,11 +85,12 @@ export function initDag(): void {
   const fitBtn = $<HTMLButtonElement>("dag-fit");
   const zinBtn = $<HTMLButtonElement>("dag-zin");
   const zoutBtn = $<HTMLButtonElement>("dag-zout");
+  const fsBtn = $<HTMLButtonElement>("dag-fs");
   const statusEl = $("dag-status");
   const loadingEl = $("dag-loading");
   const hoverEl = $("dag-hover");
   const detailEl = $("dag-detail");
-  if (!input || !goBtn || !prevBtn || !nextBtn || !liveBtn || !fitBtn || !zinBtn || !zoutBtn || !statusEl || !loadingEl || !hoverEl || !detailEl) return;
+  if (!input || !goBtn || !prevBtn || !nextBtn || !liveBtn || !fitBtn || !zinBtn || !zoutBtn || !fsBtn || !statusEl || !loadingEl || !hoverEl || !detailEl) return;
   const hover = hoverEl;
   const detail = detailEl;
   const status = statusEl;
@@ -123,6 +124,15 @@ export function initDag(): void {
 
   const sx = (wx: number): number => (wx - cam.x) * cam.k + W / 2;
   const sy = (wy: number): number => (wy - cam.y) * cam.k + H / 2;
+
+  // Fill the visible area below the floating site header (or the whole screen in
+  // fullscreen). Recomputed on window resize so the canvas always spans the
+  // viewport like a dedicated DAG viewer, rather than a fixed-height panel.
+  function fitViewportHeight(): void {
+    const top = vpEl.getBoundingClientRect().top;
+    const h = Math.round(window.innerHeight - top - 12);
+    vpEl.style.height = `${Math.max(300, h)}px`;
+  }
 
   function resize(): void {
     const rect = vpEl.getBoundingClientRect();
@@ -678,6 +688,24 @@ export function initDag(): void {
   fitBtn.addEventListener("click", fitView);
   zinBtn.addEventListener("click", () => zoomAt(W / 2, H / 2, 1.25));
   zoutBtn.addEventListener("click", () => zoomAt(W / 2, H / 2, 0.8));
+  fsBtn.addEventListener("click", () => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => { /* ignore */ });
+    } else {
+      try {
+        const p = vpEl.requestFullscreen();
+        if (p) void p.catch(() => { /* unsupported */ });
+      } catch { /* unsupported */ }
+    }
+  });
+  document.addEventListener("fullscreenchange", () => {
+    app.classList.toggle("is-fs", document.fullscreenElement !== null);
+    fitViewportHeight();
+    resize();
+  });
+  window.addEventListener("resize", () => {
+    fitViewportHeight();
+  });
 
   window.addEventListener("xelis:chain-tip", () => {
     if (!live) return;
@@ -689,6 +717,7 @@ export function initDag(): void {
 
   // ---------- boot ----------
 
+  fitViewportHeight();
   resize();
   const startTopo = Number(app.dataset.topo ?? 0);
   if (app.dataset.live === "1") setLive(true);

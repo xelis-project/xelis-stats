@@ -1363,10 +1363,41 @@ html.reduce-motion *::after {
 
 /* ---------- DAG viewer (/dag) ---------- */
 
-.dag-panel { padding: 1.4rem; }
-.dag-head { gap: 1rem; }
+/* The DAG page is a dedicated full-viewport viewer: the canvas fills the
+   content area under the site header and every control floats over it. */
+body.layout-dag #app { max-width: none; padding-bottom: 0; }
+body.layout-dag footer.site { display: none; }
+body.layout-dag .dag-panel {
+  padding: 0; margin: 0; border: none; border-radius: 0; background: none; box-shadow: none;
+}
+
+.dag-viewport {
+  position: relative; height: calc(100dvh - 11rem); overflow: hidden;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(2, 255, 207, 0.05), transparent 60%),
+    rgba(4, 10, 12, 0.5);
+  touch-action: none;
+}
+body.layout-dag .dag-viewport { border-left: none; border-right: none; border-radius: 0; }
+.dag-viewport:fullscreen, .dag-viewport:-webkit-full-screen { height: 100% !important; border: none; border-radius: 0; }
+#dag-canvas { display: block; cursor: grab; }
+#dag-canvas.grabbing { cursor: grabbing; }
+
+/* Floating toolbar over the top of the canvas */
+.dag-bar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 7;
+  display: flex; align-items: flex-end; gap: 0.6rem; flex-wrap: wrap;
+  padding: 1rem 1.2rem;
+  background: linear-gradient(180deg, rgba(4, 10, 12, 0.88), rgba(4, 10, 12, 0.4) 68%, transparent);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.dag-title {
+  margin: 0 0.6rem 0.2rem 0; align-self: center;
+  font-size: 1.5rem; text-transform: uppercase; letter-spacing: 0.14em;
+  color: var(--text-dim); font-weight: 700; white-space: nowrap;
+}
 .dag-sub { font-size: 1.05rem; letter-spacing: 0; text-transform: none; color: var(--text-dim2); font-weight: 400; margin-left: 0.8rem; }
-.dag-toolbar { display: flex; align-items: flex-end; gap: 0.6rem; flex-wrap: wrap; margin-left: auto; }
 .dag-field { display: flex; flex-direction: column; gap: 0.25rem; }
 .dag-field label { font-size: 0.95rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-dim); }
 .dag-field input {
@@ -1375,26 +1406,19 @@ html.reduce-motion *::after {
   padding: 0.6rem 0.8rem; font-size: 1.25rem; font-family: var(--mono); font-weight: 700;
 }
 .dag-field input::placeholder { color: var(--text-dim); font-weight: 400; }
-.dag-toolbar .icon-btn { padding: 0.6rem 0.8rem; }
+.dag-bar .icon-btn { padding: 0.6rem 0.8rem; }
 .dag-sep { align-self: stretch; width: 1px; background: var(--border); margin: 0.2rem 0.3rem; }
 .dag-live-btn { gap: 0.5rem; }
 .dag-live-btn.on { color: var(--mint); border-color: var(--border-hover); background: rgba(2, 255, 207, 0.07); }
 .dag-live-dot { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: var(--text-dim); flex: none; }
 .dag-live-btn.on .dag-live-dot { background: var(--mint); box-shadow: 0 0 8px var(--mint-glow); animation: livepulse 1.6s ease-in-out infinite; }
-
-.dag-viewport {
-  position: relative; height: clamp(38rem, 68vh, 78rem); overflow: hidden;
-  border: 1px solid var(--border); border-radius: var(--radius);
-  background:
-    radial-gradient(120% 90% at 50% 0%, rgba(2, 255, 207, 0.05), transparent 60%),
-    rgba(4, 10, 12, 0.5);
-  touch-action: none;
-}
-#dag-canvas { display: block; cursor: grab; }
-#dag-canvas.grabbing { cursor: grabbing; }
+.dag-fs-exit { display: none; }
+.dag-panel.is-fs .dag-fs-enter { display: none; }
+.dag-panel.is-fs .dag-fs-exit { display: inline-flex; }
+.dag-status { margin-left: auto; align-self: center; font-size: 1.15rem; color: var(--text-dim); }
 
 .dag-hover {
-  position: absolute; z-index: 6; pointer-events: none;
+  position: absolute; z-index: 8; pointer-events: none;
   background: var(--panel-solid); border: 1px solid var(--border-hover); border-radius: 0.6rem;
   padding: 0.6rem 0.8rem; font-size: 1.15rem; color: var(--text);
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5); white-space: nowrap;
@@ -1405,7 +1429,7 @@ html.reduce-motion *::after {
 .dag-hover-dot { width: 0.7rem; height: 0.7rem; border-radius: 0.2rem; flex: none; }
 
 .dag-loading {
-  position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; gap: 0.8rem;
+  position: absolute; inset: 0; z-index: 6; display: flex; align-items: center; justify-content: center; gap: 0.8rem;
   background: color-mix(in srgb, var(--bg) 55%, transparent);
   color: var(--text-dim2); font-size: 1.25rem;
 }
@@ -1417,40 +1441,50 @@ html.reduce-motion *::after {
 }
 
 .dag-legend {
-  position: absolute; top: 0.8rem; left: 0.9rem; z-index: 4; pointer-events: none;
+  position: absolute; bottom: 0.8rem; left: 0.9rem; z-index: 5; pointer-events: none;
   display: flex; flex-wrap: wrap; gap: 0.4rem 1.4rem;
   background: color-mix(in srgb, var(--panel-solid) 72%, transparent);
   border: 1px solid var(--border); border-radius: 0.6rem; padding: 0.5rem 0.8rem;
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
 }
 .dag-key-line { width: 1.6rem; height: 0; border-top: 2px solid var(--mint); align-self: center; }
 .dag-key-dash { width: 1.6rem; height: 0; border-top: 2px dashed var(--gold); align-self: center; }
 
 .dag-hint {
-  position: absolute; left: 0.9rem; bottom: 0.6rem; z-index: 4; pointer-events: none;
-  font-size: 1.05rem; color: var(--text-dim);
+  position: absolute; right: 0.9rem; bottom: 0.6rem; z-index: 5; pointer-events: none;
+  font-size: 1.05rem; color: var(--text-dim); text-align: right;
 }
 
+/* Floating block-details card (overlaid, not part of the page flow) */
 .dag-detail {
-  margin-top: 1.4rem; padding: 1.2rem 1.4rem;
+  position: absolute; left: 0.9rem; bottom: 4.6rem; z-index: 6;
+  width: min(46rem, calc(100% - 1.8rem)); max-height: calc(100% - 12rem); overflow: auto;
+  margin: 0; padding: 1.2rem 1.4rem;
   border: 1px solid var(--border); border-radius: var(--radius);
-  background: hsla(0, 0%, 100%, 0.025);
+  background: color-mix(in srgb, var(--panel-solid) 92%, transparent);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
 }
 .dag-detail[hidden] { display: none; }
 .dag-detail-head { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; margin-bottom: 1rem; }
 .dag-detail-title { font-size: 1.5rem; font-weight: 700; }
-.dag-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 0.7rem 2rem; }
+.dag-detail-grid { display: grid; grid-template-columns: 1fr; gap: 0.7rem 2rem; }
 .dag-detail-item { display: flex; align-items: baseline; gap: 0.8rem; min-width: 0; }
 .dag-detail-item .k {
   flex: 0 0 11rem; font-size: 1rem; font-weight: 700; text-transform: uppercase;
   letter-spacing: 0.1em; color: var(--text-dim);
 }
 .dag-detail-item .v { min-width: 0; font-size: 1.3rem; word-break: break-all; }
-.dag-status { margin: 1rem 0 0; font-size: 1.15rem; color: var(--text-dim); }
 
-@media (max-width: 760px) {
-  .dag-toolbar { margin-left: 0; width: 100%; }
+@media (max-width: 900px) {
   .dag-field input { width: 10rem; }
+  .dag-status { margin-left: 0; width: 100%; }
+  .dag-title { width: 100%; }
+}
+@media (max-width: 620px) {
+  .dag-viewport { height: calc(100dvh - 14rem); }
   .dag-detail-item .k { flex-basis: 8rem; }
+  .dag-hint { display: none; }
 }
 
 
