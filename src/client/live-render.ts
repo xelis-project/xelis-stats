@@ -277,7 +277,7 @@ export function liveRecentTxRowsHtml(d: LiveData): string {
 // Bar graph of the transaction types seen in the newest included txs. Uses the
 // same `recentTxs` window as the table below it, so the shares and the rows agree.
 // Every known type is listed even at zero so the shape is stable across refreshes.
-const TX_TYPES = ["transfer", "burn", "invoke_contract", "deploy_contract", "multisig", "other"];
+const TX_TYPES = ["transfer", "burn", "invoke_contract", "deploy_contract", "multisig"];
 
 export function liveTxTypesHtml(d: LiveData): string {
   const txs = d.recentTxs ?? [];
