@@ -11,7 +11,6 @@ import {
   liveMempoolRowsHtml,
   liveRecentTxRowsHtml,
   liveTxTypesHtml,
-  liveMetaHtml,
   type LiveData,
 } from "./live-render";
 
@@ -21,13 +20,7 @@ export function initLiveDashboard(): void {
   const stats = document.getElementById("live-stats");
   if (!stats) return;
 
-  const meta = document.getElementById("live-meta");
-  const status = document.getElementById("live-page-status");
-  if (!meta || !status) return;
-  const metaEl = meta;
-  const statusEl = status;
   let inFlight = false;
-  let failures = 0;
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   // Whether the DAG has already been rendered once, so the initial paint stays
   // still and only later updates animate.
@@ -84,8 +77,6 @@ export function initLiveDashboard(): void {
     set("live-mempool-summary", liveMempoolSummaryHtml(d));
     set("live-mempool", liveMempoolRowsHtml(d));
     set("live-recent-txs", liveRecentTxRowsHtml(d));
-    metaEl.innerHTML = liveMetaHtml(d);
-    statusEl.innerHTML = d.ok ? '<span class="live-dot on"></span>live' : '<span class="live-dot off"></span>offline';
     // Rewrite time/hash styles in the freshly inserted nodes.
     window.dispatchEvent(new CustomEvent("xelis:format-change"));
   }
@@ -96,11 +87,9 @@ export function initLiveDashboard(): void {
     try {
       const res = await fetch("/api/live", { headers: { Accept: "application/json" } });
       const d = (await res.json()) as LiveData;
-      failures = 0;
       render(d);
     } catch {
-      failures += 1;
-      if (failures >= 2) statusEl.innerHTML = '<span class="live-dot off"></span>offline';
+      // Keep the last good paint; the next poll retries.
     } finally {
       inFlight = false;
     }

@@ -10,7 +10,6 @@ import {
   liveMempoolRowsHtml,
   liveRecentTxRowsHtml,
   liveTxTypesHtml,
-  liveMetaHtml,
 } from "../../client/live-render";
 
 export const livePage = new Hono<{ Bindings: Env }>();
@@ -19,17 +18,7 @@ livePage.get("/", async (c) => {
   // Initial paint straight from the node; the client poller keeps it moving.
   const live = await getLive(c.env);
 
-  const content = `<div class="panel live-hero">
-    <div class="live-hero-head">
-      <div>
-        <h2 class="live-title">Live <span class="mint">unstable</span> data</h2>
-        <p class="live-sub">Read straight from the node — nothing here is indexed or stored. Blocks above the stability boundary can still be reorganised, so treat them as provisional.</p>
-      </div>
-      <span class="live-badge" id="live-page-status"><span class="live-dot on"></span>live</span>
-    </div>
-    <div class="live-meta" id="live-meta">${liveMetaHtml(live)}</div>
-  </div>
-  <div class="live-cards" id="live-stats">${liveStatsHtml(live)}</div>
+  const content = `<div class="live-cards" id="live-stats">${liveStatsHtml(live)}</div>
   <div class="panel">
     <div class="panel-head"><h2>Unstable window</h2><span class="live-hint">newest blocks at the tip · click a node to inspect</span></div>
     <div id="live-dag">${liveDagHtml(live)}</div>

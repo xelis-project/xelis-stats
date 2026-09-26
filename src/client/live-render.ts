@@ -314,11 +314,3 @@ export function liveTxTypesHtml(d: LiveData): string {
   return `<div class="live-types">${head}${rows}</div>
     <p class="live-dag-note">Across the newest ${fmtInt(total)} included transaction${total === 1 ? "" : "s"}.</p>`;
 }
-
-export function liveMetaHtml(d: LiveData): string {
-  if (!d.ok || !d.info) {
-    return `<span class="live-dot off"></span> node unreachable${d.error ? ` · ${esc(d.error)}` : ""}`;
-  }
-  const unstable = d.unstable.filter((b) => !b.stable).length;
-  return `<span class="live-dot on"></span> updated ${timeCell(d.ts)} · stability lag ${fmtInt(d.lag)} · ${fmtInt(unstable)} unstable block${unstable === 1 ? "" : "s"} in window`;
-}
