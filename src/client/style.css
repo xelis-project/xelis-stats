@@ -1302,6 +1302,8 @@ html.reduce-motion *::after {
 .live-node.side { border-color: rgba(245, 217, 95, 0.55); background: rgba(245, 217, 95, 0.32); }
 .live-node.sync { border-color: rgba(127, 167, 255, 0.55); background: rgba(127, 167, 255, 0.32); }
 .live-node.unstable { outline: 1px solid hsla(0, 0%, 100%, 0.4); outline-offset: 1px; animation: livepulse 1.6s ease-in-out infinite; }
+/* Newly arrived node: pop in once, then hand back to the unstable pulse. */
+.live-dag .live-node.live-node-enter { animation: liveenter 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
 .live-dag-note, .live-empty { color: var(--text-dim); font-size: 1.2rem; margin-top: 0.8rem; }
 .live-empty { margin: 0; }
 .live-dag-legend { display: flex; flex-wrap: wrap; gap: 0.6rem 1.8rem; margin-top: 1.2rem; }
@@ -1346,5 +1348,15 @@ html.reduce-motion *::after {
 }
 
 @keyframes livepulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+@keyframes liveenter {
+  0% { opacity: 0; transform: scale(0.3) translateY(-0.6rem); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-node.unstable, .live-dag .live-node.live-node-enter { animation: none; }
+}
 
 

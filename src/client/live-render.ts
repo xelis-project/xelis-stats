@@ -145,7 +145,7 @@ export function liveStatsHtml(d: LiveData): string {
 function dagNode(b: LiveBlock): string {
   const cls = `live-node ${esc(b.block_type.toLowerCase())}${b.stable ? "" : " unstable"}`;
   const detail = `topo ${b.topoheight} · height ${b.height} · ${b.block_type} · ${b.txs} tx · ${shortHash(b.hash, 8)}`;
-  return `<a class="${cls}" href="/block/${b.topoheight}" title="${esc(detail)}" aria-label="${esc(detail)}"></a>`;
+  return `<a class="${cls}" href="/block/${b.topoheight}" data-topo="${b.topoheight}" title="${esc(detail)}" aria-label="${esc(detail)}"></a>`;
 }
 
 function dagBlocks(d: LiveData): LiveBlock[] {
