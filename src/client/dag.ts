@@ -267,10 +267,10 @@ export function initDag(): void {
         if (!q) continue;
         const hl = (hovered && (hovered === p.block || hovered === q.block))
           || (selected && (selected === p.block || selected === q.block));
-        // Highlighted edges are drawn from border to border so the line stays
-        // behind the block faces instead of showing through the translucent fill.
-        const a = hl ? boxExit(p.x, p.y, q.x, q.y) : p;
-        const b = hl ? boxExit(q.x, q.y, p.x, p.y) : q;
+        // Edges are drawn from border to border so the line stays behind the
+        // block faces instead of showing through the translucent fill.
+        const a = boxExit(p.x, p.y, q.x, q.y);
+        const b = boxExit(q.x, q.y, p.x, p.y);
         ctx!.strokeStyle = hl ? EDGE_HL : EDGE;
         ctx!.lineWidth = hl ? Math.max(1.6, cam.k * 1.6) : Math.max(1, cam.k);
         ctx!.beginPath();
