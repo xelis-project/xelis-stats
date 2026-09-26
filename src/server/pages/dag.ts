@@ -49,20 +49,22 @@ dag.get("/dag", async (c) => {
       </div>
 
       <div class="dag-controls">
-        <div class="dag-field">
-          <label for="dag-input">Topoheight</label>
-          <input type="number" id="dag-input" min="0" step="1" inputmode="numeric" placeholder="latest" value="${topo > 0 ? topo : ""}" />
+        <div class="dag-controls-row">
+          <div class="dag-field">
+            <label for="dag-input">Topoheight</label>
+            <input type="number" id="dag-input" min="0" step="1" inputmode="numeric" placeholder="latest" value="${topo > 0 ? topo : ""}" />
+          </div>
+          <button class="btn ghost" id="dag-go" type="button">Go</button>
+          <button class="btn ghost icon-btn" id="dag-prev" type="button" title="Older window" aria-label="Older window">${icons.chevronLeft}</button>
+          <button class="btn ghost icon-btn" id="dag-next" type="button" title="Newer window" aria-label="Newer window">${icons.chevronRight}</button>
+          <span class="dag-sep" aria-hidden="true"></span>
+          <button class="btn ghost icon-btn dag-live-btn" id="dag-live" type="button" aria-pressed="${live ? "true" : "false"}" aria-label="Live" title="Stream the node's unstable tip">
+            <span class="dag-live-dot" aria-hidden="true"></span>
+          </button>
+          <span class="dag-sep" aria-hidden="true"></span>
+          <button class="btn ghost icon-btn" id="dag-fit" type="button" title="Fit all blocks" aria-label="Fit all blocks">${icons.reset}</button>
+          <button class="btn ghost icon-btn" id="dag-fs" type="button" title="Fullscreen" aria-label="Toggle fullscreen"><span class="dag-fs-enter">${icons.maximize}</span><span class="dag-fs-exit">${icons.minimize}</span></button>
         </div>
-        <button class="btn ghost" id="dag-go" type="button">Go</button>
-        <button class="btn ghost icon-btn" id="dag-prev" type="button" title="Older window" aria-label="Older window">${icons.chevronLeft}</button>
-        <button class="btn ghost icon-btn" id="dag-next" type="button" title="Newer window" aria-label="Newer window">${icons.chevronRight}</button>
-        <span class="dag-sep" aria-hidden="true"></span>
-        <button class="btn ghost icon-btn dag-live-btn" id="dag-live" type="button" aria-pressed="${live ? "true" : "false"}" aria-label="Live" title="Stream the node's unstable tip">
-          <span class="dag-live-dot" aria-hidden="true"></span>
-        </button>
-        <span class="dag-sep" aria-hidden="true"></span>
-        <button class="btn ghost icon-btn" id="dag-fit" type="button" title="Fit all blocks" aria-label="Fit all blocks">${icons.reset}</button>
-        <button class="btn ghost icon-btn" id="dag-fs" type="button" title="Fullscreen" aria-label="Toggle fullscreen"><span class="dag-fs-enter">${icons.maximize}</span><span class="dag-fs-exit">${icons.minimize}</span></button>
         <span class="dag-status" id="dag-status"></span>
       </div>
 

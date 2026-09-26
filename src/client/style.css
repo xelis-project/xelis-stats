@@ -1398,12 +1398,13 @@ body.layout-dag .dag-viewport { border-left: none; border-right: none; border-ra
 .dag-controls {
   position: absolute; right: 0.9rem; bottom: 0.9rem; z-index: 7;
   max-width: calc(100% - 1.8rem);
-  display: flex; align-items: flex-end; gap: 0.6rem; flex-wrap: wrap;
+  display: flex; flex-direction: column; align-items: stretch; gap: 0.5rem;
   padding: 0.8rem 0.9rem;
   background: color-mix(in srgb, var(--panel-solid) 80%, transparent);
   border: 1px solid var(--border); border-radius: 0.7rem;
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
 }
+.dag-controls-row { display: flex; align-items: flex-end; gap: 0.6rem; flex-wrap: wrap; }
 .dag-title {
   margin: 0 0.6rem 0.2rem 0; align-self: center;
   font-size: 1.5rem; text-transform: uppercase; letter-spacing: 0.14em;
@@ -1427,7 +1428,7 @@ body.layout-dag .dag-viewport { border-left: none; border-right: none; border-ra
 .dag-fs-exit { display: none; }
 .dag-panel.is-fs .dag-fs-enter { display: none; }
 .dag-panel.is-fs .dag-fs-exit { display: inline-flex; }
-.dag-status { flex-basis: 100%; width: 100%; text-align: right; font-size: 1.15rem; color: var(--text-dim); }
+.dag-status { text-align: right; font-size: 1.15rem; color: var(--text-dim); }
 
 .dag-hover {
   position: absolute; z-index: 8; pointer-events: none;
