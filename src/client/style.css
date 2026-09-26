@@ -1312,7 +1312,6 @@ html.reduce-motion *::after {
 .live-key-dot.normal { border-color: rgba(2, 255, 207, 0.5); background: rgba(2, 255, 207, 0.3); }
 .live-key-dot.side { border-color: rgba(245, 217, 95, 0.55); background: rgba(245, 217, 95, 0.32); }
 .live-key-dot.sync { border-color: rgba(127, 167, 255, 0.55); background: rgba(127, 167, 255, 0.32); }
-.live-key-dot.unstable { background: hsla(0, 0%, 100%, 0.14); outline: 1px solid hsla(0, 0%, 100%, 0.4); outline-offset: 1px; }
 
 .badge.unstable { color: var(--gold); border-color: rgba(245, 217, 95, 0.35); border-style: dashed; }
 
