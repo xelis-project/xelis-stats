@@ -824,7 +824,9 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
 .dash-toolbar {
   position: sticky; top: var(--site-header-offset, 6.6rem); z-index: 55;
   display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
-  margin-bottom: 1.2rem; padding: 0.7rem 1.4rem;
+  /* Bleed the box into the page gutter so the title/actions line up with the
+     tab strip below, while the padding stays for the stuck pill background. */
+  margin: 0 -1.4rem 1.2rem; padding: 0.7rem 1.4rem;
   border: 1px solid transparent; border-radius: 1.2rem;
   transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
 }
@@ -838,6 +840,10 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
 .dash-toolbar h2 { font-size: 1.6rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-dim); font-weight: 700; margin: 0; }
 .dash-toolbar .dash-hint { font-size: 1.15rem; color: var(--text-dim); }
 .dash-toolbar .dash-spacer { flex: 1; }
+/* #app gutter shrinks to 1.2rem at ≤1000px — match the bleed so it stays flush. */
+@media (max-width: 1000px) {
+  .dash-toolbar { margin-left: -1.2rem; margin-right: -1.2rem; padding-left: 1.2rem; padding-right: 1.2rem; }
+}
 
 .dash-menu { position: relative; }
 .dash-menu-items {
