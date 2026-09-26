@@ -4,6 +4,7 @@
 
 import type { Env } from "./app";
 import { getInfo, rpc, type ChainInfo } from "./xelis";
+import { knownEntity } from "./entities";
 import type { LiveBlock, LiveData, LiveFees, LiveMempoolTx, LivePeers, LiveRecentTx } from "../client/live-render";
 
 // get_blocks_range_by_topoheight accepts at most a 20-topoheight span.
@@ -54,13 +55,17 @@ async function rangeBlocks(env: Env, start: number, end: number): Promise<Array<
 function toBlock(b: Record<string, unknown>, stable: number): LiveBlock {
   const topo = num(b.topoheight);
   const hashes = Array.isArray(b.txs_hashes) ? b.txs_hashes : [];
+  const miner = String(b.miner ?? "");
+  const entity = knownEntity(miner);
   return {
     topoheight: topo,
     height: num(b.height),
     hash: String(b.hash ?? ""),
     ts: num(b.timestamp),
     block_type: String(b.block_type ?? "Normal"),
-    miner: String(b.miner ?? ""),
+    miner,
+    miner_label: entity?.label,
+    miner_kind: entity?.kind,
     difficulty: num(b.difficulty),
     txs: hashes.length,
     miner_reward: num(b.miner_reward),

@@ -14,6 +14,8 @@ export interface LiveBlock {
   ts: number;
   block_type: string;
   miner: string;
+  miner_label?: string;
+  miner_kind?: string;
   difficulty: number;
   txs: number;
   miner_reward: number;
@@ -213,6 +215,7 @@ export function liveBlocksRowsHtml(d: LiveData): string {
   return blocks.map((b) => {
     const type = esc(b.block_type.toLowerCase());
     const status = b.stable ? '<span class="badge ok">stable</span>' : '<span class="badge unstable">unstable</span>';
+    const minerTag = b.miner_label ? ` <span class="badge entity ${esc(b.miner_kind ?? "")}">${esc(b.miner_label)}</span>` : "";
     return `<tr>
       <td><a href="/block/${b.topoheight}"><span class="mint">${fmtInt(b.topoheight)}</span></a></td>
       <td class="num">${fmtInt(b.height)}</td>
@@ -221,7 +224,7 @@ export function liveBlocksRowsHtml(d: LiveData): string {
       <td><span class="badge ${type}">${type}</span></td>
       <td>${status}</td>
       <td class="num">${atomic(b.miner_reward + b.dev_reward)}</td>
-      <td><a href="/miner/${esc(b.miner)}">${esc(shortHash(b.miner, 6))}</a></td>
+      <td><a href="/miner/${esc(b.miner)}">${esc(shortHash(b.miner, 6))}</a>${minerTag}</td>
     </tr>`;
   }).join("");
 }
