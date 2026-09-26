@@ -276,23 +276,32 @@ export function liveRecentTxRowsHtml(d: LiveData): string {
 
 // Bar graph of the transaction types seen in the newest included txs. Uses the
 // same `recentTxs` window as the table below it, so the shares and the rows agree.
+// Every known type is listed even at zero so the shape is stable across refreshes.
+const TX_TYPES = ["transfer", "burn", "invoke_contract", "deploy_contract", "multisig", "other"];
+
 export function liveTxTypesHtml(d: LiveData): string {
   const txs = d.recentTxs ?? [];
-  if (!d.ok || !txs.length) {
-    return `<p class="live-empty">${d.ok ? "No transactions in the recent blocks." : "Node data unavailable."}</p>`;
+  if (!d.ok) {
+    return `<p class="live-empty">Node data unavailable.</p>`;
   }
   const counts = new Map<string, number>();
   for (const t of txs) {
     const type = (t.tx_type || "other").toLowerCase();
     counts.set(type, (counts.get(type) ?? 0) + 1);
   }
+  const order = (type: string): number => {
+    const i = TX_TYPES.indexOf(type);
+    return i === -1 ? TX_TYPES.length : i;
+  };
+  const types = [...new Set([...TX_TYPES, ...counts.keys()])];
   const total = txs.length;
-  const rows = [...counts.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  const rows = types
+    .map((type) => [type, counts.get(type) ?? 0] as const)
+    .sort((a, b) => b[1] - a[1] || order(a[0]) - order(b[0]))
     .map(([type, count]) => {
-      const pct = (count / total) * 100;
+      const pct = total ? (count / total) * 100 : 0;
       const label = type.replace(/_/g, " ");
-      return `<div class="live-type-row" title="${esc(label)} · ${fmtInt(count)} of ${fmtInt(total)}">
+      return `<div class="live-type-row${count ? "" : " empty"}" title="${esc(label)} · ${fmtInt(count)} of ${fmtInt(total)}">
       <span class="live-type-name"><span class="badge ${esc(type)}">${esc(label)}</span></span>
       <span class="live-type-track"><span class="live-type-bar ${esc(type)}" style="width:${pct.toFixed(1)}%"></span></span>
       <span class="live-type-count">${fmtInt(count)}<span class="live-type-pct">${Math.round(pct)}%</span></span>

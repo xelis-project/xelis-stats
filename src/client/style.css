@@ -1358,6 +1358,8 @@ html.reduce-motion *::after {
   font-variant-numeric: tabular-nums;
 }
 .live-type-pct { margin-left: 0.6rem; color: var(--text-dim2); font-size: 1.05rem; }
+.live-type-row.empty { opacity: 0.45; }
+.live-type-row.empty .live-type-bar { background: transparent; }
 
 /* Right-hand column of the live split: mempool card stacked over recent txs. */
 .live-col { display: flex; flex-direction: column; }
