@@ -34,10 +34,6 @@ livePage.get("/", async (c) => {
     <div class="panel-head"><h2>Unstable window</h2><span class="live-hint">newest blocks at the tip · click a node to inspect</span></div>
     <div id="live-dag">${liveDagHtml(live)}</div>
   </div>
-  <div class="panel">
-    <div class="panel-head"><h2>Transactions by type</h2><span class="live-hint">share of the newest included txs</span></div>
-    <div id="live-tx-types">${liveTxTypesHtml(live)}</div>
-  </div>
   <div class="grid-2 live-split">
     <div class="panel">
       <div class="panel-head"><h2>Recent blocks</h2></div>
@@ -55,6 +51,10 @@ livePage.get("/", async (c) => {
           <thead><tr><th>Tx</th><th>Sender</th><th class="num">Fee</th><th class="num">Size</th><th class="num">Fee/KB</th><th>First seen</th></tr></thead>
           <tbody id="live-mempool">${liveMempoolRowsHtml(live)}</tbody>
         </table></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Transactions by type</h2><span class="live-hint">share of the newest included txs</span></div>
+        <div id="live-tx-types">${liveTxTypesHtml(live)}</div>
       </div>
       <div class="panel">
         <div class="panel-head"><h2>Recent txs</h2><span class="live-hint">newest included first</span></div>

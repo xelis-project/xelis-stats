@@ -1334,7 +1334,7 @@ html.reduce-motion *::after {
 /* Transaction-type bar graph */
 .live-types { display: flex; flex-direction: column; gap: 0.9rem; }
 .live-type-head, .live-type-row {
-  display: grid; grid-template-columns: 16rem 1fr 8rem; gap: 1.2rem; align-items: center;
+  display: grid; grid-template-columns: minmax(9rem, 14rem) 1fr auto; gap: 1rem; align-items: center;
 }
 .live-type-head {
   font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); font-weight: 700;
@@ -1365,7 +1365,6 @@ html.reduce-motion *::after {
 
 @media (max-width: 620px) {
   .live-mini-cards { grid-template-columns: 1fr 1fr; }
-  .live-type-head, .live-type-row { grid-template-columns: 10rem 1fr 7rem; gap: 0.8rem; }
 }
 
 @keyframes livepulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
