@@ -505,8 +505,9 @@ export function initDag(): void {
 
   function updateUrl(): void {
     try {
-      const topo = live && data.tip != null ? data.tip : data.center;
-      const qs = topo > 0 ? `?topo=${topo}` : "";
+      // Live is the default view, so it needs no query; historical windows keep
+      // their topoheight so the link reopens the same window.
+      const qs = !live && data.center > 0 ? `?topo=${data.center}` : "";
       history.replaceState(null, "", `/dag${qs}`);
     } catch { /* history unavailable */ }
   }

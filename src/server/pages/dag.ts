@@ -14,7 +14,9 @@ export const dag = new Hono<{ Bindings: Env }>();
 // client-side (src/client/dag.ts).
 dag.get("/dag", async (c) => {
   const requested = clampInt(c.req.query("topo"), 0, 10_000_000);
-  const live = c.req.query("live") === "1";
+  // Live is the default view; an explicit topoheight opens that historical
+  // window and ?live=0 forces history even without one.
+  const live = c.req.query("live") !== "0" && requested === 0;
 
   // Best-effort tip/height for a useful subtitle and the initial window; the
   // viewer refetches from /api/dag anyway, so a node outage just omits context.
