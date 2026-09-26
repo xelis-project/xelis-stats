@@ -241,7 +241,7 @@ export function liveMempoolSummaryHtml(d: LiveData): string {
     : "";
   const note = total > 0
     ? `<div class="live-mempool-head">Showing newest ${fmtInt(transactions.length)}${total > transactions.length ? ` of ${fmtInt(total)}` : ""}</div>`
-    : `<p class="live-empty">Mempool is empty — no pending transactions.</p>`;
+    : "";
   return `${cards}${rates}${note}`;
 }
 

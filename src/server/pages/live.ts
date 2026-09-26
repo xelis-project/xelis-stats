@@ -43,6 +43,7 @@ livePage.get("/", async (c) => {
     <div class="panel">
       <div class="panel-head"><h2>Mempool</h2></div>
       <div id="live-mempool-summary">${liveMempoolSummaryHtml(live)}</div>
+      <div class="live-divider"></div>
       <div class="tablewrap"><table>
         <thead><tr><th>Tx</th><th>Sender</th><th class="num">Fee</th><th class="num">Size</th><th class="num">Fee/KB</th><th>First seen</th></tr></thead>
         <tbody id="live-mempool">${liveMempoolRowsHtml(live)}</tbody>

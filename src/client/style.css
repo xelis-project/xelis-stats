@@ -1325,6 +1325,7 @@ html.reduce-motion *::after {
 .live-mini .value { font-size: 1.6rem; font-weight: 700; color: var(--mint); font-variant-numeric: tabular-nums; word-break: break-all; }
 .live-mini .sub { font-size: 1.05rem; color: var(--text-dim2); }
 .live-mempool-head { color: var(--text-dim); font-size: 1.25rem; margin-bottom: 1rem; }
+.live-divider { border-top: 1px solid var(--border); margin: 1.2rem 0; }
 .live-feerates { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-bottom: 1.2rem; }
 .live-fee {
   display: flex; flex-direction: column; gap: 0.2rem;
