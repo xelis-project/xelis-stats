@@ -10,6 +10,7 @@ import {
   liveMempoolSummaryHtml,
   liveMempoolRowsHtml,
   liveRecentTxRowsHtml,
+  liveTxTypesHtml,
   liveMetaHtml,
   type LiveData,
 } from "./live-render";
@@ -79,6 +80,7 @@ export function initLiveDashboard(): void {
     set("live-stats", liveStatsHtml(d));
     renderDag(d);
     set("live-blocks", liveBlocksRowsHtml(d));
+    set("live-tx-types", liveTxTypesHtml(d));
     set("live-mempool-summary", liveMempoolSummaryHtml(d));
     set("live-mempool", liveMempoolRowsHtml(d));
     set("live-recent-txs", liveRecentTxRowsHtml(d));

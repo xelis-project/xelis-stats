@@ -9,6 +9,7 @@ import {
   liveMempoolSummaryHtml,
   liveMempoolRowsHtml,
   liveRecentTxRowsHtml,
+  liveTxTypesHtml,
   liveMetaHtml,
 } from "../../client/live-render";
 
@@ -32,6 +33,10 @@ livePage.get("/", async (c) => {
   <div class="panel">
     <div class="panel-head"><h2>Unstable window</h2><span class="live-hint">newest blocks at the tip · click a node to inspect</span></div>
     <div id="live-dag">${liveDagHtml(live)}</div>
+  </div>
+  <div class="panel">
+    <div class="panel-head"><h2>Transactions by type</h2><span class="live-hint">share of the newest included txs</span></div>
+    <div id="live-tx-types">${liveTxTypesHtml(live)}</div>
   </div>
   <div class="grid-2 live-split">
     <div class="panel">

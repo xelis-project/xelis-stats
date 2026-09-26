@@ -274,6 +274,36 @@ export function liveRecentTxRowsHtml(d: LiveData): string {
   }).join("");
 }
 
+// Bar graph of the transaction types seen in the newest included txs. Uses the
+// same `recentTxs` window as the table below it, so the shares and the rows agree.
+export function liveTxTypesHtml(d: LiveData): string {
+  const txs = d.recentTxs ?? [];
+  if (!d.ok || !txs.length) {
+    return `<p class="live-empty">${d.ok ? "No transactions in the recent blocks." : "Node data unavailable."}</p>`;
+  }
+  const counts = new Map<string, number>();
+  for (const t of txs) {
+    const type = (t.tx_type || "other").toLowerCase();
+    counts.set(type, (counts.get(type) ?? 0) + 1);
+  }
+  const total = txs.length;
+  const rows = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .map(([type, count]) => {
+      const pct = (count / total) * 100;
+      const label = type.replace(/_/g, " ");
+      return `<div class="live-type-row" title="${esc(label)} · ${fmtInt(count)} of ${fmtInt(total)}">
+      <span class="live-type-name"><span class="badge ${esc(type)}">${esc(label)}</span></span>
+      <span class="live-type-track"><span class="live-type-bar ${esc(type)}" style="width:${pct.toFixed(1)}%"></span></span>
+      <span class="live-type-count">${fmtInt(count)}<span class="live-type-pct">${Math.round(pct)}%</span></span>
+    </div>`;
+    })
+    .join("");
+  const head = `<div class="live-type-head"><span>Type</span><span>Share</span><span>Count</span></div>`;
+  return `<div class="live-types">${head}${rows}</div>
+    <p class="live-dag-note">Across the newest ${fmtInt(total)} included transaction${total === 1 ? "" : "s"}.</p>`;
+}
+
 export function liveMetaHtml(d: LiveData): string {
   if (!d.ok || !d.info) {
     return `<span class="live-dot off"></span> node unreachable${d.error ? ` · ${esc(d.error)}` : ""}`;
