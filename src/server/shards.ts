@@ -447,6 +447,43 @@ export async function pagedRawAsc(
 }
 
 /**
+ * Exact bounded-range scan over hot + sealed shards for a partition-key window
+ * (e.g. the topoheight slice a DAG page needs). Unlike {@link pagedRaw}, each
+ * overlapping segment is asked only for its slice of [lo, hi] and the rows are
+ * merged in order, so one window costs at most (1 + shard count) queries and
+ * never walks the chain.
+ */
+export async function rangeRaw(
+  env: Env,
+  opts: { table: string; select: string; lo: number; hi: number; col?: string; order?: "ASC" | "DESC" },
+): Promise<Row[]> {
+  const col = opts.col ?? "topoheight";
+  const order = opts.order ?? "ASC";
+  if (!(opts.lo <= opts.hi)) return [];
+  const shards = await getShards(env);
+  const floor = hotFloor(shards);
+  const segments: Array<{ t: RawTarget; hi: number; lo: number }> = shards
+    .filter((s) => s.sealed && s.first_topo != null && s.last_topo != null)
+    .map((s) => ({ t: { kind: "shard" as const, dbId: s.db_id }, hi: s.last_topo!, lo: s.first_topo }));
+  segments.push({ t: { kind: "hot" }, hi: Number.MAX_SAFE_INTEGER, lo: floor + 1 });
+  segments.sort((a, b) => a.lo - b.lo);
+
+  const out: Row[] = [];
+  for (const seg of segments) {
+    if (seg.hi < opts.lo || seg.lo > opts.hi) continue;
+    const lo = Math.max(opts.lo, seg.lo);
+    const hi = Math.min(opts.hi, seg.hi);
+    const rows = await runOn(
+      env, seg.t,
+      `SELECT ${opts.select} FROM ${opts.table} WHERE ${col} >= ? AND ${col} <= ? ORDER BY ${col} ${order}`,
+      [lo, hi],
+    );
+    out.push(...rows);
+  }
+  return out;
+}
+
+/**
  * Keyset scan over hot + sealed shards for a two-column cursor ordered by
  * `cols` (e.g. "block_topo DESC, hash DESC"). The "older" direction walks
  * below the cursor and returns rows in display order; "newer" walks above it

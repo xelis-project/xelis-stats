@@ -14,6 +14,7 @@ export function layout(title: string, content: string, active: string, bodyClass
     ["/", "Live"],
     ["/dashboard", "Dashboard"],
     ["/blocks", "Blocks"],
+    ["/dag", "DAG"],
     ["/transactions", "Transactions"],
     ["/accounts", "Accounts"],
     ["/assets", "Assets"],

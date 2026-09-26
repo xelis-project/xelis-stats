@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "./app";
 import { blocks } from "./pages/blocks";
 import { blockDetail } from "./pages/block-detail";
+import { dag } from "./pages/dag";
 import { transactions } from "./pages/transactions";
 import { txDetail } from "./pages/tx-detail";
 import { accounts } from "./pages/accounts";
@@ -21,6 +22,7 @@ export const pages = new Hono<{ Bindings: Env }>();
 
 pages.route("/", blocks);
 pages.route("/", blockDetail);
+pages.route("/", dag);
 pages.route("/", transactions);
 pages.route("/", txDetail);
 pages.route("/", accounts);

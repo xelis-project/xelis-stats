@@ -1361,4 +1361,96 @@ html.reduce-motion *::after {
   .live-node.unstable, .live-dag .live-node.live-node-enter { animation: none; }
 }
 
+/* ---------- DAG viewer (/dag) ---------- */
+
+.dag-panel { padding: 1.4rem; }
+.dag-head { gap: 1rem; }
+.dag-sub { font-size: 1.05rem; letter-spacing: 0; text-transform: none; color: var(--text-dim2); font-weight: 400; margin-left: 0.8rem; }
+.dag-toolbar { display: flex; align-items: flex-end; gap: 0.6rem; flex-wrap: wrap; margin-left: auto; }
+.dag-field { display: flex; flex-direction: column; gap: 0.25rem; }
+.dag-field label { font-size: 0.95rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-dim); }
+.dag-field input {
+  width: 12rem; background: hsla(0, 0%, 100%, 0.04); color: var(--mint);
+  border: 1px solid rgba(2, 255, 207, 0.3); border-radius: 0.5rem;
+  padding: 0.6rem 0.8rem; font-size: 1.25rem; font-family: var(--mono); font-weight: 700;
+}
+.dag-field input::placeholder { color: var(--text-dim); font-weight: 400; }
+.dag-toolbar .icon-btn { padding: 0.6rem 0.8rem; }
+.dag-sep { align-self: stretch; width: 1px; background: var(--border); margin: 0.2rem 0.3rem; }
+.dag-live-btn { gap: 0.5rem; }
+.dag-live-btn.on { color: var(--mint); border-color: var(--border-hover); background: rgba(2, 255, 207, 0.07); }
+.dag-live-dot { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: var(--text-dim); flex: none; }
+.dag-live-btn.on .dag-live-dot { background: var(--mint); box-shadow: 0 0 8px var(--mint-glow); animation: livepulse 1.6s ease-in-out infinite; }
+
+.dag-viewport {
+  position: relative; height: clamp(38rem, 68vh, 78rem); overflow: hidden;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(2, 255, 207, 0.05), transparent 60%),
+    rgba(4, 10, 12, 0.5);
+  touch-action: none;
+}
+#dag-canvas { display: block; cursor: grab; }
+#dag-canvas.grabbing { cursor: grabbing; }
+
+.dag-hover {
+  position: absolute; z-index: 6; pointer-events: none;
+  background: var(--panel-solid); border: 1px solid var(--border-hover); border-radius: 0.6rem;
+  padding: 0.6rem 0.8rem; font-size: 1.15rem; color: var(--text);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.5); white-space: nowrap;
+}
+.dag-hover-topo { font-weight: 700; color: var(--mint); margin-bottom: 0.3rem; }
+.dag-hover-row { display: flex; align-items: center; gap: 0.5rem; font-family: var(--mono); font-size: 1.1rem; color: var(--text-dim2); }
+.dag-hover-dim { color: var(--text-dim); font-family: var(--font); margin-top: 0.25rem; }
+.dag-hover-dot { width: 0.7rem; height: 0.7rem; border-radius: 0.2rem; flex: none; }
+
+.dag-loading {
+  position: absolute; inset: 0; z-index: 5; display: flex; align-items: center; justify-content: center; gap: 0.8rem;
+  background: color-mix(in srgb, var(--bg) 55%, transparent);
+  color: var(--text-dim2); font-size: 1.25rem;
+}
+.dag-loading[hidden] { display: none; }
+.dag-spinner {
+  width: 1.4rem; height: 1.4rem; border-radius: 50%; flex: none;
+  border: 2px solid rgba(2, 255, 207, 0.25); border-top-color: var(--mint);
+  animation: sortspin 0.7s linear infinite;
+}
+
+.dag-legend {
+  position: absolute; top: 0.8rem; left: 0.9rem; z-index: 4; pointer-events: none;
+  display: flex; flex-wrap: wrap; gap: 0.4rem 1.4rem;
+  background: color-mix(in srgb, var(--panel-solid) 72%, transparent);
+  border: 1px solid var(--border); border-radius: 0.6rem; padding: 0.5rem 0.8rem;
+}
+.dag-key-line { width: 1.6rem; height: 0; border-top: 2px solid var(--mint); align-self: center; }
+.dag-key-dash { width: 1.6rem; height: 0; border-top: 2px dashed var(--gold); align-self: center; }
+
+.dag-hint {
+  position: absolute; left: 0.9rem; bottom: 0.6rem; z-index: 4; pointer-events: none;
+  font-size: 1.05rem; color: var(--text-dim);
+}
+
+.dag-detail {
+  margin-top: 1.4rem; padding: 1.2rem 1.4rem;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: hsla(0, 0%, 100%, 0.025);
+}
+.dag-detail[hidden] { display: none; }
+.dag-detail-head { display: flex; align-items: center; gap: 0.9rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.dag-detail-title { font-size: 1.5rem; font-weight: 700; }
+.dag-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); gap: 0.7rem 2rem; }
+.dag-detail-item { display: flex; align-items: baseline; gap: 0.8rem; min-width: 0; }
+.dag-detail-item .k {
+  flex: 0 0 11rem; font-size: 1rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.1em; color: var(--text-dim);
+}
+.dag-detail-item .v { min-width: 0; font-size: 1.3rem; word-break: break-all; }
+.dag-status { margin: 1rem 0 0; font-size: 1.15rem; color: var(--text-dim); }
+
+@media (max-width: 760px) {
+  .dag-toolbar { margin-left: 0; width: 100%; }
+  .dag-field input { width: 10rem; }
+  .dag-detail-item .k { flex-basis: 8rem; }
+}
+
 

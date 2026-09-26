@@ -20,6 +20,8 @@ const needsIslands = path === "/charts" || path === "/market" || path.startsWith
   || document.querySelector("[data-datepicker]") !== null;
 if (path === "/dashboard") {
   void import("./dashboard").then((m) => m.initDashboard()).catch(() => { /* dashboard unavailable */ });
+} else if (path === "/dag") {
+  void import("./dag").then((m) => m.initDag()).catch(() => { /* dag viewer unavailable */ });
 } else if (path === "/") {
   void import("./live-dashboard").then((m) => m.initLiveDashboard()).catch(() => { /* live page unavailable */ });
 } else if (needsIslands) {

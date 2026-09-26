@@ -2,9 +2,10 @@ import { Hono } from "hono";
 import type { Env } from "./app";
 import { parseSort, BLOCK_COLS, TX_COLS, ACCT_COLS } from "./sort";
 import { knownEntity } from "./entities";
-import { fetchBlock, fetchTx, pagedRaw } from "./shards";
+import { fetchBlock, fetchTx, pagedRaw, rangeRaw } from "./shards";
 import { clampInt } from "./pages/shared";
 import { getLive } from "./live";
+import { getStatsCached } from "./cache";
 
 export { clampInt };
 
@@ -69,6 +70,77 @@ api.get("/api/block/:id", async (c) => {
   } catch (err) {
     logErr("api/block", err);
     return c.json({ error: "not found" }, 404);
+  }
+});
+
+// DAG window: a bounded topoheight slice with each block's parent hashes
+// (tips), so the /dag viewer can draw the graph. History comes from the indexed
+// blocks table across hot + sealed shards; the node only supplies the tip and
+// stability boundary as best-effort metadata (the viewer still renders without
+// it, e.g. while the collector catches up or the node is unreachable).
+api.get("/api/dag", async (c) => {
+  const span = clampInt(c.req.query("span"), 100, 300);
+  const requested = Number(c.req.query("center") ?? 0);
+  try {
+    const maxRow = await c.env.DB.prepare("SELECT MAX(topoheight) AS m FROM blocks").first<{ m: number | null }>();
+    const dbMax = Number(maxRow?.m ?? 0);
+    let tip: number | null = null;
+    let stable: number | null = null;
+    try {
+      // KV-cached node info (60s): far cheaper than the full live payload,
+      // which the viewer does not need for history windows.
+      const stats = await getStatsCached(c.env);
+      tip = Number.isFinite(stats.info?.topoheight) ? stats.info.topoheight : null;
+      stable = Number.isFinite(stats.info?.stable_topoheight) ? stats.info.stable_topoheight : null;
+    } catch { /* node optional */ }
+    const maxBound = Math.max(dbMax, tip ?? 0, 1);
+    const center = Number.isFinite(requested) && requested > 0
+      ? Math.min(Math.floor(requested), maxBound)
+      : maxBound;
+    const lo = Math.max(0, center - span);
+    const hi = Math.min(center + span, maxBound);
+    const rows = await rangeRaw(c.env, {
+      table: "blocks",
+      select: "topoheight, height, hash, ts, block_type, tips, tx_count, difficulty, size, miner_address, miner_reward, dev_reward",
+      lo,
+      hi,
+    });
+    const blocks = rows.map((r) => {
+      let tips: string[] = [];
+      try {
+        const parsed = JSON.parse(String(r.tips ?? "[]")) as unknown;
+        if (Array.isArray(parsed)) tips = parsed.map((h) => String(h));
+      } catch { /* malformed tips -> no edges */ }
+      const topo = Number(r.topoheight);
+      return {
+        topo,
+        height: Number(r.height ?? 0),
+        hash: String(r.hash ?? ""),
+        ts: Number(r.ts ?? 0),
+        type: String(r.block_type ?? "Normal"),
+        tips,
+        txs: Number(r.tx_count ?? 0),
+        difficulty: Number(r.difficulty ?? 0),
+        size: Number(r.size ?? 0),
+        miner: String(r.miner_address ?? ""),
+        reward: Number(r.miner_reward ?? 0) + Number(r.dev_reward ?? 0),
+        // unknown boundary (node unreachable) is treated as stable so the whole
+        // historical view is not drawn as reorg-prone
+        stable: stable == null ? true : topo <= stable,
+      };
+    });
+    return c.json({
+      center,
+      lo,
+      hi,
+      tip,
+      stable,
+      span,
+      blocks,
+    });
+  } catch (err) {
+    logErr("api/dag", err);
+    return c.json({ center: 0, lo: 0, hi: 0, tip: null, stable: null, span, blocks: [] }, 503);
   }
 });
 
