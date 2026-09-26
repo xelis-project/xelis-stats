@@ -1427,7 +1427,7 @@ body.layout-dag .dag-viewport { border-left: none; border-right: none; border-ra
 .dag-fs-exit { display: none; }
 .dag-panel.is-fs .dag-fs-enter { display: none; }
 .dag-panel.is-fs .dag-fs-exit { display: inline-flex; }
-.dag-status { margin-left: auto; align-self: center; font-size: 1.15rem; color: var(--text-dim); }
+.dag-status { flex-basis: 100%; width: 100%; text-align: right; font-size: 1.15rem; color: var(--text-dim); }
 
 .dag-hover {
   position: absolute; z-index: 8; pointer-events: none;
@@ -1490,7 +1490,6 @@ body.layout-dag .dag-viewport { border-left: none; border-right: none; border-ra
 
 @media (max-width: 900px) {
   .dag-field input { width: 10rem; }
-  .dag-status { margin-left: 0; width: 100%; }
   .dag-title { width: 100%; }
 }
 @media (max-width: 620px) {
