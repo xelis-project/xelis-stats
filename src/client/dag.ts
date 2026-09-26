@@ -249,6 +249,17 @@ export function initDag(): void {
     ctx!.stroke();
   }
 
+  // Point where a ray leaving a box center toward another point crosses the
+  // box border, so edges can stop at the block instead of running under it.
+  function boxExit(x1: number, y1: number, x2: number, y2: number): { x: number; y: number } {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const m = Math.max(Math.abs(dx), Math.abs(dy));
+    if (m === 0) return { x: x1, y: y1 };
+    const t = HALF / m;
+    return { x: x1 + dx * t, y: y1 + dy * t };
+  }
+
   function drawEdges(): void {
     for (const p of placements) {
       for (const tip of p.block.tips) {
@@ -256,11 +267,15 @@ export function initDag(): void {
         if (!q) continue;
         const hl = (hovered && (hovered === p.block || hovered === q.block))
           || (selected && (selected === p.block || selected === q.block));
+        // Highlighted edges are drawn from border to border so the line stays
+        // behind the block faces instead of showing through the translucent fill.
+        const a = hl ? boxExit(p.x, p.y, q.x, q.y) : p;
+        const b = hl ? boxExit(q.x, q.y, p.x, p.y) : q;
         ctx!.strokeStyle = hl ? EDGE_HL : EDGE;
         ctx!.lineWidth = hl ? Math.max(1.6, cam.k * 1.6) : Math.max(1, cam.k);
         ctx!.beginPath();
-        ctx!.moveTo(sx(p.x), sy(p.y));
-        ctx!.lineTo(sx(q.x), sy(q.y));
+        ctx!.moveTo(sx(a.x), sy(a.y));
+        ctx!.lineTo(sx(b.x), sy(b.y));
         ctx!.stroke();
       }
     }
