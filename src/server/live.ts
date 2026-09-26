@@ -7,7 +7,9 @@ import { getInfo, rpc, type ChainInfo } from "./xelis";
 import type { LiveBlock, LiveData, LiveFees, LiveMempoolTx, LivePeers } from "../client/live-render";
 
 // get_blocks_range_by_topoheight accepts at most a 20-topoheight span.
-const WINDOW = 20;
+const WINDOW = 20;         // newest tip blocks (unstable window)
+const STABLE_WINDOW = 24;  // stable blocks shown before the stability boundary
+const RPC_SPAN = 20;
 const MEMPOOL_LIMIT = 25;
 const TTL_MS = 3000;
 
@@ -30,6 +32,22 @@ const num = (v: unknown): number => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
+
+// get_blocks_range_by_topoheight caps a single call at RPC_SPAN topoheights, so
+// fetch wider windows in chunks and concatenate them in ascending order.
+async function rangeBlocks(env: Env, start: number, end: number): Promise<Array<Record<string, unknown>>> {
+  const out: Array<Record<string, unknown>> = [];
+  for (let s = start; s <= end; s += RPC_SPAN) {
+    const e = Math.min(end, s + RPC_SPAN - 1);
+    const chunk = await rpc<Array<Record<string, unknown>>>(
+      "get_blocks_range_by_topoheight",
+      { start_topoheight: s, end_topoheight: e },
+      env.XELIS_NODE,
+    ).catch(() => [] as Array<Record<string, unknown>>);
+    if (Array.isArray(chunk)) out.push(...chunk);
+  }
+  return out;
+}
 
 function toBlock(b: Record<string, unknown>, stable: number): LiveBlock {
   const topo = num(b.topoheight);
@@ -77,21 +95,19 @@ async function load(env: Env): Promise<LiveData> {
   const top = info.topoheight;
   const stable = info.stable_topoheight;
   const lag = Math.max(0, top - stable);
-  // When the unstable window is small enough include one stable block so the
-  // boundary is visible; otherwise show only the newest blocks at the tip.
-  const from = lag > 0 && lag < WINDOW ? Math.max(1, stable - 1) : Math.max(1, top - (WINDOW - 1));
-  // Keep the stable/unstable edge visible even when the tip window is full, so
-  // render the last stable block (and, when it is not already in the window,
-  // the first unstable block) alongside the newest topoheights.
-  const edgeFrom = stable >= 1 && stable < from ? stable : null;
-  const edgeTo = edgeFrom == null ? null : stable + 1 < from ? stable + 1 : stable;
+  // Newest tip window (may still contain stable blocks when the lag is small)
+  // plus a run of stable blocks ending at the boundary, so the DAG shows more
+  // than the single boundary block. Overlap between the two ranges is removed
+  // when the client merges them by topoheight.
+  const tipFrom = Math.max(1, top - (WINDOW - 1));
+  const stableFrom = Math.max(1, stable - STABLE_WINDOW + 1);
 
-  const [rawBlocks, rawEdge, rawMempool, rawRates, rawKb, rawTips, rawPeers] = await Promise.all([
-    from <= top
-      ? rpc<Array<Record<string, unknown>>>("get_blocks_range_by_topoheight", { start_topoheight: from, end_topoheight: top }, env.XELIS_NODE).catch(() => [] as Array<Record<string, unknown>>)
+  const [rawBlocks, rawBoundary, rawMempool, rawRates, rawKb, rawTips, rawPeers] = await Promise.all([
+    tipFrom <= top
+      ? rangeBlocks(env, tipFrom, top)
       : Promise.resolve([] as Array<Record<string, unknown>>),
-    edgeFrom != null
-      ? rpc<Array<Record<string, unknown>>>("get_blocks_range_by_topoheight", { start_topoheight: edgeFrom, end_topoheight: Math.min(top, edgeTo as number) }, env.XELIS_NODE).catch(() => [] as Array<Record<string, unknown>>)
+    stable >= 1 && stableFrom <= stable
+      ? rangeBlocks(env, stableFrom, stable)
       : Promise.resolve([] as Array<Record<string, unknown>>),
     rpc<{ total: number; transactions: Array<Record<string, unknown>> }>("get_mempool_summary", { skip: 0, maximum: MEMPOOL_LIMIT }, env.XELIS_NODE).catch(() => null),
     rpc<Record<string, number>>("get_estimated_fee_rates", undefined, env.XELIS_NODE).catch(() => null),
@@ -101,15 +117,25 @@ async function load(env: Env): Promise<LiveData> {
   ]);
 
   const unstable: LiveBlock[] = (Array.isArray(rawBlocks) ? rawBlocks : []).map((b) => toBlock(b, stable));
-  const boundary: LiveBlock[] = (Array.isArray(rawEdge) ? rawEdge : []).map((b) => toBlock(b, stable));
+  const boundary: LiveBlock[] = (Array.isArray(rawBoundary) ? rawBoundary : []).map((b) => toBlock(b, stable));
+
+  // Stats cover every distinct block that will be drawn, stable boundary blocks
+  // included, so the side/sync counters match the DAG.
+  const seen = new Set<number>();
+  const windowBlocks: LiveBlock[] = [];
+  for (const b of [...unstable, ...boundary]) {
+    if (seen.has(b.topoheight)) continue;
+    seen.add(b.topoheight);
+    windowBlocks.push(b);
+  }
 
   const windowStats = {
-    count: unstable.length,
-    miners: new Set(unstable.map((b) => b.miner).filter(Boolean)).size,
-    side: unstable.filter((b) => b.block_type.toLowerCase() === "side").length,
-    sync: unstable.filter((b) => b.block_type.toLowerCase() === "sync").length,
-    avgSize: unstable.length ? unstable.reduce((s, b) => s + b.size, 0) / unstable.length : 0,
-    feesBurned: unstable.reduce((s, b) => s + b.feesBurned, 0),
+    count: windowBlocks.length,
+    miners: new Set(windowBlocks.map((b) => b.miner).filter(Boolean)).size,
+    side: windowBlocks.filter((b) => b.block_type.toLowerCase() === "side").length,
+    sync: windowBlocks.filter((b) => b.block_type.toLowerCase() === "sync").length,
+    avgSize: windowBlocks.length ? windowBlocks.reduce((s, b) => s + b.size, 0) / windowBlocks.length : 0,
+    feesBurned: windowBlocks.reduce((s, b) => s + b.feesBurned, 0),
   };
 
   const mempoolTxs: LiveMempoolTx[] = (rawMempool?.transactions ?? []).map((t) => ({
