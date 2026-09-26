@@ -39,7 +39,7 @@ interface Column { height: number; x: number; bottom: number; minTopo: number; m
 const BOX = 42;
 const HALF = BOX / 2;
 const COL = 92;
-const ROW = 62;
+const ROW = 82;
 const SPAN = 100;
 const EDGE = "rgba(36, 64, 61, 0.95)";
 const EDGE_HL = "#f5f7fb";
