@@ -51,8 +51,8 @@ dag.get("/dag", async (c) => {
         <button class="btn ghost icon-btn" id="dag-prev" type="button" title="Older window" aria-label="Older window">${icons.chevronLeft}</button>
         <button class="btn ghost icon-btn" id="dag-next" type="button" title="Newer window" aria-label="Newer window">${icons.chevronRight}</button>
         <span class="dag-sep" aria-hidden="true"></span>
-        <button class="btn ghost dag-live-btn" id="dag-live" type="button" aria-pressed="${live ? "true" : "false"}" title="Stream the node's unstable tip">
-          <span class="dag-live-dot" aria-hidden="true"></span>Live
+        <button class="btn ghost icon-btn dag-live-btn" id="dag-live" type="button" aria-pressed="${live ? "true" : "false"}" aria-label="Live" title="Stream the node's unstable tip">
+          <span class="dag-live-dot" aria-hidden="true"></span>
         </button>
         <span class="dag-sep" aria-hidden="true"></span>
         <button class="btn ghost icon-btn" id="dag-fit" type="button" title="Fit all blocks" aria-label="Fit all blocks">${icons.reset}</button>

@@ -1402,14 +1402,14 @@ body.layout-dag .dag-viewport { border-left: none; border-right: none; border-ra
 .dag-field { display: flex; flex-direction: column; gap: 0.25rem; }
 .dag-field label { font-size: 0.95rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-dim); }
 .dag-field input {
-  width: 12rem; background: hsla(0, 0%, 100%, 0.04); color: var(--mint);
+  width: 12rem; height: 3.6rem; background: hsla(0, 0%, 100%, 0.04); color: var(--mint);
   border: 1px solid rgba(2, 255, 207, 0.3); border-radius: 0.5rem;
   padding: 0.6rem 0.8rem; font-size: 1.25rem; font-family: var(--mono); font-weight: 700;
 }
 .dag-field input::placeholder { color: var(--text-dim); font-weight: 400; }
-.dag-bar .icon-btn { padding: 0.6rem 0.8rem; }
+.dag-bar .btn { height: 3.6rem; min-width: 3.6rem; padding: 0 0.9rem; justify-content: center; line-height: 1; }
+.dag-bar .icon-btn { width: 3.6rem; padding: 0; }
 .dag-sep { align-self: stretch; width: 1px; background: var(--border); margin: 0.2rem 0.3rem; }
-.dag-live-btn { gap: 0.5rem; }
 .dag-live-btn.on { color: var(--mint); border-color: var(--border-hover); background: rgba(2, 255, 207, 0.07); }
 .dag-live-dot { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: var(--text-dim); flex: none; }
 .dag-live-btn.on .dag-live-dot { background: var(--mint); box-shadow: 0 0 8px var(--mint-glow); animation: livepulse 1.6s ease-in-out infinite; }
