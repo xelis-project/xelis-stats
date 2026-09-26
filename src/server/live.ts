@@ -31,6 +31,27 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
+function toBlock(b: Record<string, unknown>, stable: number): LiveBlock {
+  const topo = num(b.topoheight);
+  const hashes = Array.isArray(b.txs_hashes) ? b.txs_hashes : [];
+  return {
+    topoheight: topo,
+    height: num(b.height),
+    hash: String(b.hash ?? ""),
+    ts: num(b.timestamp),
+    block_type: String(b.block_type ?? "Normal"),
+    miner: String(b.miner ?? ""),
+    difficulty: num(b.difficulty),
+    txs: hashes.length,
+    miner_reward: num(b.miner_reward),
+    dev_reward: num(b.dev_reward),
+    size: num(b.total_size_in_bytes),
+    feesBurned: num(b.total_fees_burned),
+    tips: Array.isArray(b.tips) ? b.tips.map(String) : [],
+    stable: topo <= stable,
+  };
+}
+
 async function load(env: Env): Promise<LiveData> {
   const ts = Date.now();
   let info: ChainInfo;
@@ -44,6 +65,7 @@ async function load(env: Env): Promise<LiveData> {
       lag: 0,
       hashrate: null,
       unstable: [],
+      boundary: [],
       window: { count: 0, miners: 0, side: 0, sync: 0, avgSize: 0, feesBurned: 0 },
       tips: [],
       mempool: { total: 0, transactions: [], valueFee: 0, bytes: 0 },
@@ -58,10 +80,18 @@ async function load(env: Env): Promise<LiveData> {
   // When the unstable window is small enough include one stable block so the
   // boundary is visible; otherwise show only the newest blocks at the tip.
   const from = lag > 0 && lag < WINDOW ? Math.max(1, stable - 1) : Math.max(1, top - (WINDOW - 1));
+  // Keep the stable/unstable edge visible even when the tip window is full, so
+  // render the last stable block (and, when it is not already in the window,
+  // the first unstable block) alongside the newest topoheights.
+  const edgeFrom = stable >= 1 && stable < from ? stable : null;
+  const edgeTo = edgeFrom == null ? null : stable + 1 < from ? stable + 1 : stable;
 
-  const [rawBlocks, rawMempool, rawRates, rawKb, rawTips, rawPeers] = await Promise.all([
+  const [rawBlocks, rawEdge, rawMempool, rawRates, rawKb, rawTips, rawPeers] = await Promise.all([
     from <= top
       ? rpc<Array<Record<string, unknown>>>("get_blocks_range_by_topoheight", { start_topoheight: from, end_topoheight: top }, env.XELIS_NODE).catch(() => [] as Array<Record<string, unknown>>)
+      : Promise.resolve([] as Array<Record<string, unknown>>),
+    edgeFrom != null
+      ? rpc<Array<Record<string, unknown>>>("get_blocks_range_by_topoheight", { start_topoheight: edgeFrom, end_topoheight: Math.min(top, edgeTo as number) }, env.XELIS_NODE).catch(() => [] as Array<Record<string, unknown>>)
       : Promise.resolve([] as Array<Record<string, unknown>>),
     rpc<{ total: number; transactions: Array<Record<string, unknown>> }>("get_mempool_summary", { skip: 0, maximum: MEMPOOL_LIMIT }, env.XELIS_NODE).catch(() => null),
     rpc<Record<string, number>>("get_estimated_fee_rates", undefined, env.XELIS_NODE).catch(() => null),
@@ -70,26 +100,8 @@ async function load(env: Env): Promise<LiveData> {
     rpc<{ peers?: Array<{ pruned_topoheight?: number | null }>; hidden_peers?: number }>("get_peers", undefined, env.XELIS_NODE).catch(() => null),
   ]);
 
-  const unstable: LiveBlock[] = (Array.isArray(rawBlocks) ? rawBlocks : []).map((b) => {
-    const topo = num(b.topoheight);
-    const hashes = Array.isArray(b.txs_hashes) ? b.txs_hashes : [];
-    return {
-      topoheight: topo,
-      height: num(b.height),
-      hash: String(b.hash ?? ""),
-      ts: num(b.timestamp),
-      block_type: String(b.block_type ?? "Normal"),
-      miner: String(b.miner ?? ""),
-      difficulty: num(b.difficulty),
-      txs: hashes.length,
-      miner_reward: num(b.miner_reward),
-      dev_reward: num(b.dev_reward),
-      size: num(b.total_size_in_bytes),
-      feesBurned: num(b.total_fees_burned),
-      tips: Array.isArray(b.tips) ? b.tips.map(String) : [],
-      stable: topo <= stable,
-    };
-  });
+  const unstable: LiveBlock[] = (Array.isArray(rawBlocks) ? rawBlocks : []).map((b) => toBlock(b, stable));
+  const boundary: LiveBlock[] = (Array.isArray(rawEdge) ? rawEdge : []).map((b) => toBlock(b, stable));
 
   const windowStats = {
     count: unstable.length,
@@ -159,6 +171,7 @@ async function load(env: Env): Promise<LiveData> {
     lag,
     hashrate,
     unstable,
+    boundary,
     window: windowStats,
     tips: Array.isArray(rawTips) ? rawTips.map(String) : [],
     mempool: {

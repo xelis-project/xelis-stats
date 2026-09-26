@@ -86,6 +86,7 @@ export interface LiveData {
   lag: number;
   hashrate: number | null;
   unstable: LiveBlock[];
+  boundary: LiveBlock[];
   window: LiveWindow;
   tips: string[];
   mempool: { total: number; transactions: LiveMempoolTx[]; valueFee: number; bytes: number };
@@ -111,7 +112,7 @@ export function liveStatsHtml(d: LiveData): string {
   const circ = i.circulating_supply / 1e8;
   const max = i.maximum_supply / 1e8;
   const pctMax = max > 0 ? `${((circ / max) * 100).toFixed(2)}% of max supply` : "max supply unknown";
-  const unstableShown = d.unstable.filter((b) => !b.stable).length;
+  const unstableShown = dagBlocks(d).filter((b) => !b.stable).length;
   const w = d.window;
   const peers = d.peers;
   return [
@@ -137,31 +138,62 @@ function dagNode(b: LiveBlock): string {
   return `<a class="${cls}" href="/block/${b.topoheight}" title="${esc(detail)}" aria-label="${esc(detail)}"></a>`;
 }
 
+function dagBlocks(d: LiveData): LiveBlock[] {
+  const seen = new Set<number>();
+  const out: LiveBlock[] = [];
+  for (const b of [...(d.boundary ?? []), ...(d.unstable ?? [])]) {
+    if (seen.has(b.topoheight)) continue;
+    seen.add(b.topoheight);
+    out.push(b);
+  }
+  return out;
+}
+
 export function liveDagHtml(d: LiveData): string {
-  const blocks = d.unstable ?? [];
+  const blocks = dagBlocks(d);
   if (!blocks.length) {
     return `<p class="live-empty">${d.ok ? "No blocks in the current window." : "Node data unavailable."}</p>`;
   }
   const stable = blocks.filter((b) => b.stable);
   const unstable = blocks.filter((b) => !b.stable);
-  const groups: string[] = [];
+  const stableTopos = stable.map((b) => b.topoheight);
+  const unstableTopos = unstable.map((b) => b.topoheight);
+  const stableRange = stableTopos.length ? (stableTopos.length > 1 ? `${fmtInt(Math.min(...stableTopos))}–${fmtInt(Math.max(...stableTopos))}` : fmtInt(stableTopos[0])) : "";
+  const unstableRange = unstableTopos.length ? (unstableTopos.length > 1 ? `${fmtInt(Math.min(...unstableTopos))}–${fmtInt(Math.max(...unstableTopos))}` : fmtInt(unstableTopos[0])) : "";
+  const boundary = stableTopos.length && unstableTopos.length
+    ? { from: Math.max(...stableTopos), to: Math.min(...unstableTopos) }
+    : null;
+
+  const segs: string[] = [];
   if (stable.length) {
-    groups.push(`<div class="live-dag-group"><span class="live-dag-cap">stable</span><div class="live-dag-nodes">${stable.map(dagNode).join("")}</div></div>`);
+    segs.push(`<div class="live-dag-seg">
+      <div class="live-dag-seg-head"><span class="live-dag-cap">stable</span><span class="live-dag-range">topo ${stableRange}</span></div>
+      <div class="live-dag-nodes">${stable.map(dagNode).join("")}</div>
+    </div>`);
+  }
+  if (boundary) {
+    segs.push(`<div class="live-dag-sep" title="${esc(`stability boundary · topo ${boundary.from} → ${boundary.to}`)}" aria-hidden="true"></div>`);
   }
   if (unstable.length) {
-    groups.push(`<div class="live-dag-group"><span class="live-dag-cap unstable">unstable · may reorg</span><div class="live-dag-nodes">${unstable.map(dagNode).join("")}</div></div>`);
+    segs.push(`<div class="live-dag-seg">
+      <div class="live-dag-seg-head"><span class="live-dag-cap unstable">unstable · may reorg</span><span class="live-dag-range">topo ${unstableRange}</span></div>
+      <div class="live-dag-nodes">${unstable.map(dagNode).join("")}</div>
+    </div>`);
   }
+
   const hidden = Math.max(0, d.lag - unstable.length);
-  const note = hidden > 0
-    ? `<p class="live-dag-note">Showing the newest ${fmtInt(blocks.length)} topoheights; ${fmtInt(hidden)} older ones sit between the stability boundary and this window.</p>`
-    : "";
+  const parts: string[] = [];
+  if (boundary) parts.push(`stability boundary at topo ${fmtInt(boundary.from)} → ${fmtInt(boundary.to)}`);
+  if (hidden > 0) parts.push(`${fmtInt(hidden)} ${hidden === 1 ? "topoheight is" : "topoheights are"} hidden between the boundary and the tip window`);
+  if (!unstable.length && stable.length) parts.push("no unstable blocks right now");
+  const note = parts.length ? `<p class="live-dag-note">${parts.join(" · ")}</p>` : "";
   const legend = `<div class="live-dag-legend">
     <span class="live-key"><span class="live-key-dot normal"></span>Normal</span>
     <span class="live-key"><span class="live-key-dot side"></span>Side</span>
     <span class="live-key"><span class="live-key-dot sync"></span>Sync</span>
     <span class="live-key"><span class="live-key-dot unstable"></span>Unstable (may reorg)</span>
   </div>`;
-  return `<div class="live-dag">${groups.join("")}</div>${note}${legend}`;
+  return `<div class="live-dag"><div class="live-dag-track">${segs.join("")}</div></div>${note}${legend}`;
 }
 
 export function liveBlocksRowsHtml(d: LiveData): string {

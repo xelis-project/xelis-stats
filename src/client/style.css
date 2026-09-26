@@ -1276,11 +1276,15 @@ html.reduce-motion *::after {
 
 /* DAG tip window */
 .live-dag { display: flex; flex-direction: column; gap: 1.4rem; }
-.live-dag-group { display: flex; flex-direction: column; gap: 0.7rem; }
+.live-dag-track { display: flex; align-items: stretch; gap: 1.2rem; flex-wrap: wrap; }
+.live-dag-seg { display: flex; flex-direction: column; gap: 0.55rem; min-width: 0; }
+.live-dag-seg-head { display: flex; align-items: baseline; gap: 0.8rem; flex-wrap: wrap; }
 .live-dag-cap {
   font-size: 1.05rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim);
 }
 .live-dag-cap.unstable { color: var(--gold); }
+.live-dag-range { font-family: var(--mono); font-size: 1.05rem; color: var(--text-dim2); }
+.live-dag-sep { flex: 0 0 auto; width: 2px; border-radius: 2px; background: var(--border); }
 .live-dag-nodes { display: flex; flex-wrap: wrap; gap: 0.6rem; }
 .live-node {
   width: 1.5rem; height: 1.5rem; border-radius: 0.4rem; display: inline-block;
