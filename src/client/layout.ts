@@ -11,8 +11,8 @@ export const escHtml = (v: unknown): string =>
 
 export function layout(title: string, content: string, active: string, bodyClass = ""): string {
   const nav = [
-    ["/", "Dashboard"],
-    ["/live", "Live"],
+    ["/", "Live"],
+    ["/dashboard", "Dashboard"],
     ["/blocks", "Blocks"],
     ["/transactions", "Transactions"],
     ["/accounts", "Accounts"],
@@ -127,7 +127,7 @@ export function statCard(label: string, value: string, sub = "", small = false, 
 }
 
 export function notFound(what: string): string {
-  return `<div class="err404"><h1>404</h1><p style="margin-top:1rem;color:var(--text-dim)">${escHtml(what)} not found</p><p style="margin-top:2rem"><a class="btn" href="/">${icons.arrowLeft} Dashboard</a></p></div>`;
+  return `<div class="err404"><h1>404</h1><p style="margin-top:1rem;color:var(--text-dim)">${escHtml(what)} not found</p><p style="margin-top:2rem"><a class="btn" href="/dashboard">${icons.arrowLeft} Dashboard</a></p></div>`;
 }
 
 export { XEL_LOGO };

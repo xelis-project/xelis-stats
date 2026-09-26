@@ -18,9 +18,9 @@ const path = location.pathname;
 const needsIslands = path === "/charts" || path === "/market" || path.startsWith("/miner/")
   || path.startsWith("/asset/")
   || document.querySelector("[data-datepicker]") !== null;
-if (path === "/") {
+if (path === "/dashboard") {
   void import("./dashboard").then((m) => m.initDashboard()).catch(() => { /* dashboard unavailable */ });
-} else if (path === "/live") {
+} else if (path === "/") {
   void import("./live-dashboard").then((m) => m.initLiveDashboard()).catch(() => { /* live page unavailable */ });
 } else if (needsIslands) {
   void import("./islands");

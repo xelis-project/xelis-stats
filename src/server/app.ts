@@ -94,7 +94,7 @@ app.use("*", async (c, next) => {
 
 // ---------- dashboard (custom, default layout) ----------
 
-app.get("/", (c) => {
+app.get("/dashboard", (c) => {
   const content = `
 <div class="dash-toolbar-sentinel"></div>
 <div class="dash-toolbar">
@@ -125,7 +125,7 @@ app.get("/", (c) => {
       </div>
     </div>`;
 
-  return c.html(layout("Dashboard", content, "/", "layout-wide"));
+  return c.html(layout("Dashboard", content, "/dashboard", "layout-wide"));
 });
 
 // ---------- API ----------
@@ -200,7 +200,7 @@ app.route("/", pages);
 app.notFound((c) => {
   if (c.req.path.startsWith("/api/")) return c.json({ error: "not found" }, 404);
   return c.html(layout("Not found",
-    `<div class="err404"><h1>404</h1><p style="margin-top:1rem;color:var(--text-dim)">Page not found</p><p style="margin-top:2rem"><a class="btn" href="/">${icons.arrowLeft} Dashboard</a></p></div>`, ""), 404);
+    `<div class="err404"><h1>404</h1><p style="margin-top:1rem;color:var(--text-dim)">Page not found</p><p style="margin-top:2rem"><a class="btn" href="/dashboard">${icons.arrowLeft} Dashboard</a></p></div>`, ""), 404);
 });
 
 // Unhandled errors: log with request context and return a safe response
@@ -208,7 +208,7 @@ app.onError((err, c) => {
   console.error(`unhandled error on ${c.req.method} ${c.req.path}:`, err instanceof Error ? (err.stack ?? err.message) : String(err));
   if (c.req.path.startsWith("/api/")) return c.json({ error: "internal error" }, 500);
   return c.html(layout("Error",
-    `<div class="err404"><h1>500</h1><p style="margin-top:1rem;color:var(--text-dim)">Something went wrong. Try again shortly.</p><p style="margin-top:2rem"><a class="btn" href="/">${icons.arrowLeft} Dashboard</a></p></div>`, ""), 500);
+    `<div class="err404"><h1>500</h1><p style="margin-top:1rem;color:var(--text-dim)">Something went wrong. Try again shortly.</p><p style="margin-top:2rem"><a class="btn" href="/dashboard">${icons.arrowLeft} Dashboard</a></p></div>`, ""), 500);
 });
 
 // Rankings (period leaderboards)

@@ -13,7 +13,7 @@ import {
 
 export const livePage = new Hono<{ Bindings: Env }>();
 
-livePage.get("/live", async (c) => {
+livePage.get("/", async (c) => {
   // Initial paint straight from the node; the client poller keeps it moving.
   const live = await getLive(c.env);
 
@@ -50,5 +50,5 @@ livePage.get("/live", async (c) => {
     </div>
   </div>`;
 
-  return c.html(layout("Live", content, "/live"));
+  return c.html(layout("Live", content, "/"));
 });

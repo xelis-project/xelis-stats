@@ -1,4 +1,4 @@
-// Keeps the /live page moving. The page is server-rendered from the node on
+// Keeps the / page moving. The page is server-rendered from the node on
 // first paint; this poller refreshes it every few seconds (and immediately when
 // the header WebSocket reports a new block), re-rendering with the same
 // helpers the server used.
