@@ -349,8 +349,8 @@ assetDetail.get("/asset/:id", async (c) => {
     <p style="color:var(--text-dim);font-size:1.1rem;margin-top:0.8rem">Only contracts indexed by this explorer are checked, and account balances are encrypted — this is not a full holder distribution.</p>
   </div>`;
 
-  const relatedPanel = owner.contract
-    ? `<div class="panel"><h2>Creator &amp; Related Assets</h2>
+  const creatorPanel = owner.contract
+    ? `<div class="panel"><h2>Creator</h2>
       <table class="kv">
         <tr><td>Creator contract</td><td><a class="mono" href="/contracts/${esc(owner.contract)}">${esc(shortHash(owner.contract, 12))}</a> <button class="copybtn" type="button" onclick="blkCopy('${jsq(owner.contract)}', this)">copy</button></td></tr>
         ${creator?.deployer ? `<tr><td>Deployer</td><td><a class="mono" href="/account/${esc(creator.deployer as string)}">${esc(shortHash(creator.deployer as string, 10))}</a></td></tr>` : ""}
@@ -358,7 +358,11 @@ assetDetail.get("/asset/:id", async (c) => {
         ${num(creator?.invoke_count) ? `<tr><td>Contract invokes</td><td><a href="/contracts/${esc(owner.contract)}">${fmtInt(num(creator?.invoke_count))} indexed</a></td></tr>` : ""}
         ${owner.assetId != null ? `<tr><td>Asset index</td><td>#${fmtInt(owner.assetId)}</td></tr>` : ""}
       </table>
-      ${related.length ? `<h2 style="margin-top:1.2rem">Related Assets <span style="color:var(--text-dim)">${fmtInt(related.length)}</span></h2>
+    </div>`
+    : "";
+
+  const relatedPanel = related.length
+    ? `<div class="panel"><h2>Related Assets <span style="color:var(--text-dim)">${fmtInt(related.length)}</span></h2>
       <div class="tablewrap"><table>
         <thead><tr><th>Asset</th><th>Symbol</th><th class="num">Created (topo)</th></tr></thead>
         <tbody>${related.map((r) => `<tr>
@@ -366,13 +370,14 @@ assetDetail.get("/asset/:id", async (c) => {
           <td>${r.symbol ? flaggedText(r.symbol) : "—"}</td>
           <td class="num">${num(r.first_seen_topo) ? `<a href="/block/${num(r.first_seen_topo)}">${fmtInt(num(r.first_seen_topo))}</a>` : "—"}</td>
         </tr>`).join("")}</tbody>
-      </table></div>` : ""}
+      </table></div>
     </div>`
     : "";
 
   const seriesJson = JSON.stringify({ txs: txsSeries, transfers: transfersSeries, supply: supplySeries }).replace(/</g, "\\u003c");
   const content = `${hero}
-    <div class="grid-2">${overview}${relatedPanel || ownershipNote()}</div>
+    <div class="grid-2">${overview}${creatorPanel || ownershipNote()}</div>
+    ${relatedPanel}
     ${activity}
     ${supplyPanel}
     ${txsPanel}
