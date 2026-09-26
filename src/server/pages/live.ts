@@ -8,6 +8,7 @@ import {
   liveBlocksRowsHtml,
   liveMempoolSummaryHtml,
   liveMempoolRowsHtml,
+  liveRecentTxRowsHtml,
   liveMetaHtml,
 } from "../../client/live-render";
 
@@ -47,6 +48,12 @@ livePage.get("/", async (c) => {
       <div class="tablewrap"><table>
         <thead><tr><th>Tx</th><th>Sender</th><th class="num">Fee</th><th class="num">Size</th><th class="num">Fee/KB</th><th>First seen</th></tr></thead>
         <tbody id="live-mempool">${liveMempoolRowsHtml(live)}</tbody>
+      </table></div>
+      <div class="live-divider"></div>
+      <div class="panel-head"><h2>Recent block txs</h2><span class="live-hint">newest included first</span></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Tx</th><th>Block</th><th>Type</th><th>Sender</th><th class="num">Fee</th><th class="num">Size</th></tr></thead>
+        <tbody id="live-recent-txs">${liveRecentTxRowsHtml(live)}</tbody>
       </table></div>
     </div>
   </div>`;

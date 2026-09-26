@@ -33,6 +33,15 @@ export interface LiveMempoolTx {
   fee_per_kb: number;
 }
 
+export interface LiveRecentTx {
+  hash: string;
+  source: string;
+  fee: number;
+  size: number;
+  tx_type: string;
+  topoheight: number;
+}
+
 export interface LiveFees {
   low: number;
   medium: number;
@@ -90,6 +99,7 @@ export interface LiveData {
   window: LiveWindow;
   tips: string[];
   mempool: { total: number; transactions: LiveMempoolTx[]; valueFee: number; bytes: number };
+  recentTxs: LiveRecentTx[];
   peers: LivePeers | null;
   fees: LiveFees | null;
 }
@@ -258,6 +268,24 @@ export function liveMempoolRowsHtml(d: LiveData): string {
     <td class="num">${atomicPrecise(t.fee_per_kb)}</td>
     <td>${timeCell(t.first_seen)}</td>
   </tr>`).join("");
+}
+
+export function liveRecentTxRowsHtml(d: LiveData): string {
+  const txs = d.recentTxs ?? [];
+  if (!txs.length) {
+    return `<tr><td colspan="6" style="color:var(--text-dim)">${d.ok ? "No transactions in the recent blocks." : "Node data unavailable — retrying."}</td></tr>`;
+  }
+  return txs.map((t) => {
+    const type = esc(t.tx_type || "other");
+    return `<tr>
+      <td title="${esc(t.hash)}"><a href="/tx/${esc(t.hash)}">${esc(shortHash(t.hash))}</a></td>
+      <td><a href="/block/${t.topoheight}">${fmtInt(t.topoheight)}</a></td>
+      <td><span class="badge ${type}">${type}</span></td>
+      <td title="${esc(t.source)}"><a href="/account/${esc(t.source)}">${esc(shortHash(t.source, 6))}</a></td>
+      <td class="num">${atomicPrecise(t.fee)}</td>
+      <td class="num">${fmtInt(t.size)}</td>
+    </tr>`;
+  }).join("");
 }
 
 export function liveMetaHtml(d: LiveData): string {

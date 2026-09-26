@@ -9,6 +9,7 @@ import {
   liveBlocksRowsHtml,
   liveMempoolSummaryHtml,
   liveMempoolRowsHtml,
+  liveRecentTxRowsHtml,
   liveMetaHtml,
   type LiveData,
 } from "./live-render";
@@ -38,6 +39,7 @@ export function initLiveDashboard(): void {
     set("live-blocks", liveBlocksRowsHtml(d));
     set("live-mempool-summary", liveMempoolSummaryHtml(d));
     set("live-mempool", liveMempoolRowsHtml(d));
+    set("live-recent-txs", liveRecentTxRowsHtml(d));
     metaEl.innerHTML = liveMetaHtml(d);
     statusEl.innerHTML = d.ok ? '<span class="live-dot on"></span>live' : '<span class="live-dot off"></span>offline';
     // Rewrite time/hash styles in the freshly inserted nodes.

@@ -4,13 +4,15 @@
 
 import type { Env } from "./app";
 import { getInfo, rpc, type ChainInfo } from "./xelis";
-import type { LiveBlock, LiveData, LiveFees, LiveMempoolTx, LivePeers } from "../client/live-render";
+import type { LiveBlock, LiveData, LiveFees, LiveMempoolTx, LivePeers, LiveRecentTx } from "../client/live-render";
 
 // get_blocks_range_by_topoheight accepts at most a 20-topoheight span.
 const WINDOW = 20;         // newest tip blocks (unstable window)
 const STABLE_WINDOW = 24;  // stable blocks shown before the stability boundary
 const RPC_SPAN = 20;
 const MEMPOOL_LIMIT = 25;
+const RECENT_TX_LIMIT = 25; // txs pulled from the newest blocks for the live panel
+const TX_RPC_CHUNK = 20;    // get_transactions caps a single call at 20 hashes
 const TTL_MS = 3000;
 
 let cached: { at: number; data: LiveData } | null = null;
@@ -70,6 +72,61 @@ function toBlock(b: Record<string, unknown>, stable: number): LiveBlock {
   };
 }
 
+function txTypeOf(t: Record<string, unknown>): string {
+  const data = (t.data ?? {}) as Record<string, unknown>;
+  if (data.burn) return "burn";
+  if (data.invoke_contract) return "invoke_contract";
+  if (data.deploy_contract) return "deploy_contract";
+  if (t.multisig) return "multisig";
+  if (data.transfers) return "transfer";
+  return "other";
+}
+
+// Detail rows for the newest transactions included in the recent tip blocks,
+// newest first. Hashes come straight from the block summaries already fetched;
+// the node returns full txs in batches of 20.
+async function recentTxs(env: Env, blocks: Array<Record<string, unknown>>): Promise<LiveRecentTx[]> {
+  const want: Array<{ hash: string; topoheight: number }> = [];
+  for (let i = blocks.length - 1; i >= 0 && want.length < RECENT_TX_LIMIT; i--) {
+    const b = blocks[i];
+    const topo = num(b.topoheight);
+    const hashes = Array.isArray(b.txs_hashes) ? b.txs_hashes : [];
+    for (const h of hashes) {
+      want.push({ hash: String(h), topoheight: topo });
+      if (want.length >= RECENT_TX_LIMIT) break;
+    }
+  }
+  if (!want.length) return [];
+
+  const chunks: Array<Promise<Array<Record<string, unknown>>>> = [];
+  for (let i = 0; i < want.length; i += TX_RPC_CHUNK) {
+    const hashes = want.slice(i, i + TX_RPC_CHUNK).map((c) => c.hash);
+    chunks.push(
+      rpc<Array<Record<string, unknown>>>("get_transactions", { tx_hashes: hashes }, env.XELIS_NODE)
+        .catch(() => [] as Array<Record<string, unknown>>),
+    );
+  }
+  const results = await Promise.all(chunks);
+  const byHash = new Map<string, Record<string, unknown>>();
+  for (const list of results) {
+    for (const t of Array.isArray(list) ? list : []) {
+      if (t?.hash) byHash.set(String(t.hash), t);
+    }
+  }
+  return want.flatMap((c) => {
+    const t = byHash.get(c.hash);
+    if (!t) return [];
+    return [{
+      hash: c.hash,
+      source: String(t.source ?? ""),
+      fee: num(t.fee_paid ?? t.fee),
+      size: num(t.size),
+      tx_type: txTypeOf(t),
+      topoheight: c.topoheight,
+    }];
+  });
+}
+
 async function load(env: Env): Promise<LiveData> {
   const ts = Date.now();
   let info: ChainInfo;
@@ -87,6 +144,7 @@ async function load(env: Env): Promise<LiveData> {
       window: { count: 0, miners: 0, side: 0, sync: 0, avgSize: 0, feesBurned: 0 },
       tips: [],
       mempool: { total: 0, transactions: [], valueFee: 0, bytes: 0 },
+      recentTxs: [],
       peers: null,
       fees: null,
     };
@@ -147,6 +205,8 @@ async function load(env: Env): Promise<LiveData> {
     fee_per_kb: num(t.fee_per_kb),
   }));
 
+  const recentTxList = await recentTxs(env, Array.isArray(rawBlocks) ? rawBlocks : []);
+
   const peerList = rawPeers?.peers ?? [];
   const peers: LivePeers | null = rawPeers
     ? {
@@ -206,6 +266,7 @@ async function load(env: Env): Promise<LiveData> {
       valueFee: mempoolTxs.reduce((s, t) => s + t.fee, 0),
       bytes: mempoolTxs.reduce((s, t) => s + t.size, 0),
     },
+    recentTxs: recentTxList,
     peers,
     fees,
   };
