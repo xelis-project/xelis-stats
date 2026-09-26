@@ -610,6 +610,7 @@ export function initDag(): void {
     panned = false;
     canvas.setPointerCapture(e.pointerId);
     canvas.classList.add("grabbing");
+    canvas.classList.remove("hovering");
   });
 
   canvas.addEventListener("pointermove", (e) => {
@@ -622,6 +623,7 @@ export function initDag(): void {
       } else if (b) {
         positionHover(e.clientX, e.clientY);
       }
+      canvas.classList.toggle("hovering", !!b);
       return;
     }
     const dx = e.clientX - lastX;
@@ -640,15 +642,19 @@ export function initDag(): void {
     pointerId = -1;
     canvas.classList.remove("grabbing");
     try { canvas.releasePointerCapture(e.pointerId); } catch { /* already released */ }
-    if (!panned) select(hitTest(e.clientX, e.clientY));
+    const b = hitTest(e.clientX, e.clientY);
+    canvas.classList.toggle("hovering", !!b);
+    if (!panned) select(b);
   });
 
   canvas.addEventListener("pointercancel", () => {
     pointerId = -1;
     canvas.classList.remove("grabbing");
+    canvas.classList.remove("hovering");
   });
 
   canvas.addEventListener("pointerleave", () => {
+    canvas.classList.remove("hovering");
     if (hovered) {
       hovered = null;
       updateHover(0, 0);

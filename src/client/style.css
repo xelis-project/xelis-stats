@@ -1382,6 +1382,7 @@ body.layout-dag .dag-panel {
 body.layout-dag .dag-viewport { border-left: none; border-right: none; border-radius: 0; }
 .dag-viewport:fullscreen, .dag-viewport:-webkit-full-screen { height: 100% !important; border: none; border-radius: 0; }
 #dag-canvas { display: block; cursor: grab; }
+#dag-canvas.hovering { cursor: pointer; }
 #dag-canvas.grabbing { cursor: grabbing; }
 
 /* Floating toolbar over the top of the canvas */
