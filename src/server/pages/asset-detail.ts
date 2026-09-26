@@ -378,11 +378,11 @@ assetDetail.get("/asset/:id", async (c) => {
   const seriesJson = JSON.stringify({ txs: txsSeries, transfers: transfersSeries, supply: supplySeries }).replace(/</g, "\\u003c");
   const content = `${hero}
     <div class="grid-2">${overview}${creatorPanel || ownershipNote()}</div>
-    ${relatedPanel}
     ${activity}
     ${supplyPanel}
     ${txsPanel}
     ${holdingsPanel}
+    ${relatedPanel}
     <div class="tx-note">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
       <span>Asset metadata, supply and owner are public on Xelis. Transfer amounts and account balances are encrypted, so per-holder distribution cannot be derived; only contract-held balances are observable.</span>
