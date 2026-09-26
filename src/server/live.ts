@@ -4,7 +4,7 @@
 
 import type { Env } from "./app";
 import { getInfo, rpc, type ChainInfo } from "./xelis";
-import type { LiveBlock, LiveData, LiveFees, LiveMempoolTx } from "../client/live-render";
+import type { LiveBlock, LiveData, LiveFees, LiveMempoolTx, LivePeers } from "../client/live-render";
 
 // get_blocks_range_by_topoheight accepts at most a 20-topoheight span.
 const WINDOW = 20;
@@ -44,8 +44,10 @@ async function load(env: Env): Promise<LiveData> {
       lag: 0,
       hashrate: null,
       unstable: [],
+      window: { count: 0, miners: 0, side: 0, sync: 0, avgSize: 0, feesBurned: 0 },
       tips: [],
-      mempool: { total: 0, transactions: [] },
+      mempool: { total: 0, transactions: [], valueFee: 0, bytes: 0 },
+      peers: null,
       fees: null,
     };
   }
@@ -57,7 +59,7 @@ async function load(env: Env): Promise<LiveData> {
   // boundary is visible; otherwise show only the newest blocks at the tip.
   const from = lag > 0 && lag < WINDOW ? Math.max(1, stable - 1) : Math.max(1, top - (WINDOW - 1));
 
-  const [rawBlocks, rawMempool, rawRates, rawKb, rawTips] = await Promise.all([
+  const [rawBlocks, rawMempool, rawRates, rawKb, rawTips, rawPeers] = await Promise.all([
     from <= top
       ? rpc<Array<Record<string, unknown>>>("get_blocks_range_by_topoheight", { start_topoheight: from, end_topoheight: top }, env.XELIS_NODE).catch(() => [] as Array<Record<string, unknown>>)
       : Promise.resolve([] as Array<Record<string, unknown>>),
@@ -65,6 +67,7 @@ async function load(env: Env): Promise<LiveData> {
     rpc<Record<string, number>>("get_estimated_fee_rates", undefined, env.XELIS_NODE).catch(() => null),
     rpc<Record<string, number>>("get_estimated_fee_per_kb", undefined, env.XELIS_NODE).catch(() => null),
     rpc<string[]>("get_tips", undefined, env.XELIS_NODE).catch(() => [] as string[]),
+    rpc<{ peers?: Array<{ pruned_topoheight?: number | null }>; hidden_peers?: number }>("get_peers", undefined, env.XELIS_NODE).catch(() => null),
   ]);
 
   const unstable: LiveBlock[] = (Array.isArray(rawBlocks) ? rawBlocks : []).map((b) => {
@@ -82,10 +85,20 @@ async function load(env: Env): Promise<LiveData> {
       miner_reward: num(b.miner_reward),
       dev_reward: num(b.dev_reward),
       size: num(b.total_size_in_bytes),
+      feesBurned: num(b.total_fees_burned),
       tips: Array.isArray(b.tips) ? b.tips.map(String) : [],
       stable: topo <= stable,
     };
   });
+
+  const windowStats = {
+    count: unstable.length,
+    miners: new Set(unstable.map((b) => b.miner).filter(Boolean)).size,
+    side: unstable.filter((b) => b.block_type.toLowerCase() === "side").length,
+    sync: unstable.filter((b) => b.block_type.toLowerCase() === "sync").length,
+    avgSize: unstable.length ? unstable.reduce((s, b) => s + b.size, 0) / unstable.length : 0,
+    feesBurned: unstable.reduce((s, b) => s + b.feesBurned, 0),
+  };
 
   const mempoolTxs: LiveMempoolTx[] = (rawMempool?.transactions ?? []).map((t) => ({
     hash: String(t.hash ?? ""),
@@ -95,6 +108,15 @@ async function load(env: Env): Promise<LiveData> {
     size: num(t.size),
     fee_per_kb: num(t.fee_per_kb),
   }));
+
+  const peerList = rawPeers?.peers ?? [];
+  const peers: LivePeers | null = rawPeers
+    ? {
+        total: peerList.length,
+        hidden: num(rawPeers.hidden_peers),
+        pruned: peerList.filter((p) => p?.pruned_topoheight != null).length,
+      }
+    : null;
 
   const fees: LiveFees | null = rawRates
     ? {
@@ -137,8 +159,15 @@ async function load(env: Env): Promise<LiveData> {
     lag,
     hashrate,
     unstable,
+    window: windowStats,
     tips: Array.isArray(rawTips) ? rawTips.map(String) : [],
-    mempool: { total: num(rawMempool?.total), transactions: mempoolTxs },
+    mempool: {
+      total: num(rawMempool?.total),
+      transactions: mempoolTxs,
+      valueFee: mempoolTxs.reduce((s, t) => s + t.fee, 0),
+      bytes: mempoolTxs.reduce((s, t) => s + t.size, 0),
+    },
+    peers,
     fees,
   };
 }
