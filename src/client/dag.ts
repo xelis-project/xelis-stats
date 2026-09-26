@@ -83,14 +83,12 @@ export function initDag(): void {
   const nextBtn = $<HTMLButtonElement>("dag-next");
   const liveBtn = $<HTMLButtonElement>("dag-live");
   const fitBtn = $<HTMLButtonElement>("dag-fit");
-  const zinBtn = $<HTMLButtonElement>("dag-zin");
-  const zoutBtn = $<HTMLButtonElement>("dag-zout");
   const fsBtn = $<HTMLButtonElement>("dag-fs");
   const statusEl = $("dag-status");
   const loadingEl = $("dag-loading");
   const hoverEl = $("dag-hover");
   const detailEl = $("dag-detail");
-  if (!input || !goBtn || !prevBtn || !nextBtn || !liveBtn || !fitBtn || !zinBtn || !zoutBtn || !fsBtn || !statusEl || !loadingEl || !hoverEl || !detailEl) return;
+  if (!input || !goBtn || !prevBtn || !nextBtn || !liveBtn || !fitBtn || !fsBtn || !statusEl || !loadingEl || !hoverEl || !detailEl) return;
   const hover = hoverEl;
   const detail = detailEl;
   const status = statusEl;
@@ -707,8 +705,6 @@ export function initDag(): void {
     }
   });
   fitBtn.addEventListener("click", fitView);
-  zinBtn.addEventListener("click", () => zoomAt(W / 2, H / 2, 1.25));
-  zoutBtn.addEventListener("click", () => zoomAt(W / 2, H / 2, 0.8));
   fsBtn.addEventListener("click", () => {
     if (document.fullscreenElement) {
       void document.exitFullscreen().catch(() => { /* ignore */ });
