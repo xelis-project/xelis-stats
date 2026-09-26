@@ -41,20 +41,23 @@ livePage.get("/", async (c) => {
         <tbody id="live-blocks">${liveBlocksRowsHtml(live)}</tbody>
       </table></div>
     </div>
-    <div class="panel">
-      <div class="panel-head"><h2>Mempool</h2></div>
-      <div id="live-mempool-summary">${liveMempoolSummaryHtml(live)}</div>
-      <div class="live-divider"></div>
-      <div class="tablewrap"><table>
-        <thead><tr><th>Tx</th><th>Sender</th><th class="num">Fee</th><th class="num">Size</th><th class="num">Fee/KB</th><th>First seen</th></tr></thead>
-        <tbody id="live-mempool">${liveMempoolRowsHtml(live)}</tbody>
-      </table></div>
-      <div class="live-divider"></div>
-      <div class="panel-head"><h2>Recent block txs</h2><span class="live-hint">newest included first</span></div>
-      <div class="tablewrap"><table>
-        <thead><tr><th>Tx</th><th>Block</th><th>Type</th><th>Sender</th><th class="num">Fee</th><th class="num">Size</th></tr></thead>
-        <tbody id="live-recent-txs">${liveRecentTxRowsHtml(live)}</tbody>
-      </table></div>
+    <div class="live-col">
+      <div class="panel">
+        <div class="panel-head"><h2>Mempool</h2></div>
+        <div id="live-mempool-summary">${liveMempoolSummaryHtml(live)}</div>
+        <div class="live-divider"></div>
+        <div class="tablewrap scroll-y"><table>
+          <thead><tr><th>Tx</th><th>Sender</th><th class="num">Fee</th><th class="num">Size</th><th class="num">Fee/KB</th><th>First seen</th></tr></thead>
+          <tbody id="live-mempool">${liveMempoolRowsHtml(live)}</tbody>
+        </table></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Recent txs</h2><span class="live-hint">newest included first</span></div>
+        <div class="tablewrap scroll-y"><table>
+          <thead><tr><th>Tx</th><th>Block</th><th>Type</th><th>Sender</th><th class="num">Fee</th><th class="num">Size</th></tr></thead>
+          <tbody id="live-recent-txs">${liveRecentTxRowsHtml(live)}</tbody>
+        </table></div>
+      </div>
     </div>
   </div>`;
 

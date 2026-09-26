@@ -1337,6 +1337,10 @@ html.reduce-motion *::after {
 
 .live-split { align-items: start; }
 
+/* Right-hand column of the live split: mempool card stacked over recent txs. */
+.live-col { display: flex; flex-direction: column; }
+.live-col > .panel:last-child { margin-bottom: 0; }
+
 @media (max-width: 620px) {
   .live-mini-cards { grid-template-columns: 1fr 1fr; }
 }
