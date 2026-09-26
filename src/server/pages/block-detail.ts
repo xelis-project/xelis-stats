@@ -96,9 +96,18 @@ blockDetail.get("/block/:id", async (c) => {
   const pct = (v: number) => `${((v / splitSum) * 100).toFixed(1)}%`;
 
   const dim = (label: string) => `<span class="btn ghost disabled" aria-disabled="true">${label}</span>`;
+  // The indexed DB tip can lag the node. Treat a live block above maxTopo as
+  // reachable too, so Next keeps working while the collector catches up.
+  let hasNext = maxTopo === null || view.topo < maxTopo;
+  if (!hasNext) {
+    try {
+      const info = await rpc<{ topoheight?: number }>("get_info", undefined, c.env.XELIS_NODE);
+      hasNext = num(info?.topoheight) > view.topo;
+    } catch { /* node unreachable: keep disabled */ }
+  }
   const nav = `<div class="blk-nav">
     ${view.topo > 0 ? `<a class="btn ghost" href="/block/${view.topo - 1}" title="Previous block">${icons.chevronLeft} Prev</a>` : dim(`${icons.chevronLeft} Prev`)}
-    ${maxTopo === null || view.topo < maxTopo ? `<a class="btn ghost" href="/block/${view.topo + 1}" title="Next block">Next ${icons.chevronRight}</a>` : dim(`Next ${icons.chevronRight}`)}
+    ${hasNext ? `<a class="btn ghost" href="/block/${view.topo + 1}" title="Next block">Next ${icons.chevronRight}</a>` : dim(`Next ${icons.chevronRight}`)}
   </div>`;
 
   const typeBadge = `<span class="badge ${view.type.toLowerCase()}">${view.type}</span>`;

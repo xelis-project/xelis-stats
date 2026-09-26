@@ -317,6 +317,8 @@ th.sortable a:focus-visible { outline: 1px solid var(--mint); outline-offset: 2p
 .btn:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(2, 255, 207, 0.3); }
 .btn.ghost { background: hsla(0, 0%, 100%, 0.05); color: var(--text); border: 1px solid hsla(0, 0%, 100%, 0.18); }
 .btn.ghost[disabled] { opacity: 0.4; cursor: default; }
+.btn.disabled, .btn[disabled] { opacity: 0.4; cursor: default; pointer-events: none; }
+.btn.disabled:hover, .btn[disabled]:hover { transform: none; box-shadow: none; }
 select, .period {
   background: hsla(0, 0%, 100%, 0.04); color: var(--mint);
   border: 1px solid rgba(2, 255, 207, 0.3); border-radius: 0.5rem;
