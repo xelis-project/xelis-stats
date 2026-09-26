@@ -43,6 +43,10 @@ dag.get("/dag", async (c) => {
 
       <div class="dag-bar">
         <h1 class="dag-title">DAG Viewer${context ? `<span class="dag-sub">${context}</span>` : ""}</h1>
+        <p class="dag-hint">Drag to pan · scroll to zoom · click a block for details</p>
+      </div>
+
+      <div class="dag-controls">
         <div class="dag-field">
           <label for="dag-input">Topoheight</label>
           <input type="number" id="dag-input" min="0" step="1" inputmode="numeric" placeholder="latest" value="${topo > 0 ? topo : ""}" />
@@ -71,7 +75,6 @@ dag.get("/dag", async (c) => {
       <div class="dag-detail" id="dag-detail" hidden></div>
       <div class="dag-hover" id="dag-hover" hidden></div>
       <div class="dag-loading" id="dag-loading"><span class="dag-spinner" aria-hidden="true"></span>Loading blocks…</div>
-      <p class="dag-hint">Drag to pan · scroll to zoom · click a block for details</p>
     </div>
   </div>
   <noscript><div class="panel"><h1>DAG Viewer</h1><p style="color:var(--text-dim)">The interactive DAG needs JavaScript. Browse the <a href="/blocks">block list</a> instead.</p></div></noscript>`;

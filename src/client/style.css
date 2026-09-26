@@ -1385,12 +1385,23 @@ body.layout-dag .dag-viewport { border-left: none; border-right: none; border-ra
 #dag-canvas.hovering { cursor: pointer; }
 #dag-canvas.grabbing { cursor: grabbing; }
 
-/* Floating toolbar over the top of the canvas */
+/* Floating title bar over the top of the canvas */
 .dag-bar {
   position: absolute; top: 0; left: 0; right: 0; z-index: 7;
-  display: flex; align-items: flex-end; gap: 0.6rem; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap;
   padding: 1rem 1.2rem;
   background: linear-gradient(180deg, rgba(4, 10, 12, 0.88), rgba(4, 10, 12, 0.4) 68%, transparent);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+
+/* Floating controls over the bottom-right of the canvas */
+.dag-controls {
+  position: absolute; right: 0.9rem; bottom: 0.9rem; z-index: 7;
+  max-width: calc(100% - 1.8rem);
+  display: flex; align-items: flex-end; gap: 0.6rem; flex-wrap: wrap;
+  padding: 0.8rem 0.9rem;
+  background: color-mix(in srgb, var(--panel-solid) 80%, transparent);
+  border: 1px solid var(--border); border-radius: 0.7rem;
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
 }
 .dag-title {
@@ -1407,8 +1418,8 @@ body.layout-dag .dag-viewport { border-left: none; border-right: none; border-ra
   padding: 0.6rem 0.8rem; font-size: 1.25rem; font-family: var(--mono); font-weight: 700;
 }
 .dag-field input::placeholder { color: var(--text-dim); font-weight: 400; }
-.dag-bar .btn { height: 3.6rem; min-width: 3.6rem; padding: 0 0.9rem; justify-content: center; line-height: 1; }
-.dag-bar .icon-btn { width: 3.6rem; padding: 0; }
+.dag-controls .btn { height: 3.6rem; min-width: 3.6rem; padding: 0 0.9rem; justify-content: center; line-height: 1; }
+.dag-controls .icon-btn { width: 3.6rem; padding: 0; }
 .dag-sep { align-self: stretch; width: 1px; background: var(--border); margin: 0.2rem 0.3rem; }
 .dag-live-btn.on { color: var(--mint); border-color: var(--border-hover); background: rgba(2, 255, 207, 0.07); }
 .dag-live-dot { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: var(--text-dim); flex: none; }
@@ -1452,7 +1463,7 @@ body.layout-dag .dag-viewport { border-left: none; border-right: none; border-ra
 .dag-key-dash { width: 1.6rem; height: 0; border-top: 2px dashed var(--gold); align-self: center; }
 
 .dag-hint {
-  position: absolute; right: 0.9rem; bottom: 0.6rem; z-index: 5; pointer-events: none;
+  margin-left: auto; align-self: center;
   font-size: 1.05rem; color: var(--text-dim); text-align: right;
 }
 
