@@ -105,8 +105,14 @@ docs.get("/status", async (c) => {
         <td style="white-space:normal;color:var(--text-dim)">${r.last_error ? escHtml(r.last_error) : ""}</td>
       </tr>`).join("")
     : '<tr><td colspan="6" style="color:var(--text-dim)">No cron runs recorded yet.</td></tr>';
+  // "stalled" only means no run was *recorded* recently; spell out what that
+  // implies so the badge isn't mistaken for a single failing job.
+  const cronNote = stalled
+    ? `<p style="color:var(--danger);margin-top:.75rem">Stalled: no scheduled invocation has been recorded in over 10 minutes, but the cron trigger is configured to run every 2 minutes. This usually means the trigger isn't firing (check the deployed Worker's cron triggers) or <span class="mono">handleCron</span> is failing before it can write <span class="mono">cron_jobs</span> (check <span class="mono">wrangler tail</span> for <span class="mono">cron monitor:</span> errors).</p>`
+    : "";
   const cronPanel = `<div class="panel" style="margin-top:1rem"><h2>Scheduled jobs ${cronHealth}</h2>
     <div class="tablewrap"><table><thead><tr><th>Job</th><th>Status</th><th>Last run</th><th>Duration</th><th>Fail streak</th><th>Last error</th></tr></thead><tbody>${cronRows}</tbody></table></div>
+    ${cronNote}
     <p style="color:var(--text-dim);margin-top:.75rem">Latest invocation ${newest ? ago(newest) : "—"} · 7-day run history at <span class="mono">/api/cron</span></p>
   </div>`;
 
