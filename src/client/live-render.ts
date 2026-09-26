@@ -97,6 +97,10 @@ function card(label: string, value: string, sub: string): string {
   return `<div class="card"><div class="label">${label}</div><div class="value">${value}</div><div class="sub">${sub}</div></div>`;
 }
 
+function mini(label: string, value: string, sub: string): string {
+  return `<div class="live-mini"><span class="label">${label}</span><span class="value">${value}</span><span class="sub">${sub}</span></div>`;
+}
+
 export function liveStatsHtml(d: LiveData): string {
   const i = d.info;
   if (!i) {
@@ -113,9 +117,6 @@ export function liveStatsHtml(d: LiveData): string {
   return [
     card("Topoheight", fmtInt(i.topoheight), `height ${fmtInt(i.height)} · ${unstableShown} unstable shown`),
     card("Stable boundary", fmtInt(i.stable_topoheight), `lag ${fmtInt(d.lag)} topoheights`),
-    card("Mempool", fmtInt(i.mempool_size), "pending transactions"),
-    card("Mempool value", `${atomic(d.mempool.valueFee)} XEL`, "sum of pending fees"),
-    card("Mempool size", fmtBytes(d.mempool.bytes), "pending payload bytes"),
     card("Difficulty", fmt(i.difficulty), d.hashrate ? `~${fmt(d.hashrate)} H/s estimated` : "hashrate unavailable"),
     card("Block time", blockTime ? `${blockTime.toFixed(1)}s` : "—", target ? `target ${target.toFixed(1)}s` : "target unknown"),
     card("Block reward", `${atomic(i.block_reward)} XEL`, `miner ${atomic(i.miner_reward)} + dev ${atomic(i.dev_reward)}`),
@@ -190,9 +191,13 @@ function feeChip(label: string, value: number, accent = false): string {
 }
 
 export function liveMempoolSummaryHtml(d: LiveData): string {
-  const total = d.mempool.total;
   if (!d.ok) return `<p class="live-empty">Node data unavailable.</p>`;
-  if (total === 0) return `<p class="live-empty">Mempool is empty — no pending transactions.</p>`;
+  const { total, transactions, valueFee, bytes } = d.mempool;
+  const cards = `<div class="live-mini-cards">
+    ${mini("Pending", fmtInt(total), total === 1 ? "transaction" : "transactions")}
+    ${mini("Value", `${atomic(valueFee)} XEL`, "sum of fees")}
+    ${mini("Size", fmtBytes(bytes), "payload bytes")}
+  </div>`;
   const fees = d.fees;
   const rates = fees
     ? `<div class="live-feerates">
@@ -202,7 +207,10 @@ export function liveMempoolSummaryHtml(d: LiveData): string {
         ${fees.base_fee_per_kb != null ? `<div class="live-fee"><span class="live-fee-label">Base</span><span class="live-fee-value">${atomicPrecise(fees.base_fee_per_kb)} XEL/KB</span></div>` : ""}
       </div>`
     : "";
-  return `<div class="live-mempool-head">${total === 1 ? "1 pending transaction" : `${fmtInt(total)} pending transactions`} · showing newest ${fmtInt(d.mempool.transactions.length)}</div>${rates}`;
+  const note = total > 0
+    ? `<div class="live-mempool-head">Showing newest ${fmtInt(transactions.length)}${total > transactions.length ? ` of ${fmtInt(total)}` : ""}</div>`
+    : `<p class="live-empty">Mempool is empty — no pending transactions.</p>`;
+  return `${cards}${rates}${note}`;
 }
 
 export function liveMempoolRowsHtml(d: LiveData): string {

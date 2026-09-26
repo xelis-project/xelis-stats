@@ -1305,6 +1305,15 @@ html.reduce-motion *::after {
 .badge.unstable { color: var(--gold); border-color: rgba(245, 217, 95, 0.35); border-style: dashed; }
 
 /* Mempool fee-rate chips */
+.live-mini-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; margin-bottom: 1.2rem; }
+.live-mini {
+  display: flex; flex-direction: column; gap: 0.2rem; min-width: 0;
+  padding: 0.8rem 1rem; border-radius: 0.7rem;
+  border: 1px solid var(--border); background: hsla(0, 0%, 100%, 0.04);
+}
+.live-mini .label { font-size: 1rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-dim); font-weight: 700; }
+.live-mini .value { font-size: 1.6rem; font-weight: 700; color: var(--mint); font-variant-numeric: tabular-nums; word-break: break-all; }
+.live-mini .sub { font-size: 1.05rem; color: var(--text-dim2); }
 .live-mempool-head { color: var(--text-dim); font-size: 1.25rem; margin-bottom: 1rem; }
 .live-feerates { display: flex; flex-wrap: wrap; gap: 0.8rem; margin-bottom: 1.2rem; }
 .live-fee {
@@ -1316,6 +1325,10 @@ html.reduce-motion *::after {
 .live-fee-value { font-family: var(--mono); font-size: 1.2rem; color: var(--mint); }
 
 .live-split { align-items: start; }
+
+@media (max-width: 620px) {
+  .live-mini-cards { grid-template-columns: 1fr 1fr; }
+}
 
 @keyframes livepulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
