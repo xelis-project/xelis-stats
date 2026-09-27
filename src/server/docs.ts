@@ -94,7 +94,15 @@ docs.get("/status", async (c) => {
       : failing
         ? `<span class="badge fail">${failing} failing</span>`
         : '<span class="badge ok">healthy</span>';
-  const ago = (ts: number) => `${Math.max(0, Math.round((Date.now() - Number(ts)) / 1000))}s ago`;
+  const ago = (ts: number) => {
+    const s = Math.max(0, Math.round((Date.now() - Number(ts)) / 1000));
+    if (s < 60) return `${s}s ago`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ${m % 60}m ago`;
+    return `${Math.floor(h / 24)}d ${h % 24}h ago`;
+  };
   const cronRows = cronJobs.length
     ? cronJobs.map((r) => `<tr>
         <td class="mono">${escHtml(r.job)}</td>
