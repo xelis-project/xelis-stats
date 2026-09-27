@@ -80,7 +80,7 @@ charts.get("/charts", async (c) => {
 
   const content = `
     <div class="panel">
-      <div style="display:flex;gap:0.8rem;margin-bottom:1rem;align-items:center;flex-wrap:wrap">
+      <div class="chart-filters">
         <select id="sel-metric" title="Metric">${metricOpts}</select>
         <select id="sel-feestat" title="Fee statistic" ${FEE_METRICS[metric] ? "" : "hidden"}>${feeStatOpts}</select>
         <select id="sel-range" title="Period">${rangeOpts}</select>

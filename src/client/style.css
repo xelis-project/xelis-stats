@@ -375,6 +375,27 @@ label.chk input:focus-visible,
 }
 
 /* Charts */
+/* Filter bar: every control (selects, period inputs, cum/log toggles, CSV
+   button) shares one height and font size so the row lines up cleanly. */
+.chart-filters { display: flex; gap: 0.8rem; margin-bottom: 1rem; align-items: center; flex-wrap: wrap; }
+.chart-filters select,
+.chart-filters .period,
+.chart-filters .btn,
+.chart-filters label.chk {
+  box-sizing: border-box; height: 3.4rem; padding-top: 0; padding-bottom: 0;
+  display: inline-flex; align-items: center; font-size: 1.25rem; line-height: 1;
+}
+.chart-filters .btn { padding-left: 1.6rem; padding-right: 1.6rem; }
+.chart-filters label.chk {
+  padding-left: 0.9rem; padding-right: 0.9rem;
+  border: 1px solid hsla(0, 0%, 100%, 0.18); border-radius: 0.7rem;
+  background: hsla(0, 0%, 100%, 0.05);
+}
+.chart-filters label.chk:hover { border-color: var(--border-hover); box-shadow: 0 0 6px var(--mint-glow); }
+.chart-filters label.chk:has(input:checked) {
+  color: var(--mint); border-color: rgba(2, 255, 207, 0.5); background: rgba(2, 255, 207, 0.08);
+}
+
 .chart { width: 100%; height: 24rem; }
 
 /* fixed-height chart container: overlay the uPlot legend so it can't feed
