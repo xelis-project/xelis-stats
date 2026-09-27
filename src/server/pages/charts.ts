@@ -19,7 +19,7 @@ export const CHART_METRICS: Array<[string, string]> = [
   ["contract-invokes", "Contract invokes"], ["contract-gas", "Contract gas"], ["contract-deploys", "Contract deploys"],
   ["active-contracts", "Active contracts"],
   ["price", "XEL price"], ["quote-volume", "Quote volume"],
-  ["miner-revenue", "Miner revenue"], ["miner-rev-usd", "Miner revenue (USDT)"], ["hashprice", "Hashprice (USD/TH/day)"],
+  ["miner-revenue", "Miner revenue"], ["miner-rev-usd", "Miner revenue (USDT)"], ["hashprice", "Hashprice (USD/MH/day)"],
   ["block-time", "Block time"], ["nakamoto", "Nakamoto coefficient"], ["gini", "Production Gini"], ["encrypted", "Encrypted txs"],
   ["mempool", "Mempool"], ["peers", "Peer count"], ["peers-pruned", "Pruned peers"],
 ];

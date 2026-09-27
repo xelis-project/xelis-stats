@@ -134,14 +134,14 @@ const CATALOG: CatalogItem[] = [
   { key: "stat-exchanges", kind: "stat", field: "exchanges", label: "Exchanges", desc: "Active market feeds", w: 3, h: 2 },
   { key: "stat-reward", kind: "stat", field: "reward", label: "Block reward", desc: "Miner + dev reward per block", w: 3, h: 2 },
   { key: "stat-peers", kind: "stat", field: "peers", label: "Peers", desc: "Connected peers (2-min snapshot)", w: 3, h: 2 },
-  { key: "stat-hashprice", kind: "stat", field: "hashprice", label: "Hashprice", desc: "Miner revenue per TH/s per day", w: 3, h: 2 },
+  { key: "stat-hashprice", kind: "stat", field: "hashprice", label: "Hashprice", desc: "Miner revenue per MH/s per day", w: 3, h: 2 },
 
   { key: "chart-txs", kind: "chart", metric: "txs", label: "Transactions / day", desc: "Daily transaction count", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-price", kind: "chart", metric: "price", label: "XEL price", desc: "Median USDT quote over time", range: "30d", interval: "day", w: 6, h: 5 },
   { key: "chart-active-accounts", kind: "chart", metric: "active-accounts", label: "Active accounts", desc: "Distinct senders per bucket", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-hashrate", kind: "chart", metric: "hashrate", label: "Hashrate", desc: "Difficulty-based estimate", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-difficulty", kind: "chart", metric: "difficulty", label: "Difficulty", desc: "Average network difficulty", range: "90d", interval: "day", w: 6, h: 5 },
-  { key: "chart-hashprice", kind: "chart", metric: "hashprice", label: "Hashprice", desc: "Miner revenue per TH/s per day (USD)", range: "90d", interval: "day", w: 6, h: 5 },
+  { key: "chart-hashprice", kind: "chart", metric: "hashprice", label: "Hashprice", desc: "Miner revenue per MH/s per day (USD)", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-miners", kind: "chart", metric: "miners", label: "Unique miners", desc: "Distinct mining addresses", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-fees", kind: "chart", metric: "fees", label: "Average fee", desc: "Mean fee per transaction", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-supply", kind: "chart", metric: "supply", label: "Supply", desc: "Circulating supply", range: "1y", interval: "week", w: 6, h: 5 },
@@ -204,7 +204,7 @@ const EXPLAIN: Record<string, string> = {
   "stat-blocktime": "Recent average interval between blocks compared with the protocol target, so you can see whether the network is running fast or slow.",
   "stat-reward": "Total reward paid per block, split between the miner reward and the developer reward.",
   "stat-peers": "Connected peers counted from the periodic peer snapshot, refreshed roughly every two minutes.",
-  "stat-hashprice": "The latest rolled-up day's miner revenue (USD) divided by that day's estimated hashrate, expressed per terahash per day. Because the network hashrate estimate is small, the absolute figure is large; read it as a trend rather than a hardware quote.",
+  "stat-hashprice": "The latest rolled-up day's miner revenue (USD) divided by that day's estimated hashrate, expressed per megahash per day. XEL's network hashrate is small (tens of MH/s), so it is quoted per MH/s rather than the per-terahash convention used by large chains.",
   // charts
   "chart-txs": "Every indexed transaction is counted per day and summed across the bucket.",
   "chart-price": "Median USDT quote across connected exchanges. Buckets with no market coverage are omitted rather than zero-filled.",
@@ -231,7 +231,7 @@ const EXPLAIN: Record<string, string> = {
   "chart-peers": "Average number of connected peers from periodic peer snapshots.",
   "chart-peers-pruned": "Average number of peers advertising pruned mode (they do not retain full history).",
   "chart-difficulty": "Average network difficulty per bucket, computed from every block in the bucket. Rising difficulty means more mining effort is required; it moves inversely with observed block time.",
-  "chart-hashprice": "Daily miner revenue in USD divided by the estimated hashrate, scaled to USD per terahash per day. It combines emission, price and hashrate into a single miner-profitability trend.",
+  "chart-hashprice": "Daily miner revenue in USD divided by the estimated hashrate, scaled to USD per megahash per day. It combines emission, price and hashrate into a single miner-profitability trend.",
   "chart-active-contracts": "Number of distinct contracts that had at least one invoke or deploy in the bucket, from the daily contract rollup. A rising line means more contracts are being used.",
   // comparisons
   "compare-price-volume": "Median price and summed USDT volume on one chart. The y-axis is logarithmic because trading volume dwarfs the price.",
@@ -571,7 +571,7 @@ function statValue(field: string | undefined, s: Summary): { value: string; sub:
       return { value: label, sub: Number.isFinite(bytes) ? `${fmtInt(bytes)} bytes on disk` : "node did not report size" };
     }
     case "peers": return { value: fmtInt(s.peers ?? NaN), sub: `${fmtInt(s.peers ?? 0)} connected peers` };
-    case "hashprice": return { value: s.hashprice ? `$${fmt(s.hashprice, 2)}` : "—", sub: "miner revenue per TH/s per day" };
+    case "hashprice": return { value: s.hashprice ? `$${fmt(s.hashprice, 2)}` : "—", sub: "miner revenue per MH/s per day" };
     case "supply": {
       const circ = (s.supply?.circulating ?? 0) / 1e8;
       const max = (s.supply?.max ?? 0) / 1e8;

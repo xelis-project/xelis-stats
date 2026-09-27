@@ -20,7 +20,7 @@ const METRICS: Record<string, { table: string; col: string; agg?: "sum" | "avg" 
   hashrate: { table: "daily_stats", col: "hashrate", agg: "avg" },
   difficulty: { table: "difficulty", col: "", agg: "avg" },
   "cum-difficulty": { table: "cum-difficulty", col: "", agg: "max" },
-  // daily revenue (USD) per unit of estimated hashrate, scaled to USD per TH/day
+  // daily revenue (USD) per unit of estimated hashrate, scaled to USD per MH/day
   hashprice: { table: "hashprice", col: "", agg: "avg" },
   // fee columns hold atomic XEL; report whole XEL
   fees: { table: "daily_stats", col: "avg_fee", agg: "avg", div: 1e8 },
@@ -377,7 +377,7 @@ history.get("/api/history/:metric", async (c) => {
     } catch { rows = []; }
   } else if (spec.table === "hashprice") {
     // Daily miner revenue (USD) divided by the estimated hashrate, scaled to
-    // USD per TH/s per day. Uses the same hashrate estimate as the hashrate
+    // USD per MH/s per day. Uses the same hashrate estimate as the hashrate
     // chart, so the two stay consistent.
     try {
       const conds: string[] = [];
@@ -403,7 +403,7 @@ history.get("/api/history/:metric", async (c) => {
         if (!p || !hr || !rev) continue;
         const k = groupKey(r.date);
         const list = buckets.get(k) ?? [];
-        list.push((rev / 1e8) * p / hr * 1e12);
+        list.push((rev / 1e8) * p / hr * 1e6);
         buckets.set(k, list);
       }
       rows = [...buckets.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([bk, vals]) => ({

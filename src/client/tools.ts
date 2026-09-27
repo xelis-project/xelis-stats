@@ -147,7 +147,7 @@ function renderHashrate(): void {
   const netDay = revDay === null ? null : revDay - costDay;
   const netMonth = netDay === null ? null : netDay * 30;
 
-  const hashprice = summary.hashprice ?? (price > 0 && hashrate > 0 ? (grossXelDay * price) / (hashrate / 1e12) : null);
+  const hashprice = summary.hashprice ?? (price > 0 && hashrate > 0 ? (grossXelDay * price) / (hashrate / 1e6) : null);
   const netCls = netDay === null ? "" : netDay >= 0 ? "net pos" : "net neg";
   const netValue = netDay === null ? "—" : `${netDay < 0 ? "-" : ""}${fmtUsd(Math.abs(netDay))}`;
 
@@ -169,7 +169,7 @@ function renderHashrate(): void {
       ${row("Power cost / day", fmtUsd(costDay))}
       ${row("Net / day", netValue, netCls)}
       ${row("Net / month", netMonth === null ? "—" : `${netMonth < 0 ? "-" : ""}${fmtUsd(Math.abs(netMonth))}`)}
-      ${row("Hashprice", hashprice === null ? "—" : `${fmtUsd(hashprice)} /TH/day`)}
+      ${row("Hashprice", hashprice === null ? "—" : `${fmtUsd(hashprice)} /MH/day`)}
     </div>
     <p class="calc-status">Network ${summary.network ?? "—"} · difficulty ${fmt(difficulty, 0)} · block time ${fmt(blockTime, 2)}s · updated ${ago(summary.timestamp ?? 0)}</p>`;
 }
