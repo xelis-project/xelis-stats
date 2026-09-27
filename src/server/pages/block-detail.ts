@@ -208,40 +208,6 @@ blockDetail.get("/block/:id", async (c) => {
 
   const hasTxHashes = view.txHashes.length > 0;
 
-  // Legacy block rows predate txs_hashes storage (the column is NULL) even
-  // though their transactions are fully indexed in tx_index by block_topo.
-  // Fall back to that index so those blocks still list their transactions.
-  let txEntries = view.txHashes;
-  if (!hasTxHashes && txCount > 0) {
-    try {
-      const sql = "SELECT hash, tx_type, fee, size, sender FROM tx_index WHERE block_topo = ? ORDER BY hash LIMIT 500";
-      const rows = blockTarget
-        ? (await runOn(c.env, blockTarget, sql, [view.topo])) as Array<{ hash: string; tx_type: string; fee: number; size: number; sender: string }>
-        : (await db.prepare(sql).bind(view.topo).all<{ hash: string; tx_type: string; fee: number; size: number; sender: string }>().then((r) => r.results ?? []));
-      for (const r of rows) known.set(r.hash, r);
-      txEntries = rows.map((r) => r.hash);
-    } catch { /* db unavailable */ }
-  }
-
-  // Some legacy blocks were imported without txs_hashes and were never
-  // tx-enriched (enrichment is forward-only), so neither the hashes nor the
-  // rows exist locally. The node keeps full history, so fetch the hashes there
-  // and persist them best-effort to avoid a round-trip on later views.
-  if (txEntries.length === 0 && txCount > 0) {
-    try {
-      const b = await rpc<Record<string, unknown>>("get_block_at_topoheight", { topoheight: view.topo }, c.env.XELIS_NODE);
-      const hashes = arr(b?.txs_hashes);
-      if (hashes.length) {
-        txEntries = hashes;
-        try {
-          const sql = "UPDATE blocks SET txs_hashes = ? WHERE topoheight = ?";
-          if (blockTarget && blockTarget.kind === "shard") await runOn(c.env, blockTarget, sql, [JSON.stringify(hashes), view.topo]);
-          else await db.prepare(sql).bind(JSON.stringify(hashes), view.topo).run();
-        } catch { /* best-effort persistence */ }
-      }
-    } catch { /* node unreachable */ }
-  }
-
   // contract executions scheduled to run at this topoheight (live from node)
   type Sched = { hash: string; contract: string; chunk_id: number; max_gas: number; kind: Record<string, unknown> };
   let scheduled: Sched[] = [];
@@ -272,8 +238,8 @@ blockDetail.get("/block/:id", async (c) => {
          <tbody>${schedRows}</tbody>
        </table></div></div>`
     : "";
-  const txRows = txEntries.length
-    ? txEntries.map((h) => {
+  const txRows = hasTxHashes
+    ? view.txHashes.map((h) => {
         const t = known.get(h);
         return `<tr>
           <td><a class="mono" href="/tx/${esc(h)}">${esc(shortHash(h, 12))}</a></td>
@@ -287,8 +253,8 @@ blockDetail.get("/block/:id", async (c) => {
       }).join("")
     : `<tr><td colspan="5" style="color:var(--text-dim)">No transactions in this block${txCount > 0 ? " (hashes not stored)" : ""}.</td></tr>`;
 
-  const txs = txCount > 0 || txEntries.length
-    ? `<div class="panel"><h2>Transactions (${fmtInt(txEntries.length || txCount)})</h2><div class="tablewrap"><table>
+  const txs = txCount > 0 || hasTxHashes
+    ? `<div class="panel"><h2>Transactions (${fmtInt(hasTxHashes ? view.txHashes.length : txCount)})</h2><div class="tablewrap"><table>
         <thead><tr><th>Hash</th><th>Type</th><th>Sender</th><th class="num">Fee (XEL)</th><th class="num">Size</th></tr></thead>
         <tbody>${txRows}</tbody></table></div></div>`
     : "";
