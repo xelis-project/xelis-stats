@@ -203,6 +203,7 @@ function renderClusters(host: HTMLElement, svgEl: SVGSVGElement, byCode: Map<str
   const layer = document.createElementNS(SVG_NS, "g");
   layer.setAttribute("class", "cluster-layer");
   const tip = attachTooltip(host);
+  tip.classList.add("map-tip-list");
   const maxCluster = Math.max(...clusters.map((c) => c.peers));
   const unit = usingCities ? "cities" : "countries";
 
@@ -215,15 +216,18 @@ function renderClusters(host: HTMLElement, svgEl: SVGSVGElement, byCode: Map<str
     node.setAttribute("tabindex", "0");
 
     const members = [...cl.members].sort((a, b) => b.peers - a.peers);
-    const names = members.slice(0, 3).map((m) => m.name).join(", ") + (members.length > 3 ? ` +${members.length - 3} more` : "");
-    const text = members.length > 1
-      ? `${members.length} ${unit} · ${fmtInt(cl.peers)} peers — ${names}`
-      : `${members[0].name} — ${fmtInt(cl.peers)} peer${cl.peers === 1 ? "" : "s"}`;
-    node.setAttribute("aria-label", text);
+    const memberLabel = (m: Pt) => `${m.name} — ${fmtInt(m.peers)} peer${m.peers === 1 ? "" : "s"}`;
+    const label = members.length > 1
+      ? `${members.length} ${unit} · ${fmtInt(cl.peers)} peers\n${members.map(memberLabel).join("\n")}`
+      : memberLabel(members[0]);
+    const aria = members.length > 1
+      ? `${members.length} ${unit} · ${fmtInt(cl.peers)} peers — ${members.map((m) => m.name).join(", ")}`
+      : memberLabel(members[0]);
+    node.setAttribute("aria-label", aria);
     const title = document.createElementNS(SVG_NS, "title");
-    title.textContent = text;
+    title.textContent = aria;
     node.appendChild(title);
-    bindTooltip(node, host, tip, text);
+    bindTooltip(node, host, tip, label);
     layer.appendChild(node);
   }
   svgEl.appendChild(layer);

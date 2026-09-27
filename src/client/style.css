@@ -1774,6 +1774,11 @@ html.dag-fullscreen .dag-viewport { border: none; border-radius: 0; }
   white-space: nowrap;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
+.map-tip.map-tip-list {
+  white-space: pre-line;
+  text-align: left;
+  max-width: 32rem;
+}
 .map-legend {
   display: flex;
   align-items: center;
