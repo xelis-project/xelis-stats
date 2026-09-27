@@ -323,7 +323,7 @@ assetDetail.get("/asset/:id", async (c) => {
   const totalPages = Math.max(1, Math.ceil(histTotal / PAGE_SIZE));
   const txsPanel = `<div class="panel">
     <div class="panel-head">
-      <h2>Transactions <span style="color:var(--text-dim)">${fmtInt(histTotal)} involving this asset</span></h2>
+      <h2>Transactions <span style="color:var(--text-dim)">${fmtInt(histTotal)}</span></h2>
       ${filterButton("f-asset-txs", fActive)}
       ${fPop}
     </div>
