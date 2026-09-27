@@ -141,22 +141,31 @@ network.get("/network", async (c) => {
       }).join("")
     : emptyRow(4);
 
-  const locBase = mappedTotal || total;
-  const locationRows = cities.length
-    ? cities.map((r, i) => {
-        const code = (r.country_code ?? "").trim();
-        const label = code
-          ? `${esc(r.city)} <span class="badge">${esc(code.toUpperCase())}</span>`
-          : `${esc(r.city)} <span class="badge livesrc">unresolved</span>`;
-        const share = locBase ? (num(r.peers) / locBase) * 100 : 0;
-        return `<tr>
-          <td class="num">${i + 1}</td>
-          <td>${label}</td>
-          <td class="num">${fmtInt(num(r.peers))}</td>
-          <td class="num">${share.toFixed(1)}%</td>
-        </tr>`;
-      }).join("")
-    : countryRows;
+  const cityPeers = cities.reduce((sum, r) => sum + num(r.peers), 0);
+  const unknownCity = Math.max(0, total - cityPeers);
+  const cityRows = cities.map((r, i) => {
+    const code = (r.country_code ?? "").trim();
+    const label = code
+      ? `${esc(r.city)} <span class="badge">${esc(code.toUpperCase())}</span>`
+      : `${esc(r.city)} <span class="badge livesrc">unresolved</span>`;
+    const share = total ? (num(r.peers) / total) * 100 : 0;
+    return `<tr>
+      <td class="num">${i + 1}</td>
+      <td>${label}</td>
+      <td class="num">${fmtInt(num(r.peers))}</td>
+      <td class="num">${share.toFixed(1)}%</td>
+    </tr>`;
+  });
+  if (unknownCity > 0) {
+    const share = total ? (unknownCity / total) * 100 : 0;
+    cityRows.push(`<tr>
+      <td class="num">${cities.length + 1}</td>
+      <td>Unknown <span class="badge livesrc">unresolved</span></td>
+      <td class="num">${fmtInt(unknownCity)}</td>
+      <td class="num">${share.toFixed(1)}%</td>
+    </tr>`);
+  }
+  const locationRows = cityRows.length ? cityRows.join("") : emptyRow(4);
 
   const versionRows = versions.length
     ? versions.map((v) => `<tr>
@@ -206,12 +215,12 @@ network.get("/network", async (c) => {
       </div>
       <div class="panel">
         <div class="panel-head"><h2>Node locations</h2></div>
-        <div id="world-map-clusters" class="world-map world-map-clusters" role="img" aria-label="World map of peer locations clustered by country">
+        <div id="world-map-clusters" class="world-map world-map-clusters" role="img" aria-label="World map of peer locations clustered by city">
           <noscript><p style="color:var(--text-dim)">Enable JavaScript to see the map.</p></noscript>
         </div>
         <div class="map-legend" id="cluster-legend"></div>
         <div class="tablewrap scroll-y" style="margin-top:1rem"><table>
-          <thead><tr><th class="num">#</th><th>${cities.length ? "City" : "Country"}</th><th class="num">Peers</th><th class="num">Share</th></tr></thead>
+          <thead><tr><th class="num">#</th><th>City</th><th class="num">Peers</th><th class="num">Share</th></tr></thead>
           <tbody>${locationRows}</tbody>
         </table></div>
       </div>

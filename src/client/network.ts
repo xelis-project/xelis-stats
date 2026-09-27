@@ -43,8 +43,9 @@ const project = (lat: number, lon: number): { x: number; y: number } => ({
 
 // Two views of the same vendored per-country SVG:
 //   1. choropleth coloured by peer count, and
-//   2. a "node locations" map that plots one point per geolocated country at the
-//      country's visual centroid, merging nearby points into weighted clusters.
+//   2. a "node locations" map that plots one point per geolocated city at its
+//      coordinates, merging nearby points into weighted clusters. Peers with no
+//      resolved city are not plotted; the table below carries an "unknown" row.
 // The SVG is imported lazily so its (large) geometry is only fetched on /network.
 export function initNetwork(): void {
   const host = document.getElementById("world-map");
@@ -77,7 +78,7 @@ export function initNetwork(): void {
       if (clusterHost) {
         clusterHost.innerHTML = svg;
         const clusterMap = clusterHost.querySelector("svg");
-        if (clusterMap) renderClusters(clusterHost, clusterMap, byCode, data.cities ?? []);
+        if (clusterMap) renderClusters(clusterHost, clusterMap, data.cities ?? []);
       }
     })
     .catch(() => { /* map asset unavailable */ });
@@ -151,36 +152,18 @@ function renderChoropleth(host: HTMLElement, svgEl: SVGSVGElement, byCode: Map<s
   }
 }
 
-function renderClusters(host: HTMLElement, svgEl: SVGSVGElement, byCode: Map<string, CountryDatum>, cities: CityDatum[]): void {
+function renderClusters(host: HTMLElement, svgEl: SVGSVGElement, cities: CityDatum[]): void {
   const pts: Pt[] = [];
-  const usingCities = cities.some((c) => Number.isFinite(c.lat) && Number.isFinite(c.lon));
-  if (usingCities) {
-    for (const c of cities) {
-      if (!Number.isFinite(c.lat) || !Number.isFinite(c.lon)) continue;
-      const { x, y } = project(c.lat, c.lon);
-      pts.push({ x, y, peers: c.peers, name: `${c.city}, ${c.country}` });
-    }
-  } else {
-    // Fallback for days captured before the city rollup: one point per country
-    // at its SVG path centre.
-    for (const path of Array.from(svgEl.querySelectorAll<SVGPathElement>("path[id]"))) {
-      const c = byCode.get((path.id || "").toLowerCase());
-      if (!c) continue;
-      let bbox: DOMRect;
-      try {
-        bbox = path.getBBox();
-      } catch {
-        continue;
-      }
-      if (!bbox || (!bbox.width && !bbox.height)) continue;
-      pts.push({ x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2, peers: c.peers, name: c.name });
-    }
+  for (const c of cities) {
+    if (!Number.isFinite(c.lat) || !Number.isFinite(c.lon)) continue;
+    const { x, y } = project(c.lat, c.lon);
+    pts.push({ x, y, peers: c.peers, name: `${c.city}, ${c.country}` });
   }
   if (!pts.length) return;
 
   // Greedy merge of nearby points in the SVG's own coordinate space, seeded by
   // the largest peers so a cluster centre is pulled toward the busiest node.
-  const RADIUS = usingCities ? 18 : 26;
+  const RADIUS = 18;
   const clusters: Cluster[] = [];
   for (const p of [...pts].sort((a, b) => b.peers - a.peers)) {
     let best: Cluster | null = null;
@@ -205,7 +188,7 @@ function renderClusters(host: HTMLElement, svgEl: SVGSVGElement, byCode: Map<str
   const tip = attachTooltip(host);
   tip.classList.add("map-tip-list");
   const maxCluster = Math.max(...clusters.map((c) => c.peers));
-  const unit = usingCities ? "cities" : "countries";
+  const unit = "cities";
 
   for (const cl of clusters) {
     const node = document.createElementNS(SVG_NS, "circle");
