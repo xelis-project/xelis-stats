@@ -246,12 +246,12 @@ export function initDag(): void {
 
   function drawGrid(): void {
     // Graph-paper grid anchored in world space, so it pans and zooms with the
-    // DAG and block columns land on grid lines. Spacing doubles as needed to
-    // keep cells from getting denser than ~22px on screen when zoomed out.
-    let wx = COL;
-    while (wx * cam.k < 22) wx *= 2;
-    let wy = ROW;
-    while (wy * cam.k < 22) wy *= 2;
+    // DAG and block columns land on grid lines. Quarter-column cells keep the
+    // backdrop fine; spacing doubles as needed when zoomed out.
+    let wx = COL / 4;
+    while (wx * cam.k < 16) wx *= 2;
+    let wy = ROW / 4;
+    while (wy * cam.k < 16) wy *= 2;
 
     const x0 = (0 - W / 2) / cam.k + cam.x;
     const x1 = (W - W / 2) / cam.k + cam.x;
