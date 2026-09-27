@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout } from "../../client/layout";
-import { fmt, fmtInt, shortHash, timeCell, atomic } from "../../client/format";
+import { fmt, fmtInt, fmtBytes, shortHash, timeCell, atomic } from "../../client/format";
 import { srvSort, BLOCK_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
 import { PAGE_SIZE, pager, cursorPager, esc, clampInt, logErr } from "./shared";
@@ -150,12 +150,13 @@ blocks.get("/blocks", async (c) => {
           <td><span class="hash">${esc(shortHash(b.hash as string))}</span></td>
           <td>${timeCell(ts)}</td>
           <td class="num">${fmtInt(b.tx_count as number)}</td>
+          <td class="num">${fmtBytes((b.size as number) ?? 0)}</td>
           <td class="num">${fmt((b.difficulty as number) ?? 0)}</td>
           <td class="num">${atomic(b.miner_reward as number)}</td>
           <td><span class="badge ${type.toLowerCase()}">${type}</span></td>
         </tr>`;
       }).join("")
-    : `<tr><td colspan="7" style="color:var(--text-dim)">No indexed blocks yet — historical backfill pending. Live data unavailable until D1 import.</td></tr>`;
+    : `<tr><td colspan="8" style="color:var(--text-dim)">No indexed blocks yet — historical backfill pending. Live data unavailable until D1 import.</td></tr>`;
 
   const fFields = `
     ${filterField("Block type", `<select name="type">${selectOpts(["Normal", "Side", "Sync"], type, "all types")}</select>`)}
@@ -173,7 +174,7 @@ blocks.get("/blocks", async (c) => {
       ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
-      <thead><tr>${srt.th("topo", "Topo")}${srt.th("hash", "Hash")}${srt.th("time", "Age")}${srt.th("txs", "Txs", true)}${srt.th("difficulty", "Difficulty", true)}${srt.th("reward", "Reward (XEL)", true)}${srt.th("type", "Type")}</tr></thead>
+      <thead><tr>${srt.th("topo", "Topo")}${srt.th("hash", "Hash")}${srt.th("time", "Age")}${srt.th("txs", "Txs", true)}${srt.th("size", "Size", true)}${srt.th("difficulty", "Difficulty", true)}${srt.th("reward", "Reward (XEL)", true)}${srt.th("type", "Type")}</tr></thead>
       <tbody>${body}</tbody>
     </table></div>
     ${pagerHtml}

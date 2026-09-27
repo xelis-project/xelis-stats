@@ -54,6 +54,7 @@ export const BLOCK_COLS: Record<string, SortCol> = {
   hash: { sql: "hash", def: "asc" },
   time: { sql: "ts", def: "desc" },
   txs: { sql: "tx_count", def: "desc" },
+  size: { sql: "size", def: "desc" },
   difficulty: { sql: "difficulty", def: "desc" },
   reward: { sql: "miner_reward", def: "desc" },
   type: { sql: "block_type", def: "asc" },
