@@ -11,10 +11,14 @@
  *    hashes to topoheights so point lookups hit exactly one database.
  *
  * Rotation (rotateShards, called hourly from cron): when the hot DB crosses
- * SHARD_MAX_BYTES, create a shard DB, then copy+delete old raw rows topo batch
- * by topo batch within a time budget per run, then seal the shard. Rotation is
- * size-triggered, not calendar-triggered: at current chain volume shards are
- * rare and each may span a year or more.
+ * SHARD_MAX_BYTES, create a shard DB and copy old raw rows topo batch by topo
+ * batch within a time budget per run, then seal the shard. Deleting the hot
+ * copies is deferred until after the seal (pruneShards) so a shard that is
+ * still copying never makes its rows unreadable. Serving stays correct through
+ * both phases: reads only target sealed shards, and hot reads are bounded to
+ * topo > hotFloor, so rows duplicated between seal and prune are never served
+ * twice. Rotation is size-triggered, not calendar-triggered: at current chain
+ * volume shards are rare and each may span a year or more.
  *
  * Required setup:
  *   wrangler secret put CLOUDFLARE_ACCOUNT_ID
@@ -421,7 +425,13 @@ export async function pagedRaw(
       `SELECT ${opts.select} FROM ${opts.table} WHERE ${conds.join(" AND ")} ORDER BY ${opts.cursorCol} DESC LIMIT ?`,
       [...binds, opts.limit - out.length],
     );
-    if (!rows.length) { cursor = seg.lo; continue; }
+    if (!rows.length) {
+      // An empty hot segment must not raise the cursor to its floor: a caller
+      // whose `before` already sits inside the shard range would then be
+      // served rows above it again by the next (lower) segment.
+      cursor = seg.t.kind === "hot" ? Math.min(cursor, seg.lo) : seg.lo;
+      continue;
+    }
     out.push(...rows);
     const last = Number((rows[rows.length - 1] as Record<string, unknown>)[opts.cursorCol]);
     if (!Number.isFinite(last) || last <= seg.lo) { cursor = seg.lo - 1; continue; }
@@ -627,6 +637,19 @@ function hotFloorBound(floorCol: string, floor: number): string {
   return `(${floorCol} > ${floor} OR ${floorCol} IS NULL)`;
 }
 
+// Inject that bound into a caller-supplied single-scope aggregate SELECT.
+// Contract: the SQL must be `SELECT ... FROM ... [WHERE ...]` with any
+// GROUP BY / ORDER BY / LIMIT / HAVING only at the end. Callers that run over
+// raw tables across shards pass floorCol so the hot target skips rows that are
+// still duplicated between seal and prune; shard targets read unmodified.
+function boundHotTarget(sql: string, floorCol: string, floor: number): string {
+  const cond = hotFloorBound(floorCol, floor);
+  const m = /\s+(GROUP\s+BY|ORDER\s+BY|LIMIT|HAVING)\s/i.exec(sql);
+  const head = m ? sql.slice(0, m.index) : sql;
+  const tail = m ? sql.slice(m.index) : "";
+  return /\bWHERE\b/i.test(head) ? `${head} AND ${cond}${tail}` : `${head} WHERE ${cond}${tail}`;
+}
+
 const countCache = new Map<string, { at: number; n: number }>();
 
 /** COUNT(*) over hot + all sealed shards (60s cache). */
@@ -715,16 +738,22 @@ export async function topNRaw(
 /**
  * Run an additive aggregate (SUMs/COUNTs + optional MIN/MAX cols) on every
  * target and merge the results. Use SUM instead of AVG in the SQL; averages
- * are computed by the caller from sum/count pairs.
+ * are computed by the caller from sum/count pairs. When `floorCol` is set the
+ * hot target is bounded to the retained window (see {@link boundHotTarget}).
  */
 export async function mergeAgg(
   env: Env,
   sql: string,
   binds: unknown[],
-  opts: { sum: string[]; min?: string | string[]; max?: string | string[] },
+  opts: { sum: string[]; min?: string | string[]; max?: string | string[]; floorCol?: string },
 ): Promise<Record<string, number>> {
   const shards = await getShards(env);
-  const rows = await Promise.all(allTargets(shards).map((t) => runOn(env, t, sql, binds)));
+  const floor = hotFloor(shards);
+  const rows = await Promise.all(allTargets(shards).map((t) => runOn(
+    env, t,
+    t.kind === "hot" && floor >= 0 && opts.floorCol ? boundHotTarget(sql, opts.floorCol, floor) : sql,
+    binds,
+  )));
   const out: Record<string, number> = {};
   for (const col of opts.sum) out[col] = 0;
   const one = (c: string | string[] | undefined): string[] => (c == null ? [] : typeof c === "string" ? [c] : c);
@@ -752,7 +781,9 @@ export async function mergeAgg(
 
 /**
  * GROUP BY over hot + sealed shards with additive value columns, merged by key
- * in JS. Returns unmerged-order rows: [{ [keyCol]: key, ...sums }].
+ * in JS. Returns unmerged-order rows: [{ [keyCol]: key, ...sums }]. `maxCols`
+ * and `minCols` merge by max/min (monotonic or boundary columns); `floorCol`
+ * bounds the hot target to the retained window, like {@link boundHotTarget}.
  */
 export async function mergeGroups(
   env: Env,
@@ -760,11 +791,18 @@ export async function mergeGroups(
   binds: unknown[],
   keyCol: string,
   sumCols: string[],
-  maxCols: string[] = [],
+  opts: { maxCols?: string[]; minCols?: string[]; floorCol?: string } = {},
 ): Promise<Row[]> {
   const shards = await getShards(env);
-  const rows = await Promise.all(allTargets(shards).map((t) => runOn(env, t, sql, binds)));
+  const floor = hotFloor(shards);
+  const rows = await Promise.all(allTargets(shards).map((t) => runOn(
+    env, t,
+    t.kind === "hot" && floor >= 0 && opts.floorCol ? boundHotTarget(sql, opts.floorCol, floor) : sql,
+    binds,
+  )));
   const byKey = new Map<string, Row>();
+  const maxs = opts.maxCols ?? [];
+  const mins = opts.minCols ?? [];
   for (const rs of rows) {
     for (const r of rs) {
       const key = String(r[keyCol] ?? "");
@@ -774,18 +812,28 @@ export async function mergeGroups(
         for (const c of sumCols) fresh[c] = Number(r[c] ?? 0);
         // cumulative-style columns (e.g. chain cumulative difficulty) are
         // monotonic, so merging across shards takes the max, never the sum
-        for (const c of maxCols) {
+        for (const c of maxs) {
+          const v = r[c];
+          fresh[c] = v == null ? null : Number(v);
+        }
+        for (const c of mins) {
           const v = r[c];
           fresh[c] = v == null ? null : Number(v);
         }
         byKey.set(key, fresh);
       } else {
         for (const c of sumCols) acc[c] = Number(acc[c] ?? 0) + Number(r[c] ?? 0);
-        for (const c of maxCols) {
+        for (const c of maxs) {
           const v = r[c];
           if (v == null) continue;
           const n = Number(v);
           acc[c] = acc[c] == null ? n : Math.max(Number(acc[c]), n);
+        }
+        for (const c of mins) {
+          const v = r[c];
+          if (v == null) continue;
+          const n = Number(v);
+          acc[c] = acc[c] == null ? n : Math.min(Number(acc[c]), n);
         }
       }
     }
@@ -801,9 +849,9 @@ function sqlVal(v: any): string {
   if (typeof v === "number") return String(v);
   if (typeof v === "boolean") return v ? "1" : "0";
   if (typeof v === "bigint") return String(v);
-  // REST-side bulk inserts cannot use bound params (D1 allows only 100/query
-  // and batches hold 200 rows), so literals are quoted here; NUL is stripped
-  // because SQLite treats it as a statement terminator.
+  // REST-side bulk inserts cannot use bound params (D1 allows only 100/query),
+  // so literals are quoted here; NUL is stripped because SQLite treats it as a
+  // statement terminator.
   return "'" + String(v).replace(/\u0000/g, "").replace(/'/g, "''") + "'";
 }
 
@@ -811,6 +859,36 @@ function insertLiteral(table: string, rows: Row[]): string {
   const cols = SHARD_TABLES[table];
   const values = rows.map((r) => `(${cols.map((c) => sqlVal(r[c])).join(",")})`);
   return `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES ${values.join(",")}`;
+}
+
+// D1 caps SQL statements at 100 KB, so bulk inserts are split by row count and
+// approximate payload size rather than issuing one huge statement.
+const INSERT_CHUNK = 90;
+const INSERT_BYTES = 40_000;
+
+function chunkRows(rows: Row[], maxRows: number, maxBytes: number): Row[][] {
+  const out: Row[][] = [];
+  let cur: Row[] = [];
+  let bytes = 0;
+  for (const r of rows) {
+    const n = JSON.stringify(r).length;
+    if (cur.length && (cur.length >= maxRows || bytes + n > maxBytes)) {
+      out.push(cur);
+      cur = [];
+      bytes = 0;
+    }
+    cur.push(r);
+    bytes += n;
+  }
+  if (cur.length) out.push(cur);
+  return out;
+}
+
+/** Bulk insert rows into a shard via REST, chunked under D1's SQL size cap. */
+async function restInsert(env: Env, dbId: string, table: string, rows: Row[]): Promise<void> {
+  for (const chunk of chunkRows(rows, INSERT_CHUNK, INSERT_BYTES)) {
+    await restQuery(env, dbId, insertLiteral(table, chunk));
+  }
 }
 
 async function cursorOf(env: Env, stage: string, fallback: number): Promise<number> {
@@ -824,30 +902,53 @@ async function setCursor(env: Env, stage: string, cursor: number): Promise<void>
   ).bind(stage, cursor, Date.now()).run();
 }
 
+function changesOf(r: D1Result<unknown> | undefined): number {
+  return Number((r as { meta?: { changes?: number } } | undefined)?.meta?.changes ?? 0);
+}
+
 const COPY_BATCH = 200;
 // keep this many recent topoheights in the hot DB window
 const KEEP_HOT_BLOCKS = 200_000;
+// hot rows deleted per prune batch once their shard is sealed
+const PRUNE_BLOCKS = 500;
+// prune batches shrink to this block span before a failure is fatal
+const PRUNE_MIN = 100;
+// sealed-shard hashes enumerated per REST read when sweeping legacy assets
+const ASSET_CHUNK = 90;
+// topoheight span of one legacy asset-sweep boundary
+const ASSET_SWEEP_BLOCKS = 500;
 
 /**
- * Size-triggered rotation, run hourly. Creates a shard DB when the hot DB
- * crosses SHARD_MAX_BYTES, then incrementally copies (and deletes) old raw
- * rows into it within a per-run budget. Idempotent and resumable via
- * sync_state stage 'shard_out'.
+ * Size-triggered rotation, run hourly. Prunes hot rows already owned by sealed
+ * shards, then creates a shard DB when the hot DB crosses SHARD_MAX_BYTES and
+ * incrementally copies old raw rows into it within the remaining per-run
+ * budget. Deletion is deferred to {@link pruneShards} until after the seal.
+ * Idempotent and resumable via sync_state stages and `shards.copied_topo`.
  */
 export async function rotateShards(env: Env, budgetMs = 25_000): Promise<string> {
   if (!shardsConfigured(env)) return "disabled";
+  const started = Date.now();
+  const deadline = started + budgetMs;
+
+  // Prune first: deferred deletes mean sealed shards leave duplicates in hot
+  // until this drains them, and freeing space is what keeps writes under the
+  // hardcap. A third of the budget is enough; the copy phase keeps the rest.
+  const pruned = await pruneShards(env, started + Math.min(Math.floor(budgetMs / 3), 10_000));
+
   let shards = await getShards(env, true);
   await ensureShardIndexes(env, shards);
   let open = shards.find((s) => !s.sealed && s.last_topo != null);
 
   if (!open) {
     const bytes = await hotFileBytes(env);
-    if (bytes == null || bytes < maxBytes(env)) return `ok (${bytes ?? "?"} bytes)`;
+    if (bytes == null || bytes < maxBytes(env)) return joinStatus(pruned, `ok (${bytes ?? "?"} bytes)`);
     const b = await env.DB.prepare("SELECT MIN(topoheight) AS mn, MAX(topoheight) AS mx FROM blocks").first<{ mn: number | null; mx: number | null }>();
     const maxTopo = Number(b?.mx ?? 0);
-    const minTopo = Number(b?.mn ?? 0);
+    // never re-copy a range an earlier shard already owns: unpruned duplicates
+    // can sit below hotFloor while the new shard is being filled
+    const minTopo = Math.max(Number(b?.mn ?? 0), hotFloor(shards) + 1);
     const cut = maxTopo - KEEP_HOT_BLOCKS;
-    if (!maxTopo || cut <= minTopo) return "ok (nothing to cut yet)";
+    if (!maxTopo || cut <= minTopo) return joinStatus(pruned, "ok (nothing to cut yet)");
     const name = `xelis-stats-shard-${shards.length + 1}`;
     const dbId = await createShardDatabase(env, name);
     if (!dbId) throw new Error("shard create: no uuid returned");
@@ -858,15 +959,14 @@ export async function rotateShards(env: Env, budgetMs = 25_000): Promise<string>
     invalidate();
     shards = await getShards(env, true);
     open = shards.find((s) => !s.sealed);
-    if (!open) return "created shard, retry next run";
+    if (!open) return joinStatus(pruned, "created shard, retry next run");
   }
 
   const target = open.last_topo!;
-  const started = Date.now();
   let cursor = open.copied_topo >= open.first_topo ? open.copied_topo : open.first_topo - 1;
   let copied = 0;
 
-  while (cursor < target && Date.now() - started < budgetMs) {
+  while (cursor < target && Date.now() < deadline) {
     const prev = cursor;
     // 1) copy block batch into the shard
     const blocks = await env.DB.prepare(
@@ -874,14 +974,15 @@ export async function rotateShards(env: Env, budgetMs = 25_000): Promise<string>
     ).bind(cursor, target, COPY_BATCH).all<Row>();
     const blockRows = blocks.results ?? [];
     if (blockRows.length) {
-      await restQuery(env, open.db_id, insertLiteral("blocks", blockRows));
+      await restInsert(env, open.db_id, "blocks", blockRows);
       copied += blockRows.length;
       cursor = Number(blockRows[blockRows.length - 1].topoheight);
     } else {
       cursor = target;
     }
 
-    // 2) copy dependent tx rows for the same topo slice
+    // 2) copy dependent tx rows for the same topo slice (hash lookups chunked:
+    // D1 allows only 100 bound params per query)
     if (cursor > prev) {
       const txs = await env.DB.prepare(
         "SELECT * FROM tx_index WHERE block_topo > ? AND block_topo <= ?"
@@ -889,24 +990,23 @@ export async function rotateShards(env: Env, budgetMs = 25_000): Promise<string>
       const txRows = txs.results ?? [];
       if (txRows.length) {
         const hashes = txRows.map((r) => String(r.hash));
-        await restQuery(env, open.db_id, insertLiteral("tx_index", txRows));
+        await restInsert(env, open.db_id, "tx_index", txRows);
         copied += txRows.length;
         for (const [table, keyCol] of [["tx_assets", "tx_hash"], ["tx_contracts", "tx_hash"]] as const) {
-          const rows = await env.DB.prepare(
-            `SELECT * FROM ${table} WHERE ${keyCol} IN (${hashes.map(() => "?").join(",")})`
-          ).bind(...hashes).all<Row>();
-          if (rows.results?.length) {
-            await restQuery(env, open.db_id, insertLiteral(table, rows.results));
-            copied += rows.results.length;
+          for (let i = 0; i < hashes.length; i += ASSET_CHUNK) {
+            const chunk = hashes.slice(i, i + ASSET_CHUNK);
+            const rows = await env.DB.prepare(
+              `SELECT * FROM ${table} WHERE ${keyCol} IN (${chunk.map(() => "?").join(",")})`
+            ).bind(...chunk).all<Row>();
+            if (rows.results?.length) {
+              await restInsert(env, open.db_id, table, rows.results);
+              copied += rows.results.length;
+            }
           }
         }
       }
-      // 3) delete the copied slice from hot only after the shard write succeeded
-      await env.DB.batch([
-        env.DB.prepare("DELETE FROM blocks WHERE topoheight > ? AND topoheight <= ?").bind(prev, cursor),
-        env.DB.prepare("DELETE FROM tx_index WHERE block_topo > ? AND block_topo <= ?").bind(prev, cursor),
-      ]);
-      await setCursor(env, "shard_out", cursor);
+      // 3) the copied slice stays in hot: serving is bounded to topo >
+      // hotFloor, so duplicates are invisible until pruneShards removes them
       await env.DB.prepare("UPDATE shards SET copied_topo = ? WHERE id = ?").bind(cursor, open.id).run();
     }
   }
@@ -914,11 +1014,132 @@ export async function rotateShards(env: Env, budgetMs = 25_000): Promise<string>
   // 4) seal when the whole range has been migrated
   if (cursor >= target) {
     const bounds = await restQuery(env, open.db_id, "SELECT MIN(ts) AS f, MAX(ts) AS l FROM blocks").then((r) => r[0] ?? null);
+    // Shards copied by this deferred-delete code still have their whole range
+    // in hot, so the generic prune covers their tx_assets rows and the legacy
+    // per-shard hash sweep can be marked done. A missing prefix means an older
+    // copy-and-delete run migrated part of the range; let the sweep clean up.
+    const minRow = await env.DB.prepare(
+      "SELECT MIN(topoheight) AS mn FROM blocks WHERE topoheight >= ? AND topoheight <= ?"
+    ).bind(open.first_topo, target).first<{ mn: number | null }>();
+    if (minRow?.mn != null && Number(minRow.mn) <= open.first_topo) {
+      await setCursor(env, `shard_assets_${open.id}`, target);
+    }
     await env.DB.prepare(
       "UPDATE shards SET sealed = 1, copied_topo = ?, first_ts = ?, last_ts = ? WHERE id = ?"
     ).bind(target, bounds ? Number(bounds.f ?? 0) : null, bounds ? Number(bounds.l ?? 0) : null, open.id).run();
     invalidate();
-    return `sealed shard ${open.name} (${open.first_topo}..${target})`;
+    return joinStatus(pruned, `sealed shard ${open.name} (${open.first_topo}..${target})`);
   }
-  return `copied ${copied} rows, cursor ${cursor}/${target}`;
+  return joinStatus(pruned, `copied ${copied} rows, cursor ${cursor}/${target}`);
+}
+
+function joinStatus(...parts: string[]): string {
+  return parts.filter(Boolean).join("; ");
+}
+
+/**
+ * Delete hot rows whose topoheight range a sealed shard already owns. Deletes
+ * are deferred until after the seal so a copying shard never makes its rows
+ * unreadable; pruning then runs in bounded batches. Progress is one monotonic
+ * cursor ('shard_prune') because sealed shards form a contiguous topo range.
+ * Each batch deletes tx_assets/tx_contracts (via a subquery on the hot
+ * tx_index rows), then tx_index and blocks, atomically. Shards sealed by the
+ * old copy-and-delete rotation have no hot tx_index left, so their orphaned
+ * tx_assets/tx_contracts rows are swept per shard, driven by the shard copy.
+ */
+async function pruneShards(env: Env, deadline: number): Promise<string> {
+  const shards = await getShards(env, true);
+  const floor = hotFloor(shards);
+  if (floor < 0) return "";
+  let cursor = await cursorOf(env, "shard_prune", -1);
+  let deleted = 0;
+  let step = PRUNE_BLOCKS;
+  while (cursor < floor && Date.now() < deadline) {
+    const s = shards
+      .filter((x) => x.sealed && x.last_topo != null && x.last_topo > cursor)
+      .sort((a, b) => a.first_topo - b.first_topo)[0];
+    if (!s) break;
+    if (cursor < s.first_topo) cursor = s.first_topo - 1; // gap: nothing to delete
+    const target = Math.min(s.last_topo!, floor);
+    const boundary = await env.DB.prepare(
+      "SELECT MAX(topoheight) AS m FROM (SELECT topoheight FROM blocks WHERE topoheight > ? AND topoheight <= ? ORDER BY topoheight LIMIT ?)"
+    ).bind(cursor, target, step).first<{ m: number | null }>();
+    if (boundary?.m == null) {
+      // no hot blocks left in this slice: either already pruned, or migrated by
+      // the old rotation which deleted blocks/tx_index but left tx_assets
+      const swept = await sweepShardAssets(env, s, deadline);
+      deleted += swept.deleted;
+      if (!swept.done) break;
+      cursor = target;
+      await setCursor(env, "shard_prune", cursor);
+      continue;
+    }
+    const hi = Number(boundary.m);
+    let res: D1Result<unknown>[];
+    try {
+      res = await env.DB.batch([
+        env.DB.prepare("DELETE FROM tx_assets WHERE tx_hash IN (SELECT hash FROM tx_index WHERE block_topo > ? AND block_topo <= ?)").bind(cursor, hi),
+        env.DB.prepare("DELETE FROM tx_contracts WHERE tx_hash IN (SELECT hash FROM tx_index WHERE block_topo > ? AND block_topo <= ?)").bind(cursor, hi),
+        env.DB.prepare("DELETE FROM tx_index WHERE block_topo > ? AND block_topo <= ?").bind(cursor, hi),
+        env.DB.prepare("DELETE FROM blocks WHERE topoheight > ? AND topoheight <= ?").bind(cursor, hi),
+        env.DB.prepare("INSERT INTO sync_state (stage, cursor, updated_at) VALUES ('shard_prune', ?, ?) ON CONFLICT(stage) DO UPDATE SET cursor = excluded.cursor, updated_at = excluded.updated_at").bind(hi, Date.now()),
+      ]);
+    } catch (err) {
+      // oversized batch (dense tx blocks) or a transient D1 error: shrink and
+      // retry; the batch is atomic, so the cursor did not move
+      if (step <= PRUNE_MIN) throw err;
+      step = Math.max(PRUNE_MIN, Math.floor(step / 2));
+      continue;
+    }
+    deleted += changesOf(res[2]) + changesOf(res[3]);
+    cursor = hi;
+  }
+  return deleted > 0 ? `pruned ${deleted} rows` : "";
+}
+
+/**
+ * One-time cleanup for ranges migrated by the old copy-and-delete rotation:
+ * enumerate tx hashes from the shard copy (hot no longer has them) and delete
+ * any matching tx_assets/tx_contracts rows still in hot. Resumable: the stage
+ * cursor records the last fully swept topoheight, so an interrupted boundary
+ * is simply redone (deletes are idempotent).
+ */
+async function sweepShardAssets(env: Env, s: ShardRow, deadline: number): Promise<{ done: boolean; deleted: number }> {
+  const last = s.last_topo ?? 0;
+  const stage = `shard_assets_${s.id}`;
+  let cursor = await cursorOf(env, stage, -1);
+  if (cursor >= last) return { done: true, deleted: 0 };
+  let deleted = 0;
+  while (cursor < last && Date.now() < deadline) {
+    const hi = Math.min(last, cursor + ASSET_SWEEP_BLOCKS);
+    let kTopo: number | null = null;
+    let kHash = "";
+    for (;;) {
+      const keyset = kTopo == null ? "" : " AND (block_topo > ? OR (block_topo = ? AND hash > ?))";
+      const binds = kTopo == null ? [cursor, hi, ASSET_CHUNK] : [cursor, hi, kTopo, kTopo, kHash, ASSET_CHUNK];
+      const rows = await restQuery(
+        env, s.db_id,
+        `SELECT hash, block_topo FROM tx_index WHERE block_topo > ? AND block_topo <= ?${keyset} ORDER BY block_topo, hash LIMIT ?`,
+        binds,
+      );
+      if (!rows.length) break;
+      for (let i = 0; i < rows.length; i += ASSET_CHUNK) {
+        const hs = rows.slice(i, i + ASSET_CHUNK).map((r) => String(r.hash));
+        const marks = hs.map(() => "?").join(",");
+        const res = await env.DB.batch([
+          env.DB.prepare(`DELETE FROM tx_assets WHERE tx_hash IN (${marks})`).bind(...hs),
+          env.DB.prepare(`DELETE FROM tx_contracts WHERE tx_hash IN (${marks})`).bind(...hs),
+        ]);
+        deleted += changesOf(res[0]) + changesOf(res[1]);
+      }
+      const lastRow = rows[rows.length - 1];
+      kTopo = Number(lastRow.block_topo);
+      kHash = String(lastRow.hash);
+      if (rows.length < ASSET_CHUNK) break;
+      if (Date.now() >= deadline) return { done: false, deleted };
+    }
+    cursor = hi;
+    await setCursor(env, stage, cursor);
+  }
+  return { done: cursor >= last, deleted };
 }

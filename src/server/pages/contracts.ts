@@ -6,7 +6,7 @@ import { fmtInt, shortHash, fmtTime, timeCell, ago, atomic, fmt } from "../../cl
 import { srvSort } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
 import { rpc } from "../xelis";
-import { fetchBlockTimes } from "../shards";
+import { countRaw, fetchBlockTimes, topNRaw } from "../shards";
 import { esc, jsq, entityTag, blkCopyScript, flaggedText, num, PAGE_SIZE, pager, clampInt, logErr } from "./shared";
 import { fetchStorage, storageBatchHtml, storageEntry, storageHeadText } from "./storage";
 import { disassembleModule } from "../disasm";
@@ -97,10 +97,20 @@ contracts.get("/contracts/:id", async (c) => {
   let invokeTotal = 0;
   try {
     ct = (await db.prepare("SELECT * FROM contracts WHERE contract_id = ?").bind(id).first()) ?? undefined;
-    invokeTotal = (await db.prepare("SELECT COUNT(*) AS n FROM tx_index WHERE contract_id = ?").bind(id).first<{ n: number }>())?.n ?? 0;
-    invokes = await db.prepare(
-      `SELECT hash, block_topo, ts, fee, sender FROM tx_index WHERE contract_id = ? ORDER BY block_topo DESC LIMIT ? OFFSET ?`
-    ).bind(id, PAGE_SIZE, (page - 1) * PAGE_SIZE).all<Record<string, unknown>>().then((r) => r.results ?? []);
+    invokeTotal = await countRaw(c.env, {
+      table: "tx_index",
+      extra: { sql: "contract_id = ?", binds: [id] },
+      floorCol: "block_topo",
+    });
+    invokes = await topNRaw(c.env, {
+      table: "tx_index",
+      select: "hash, block_topo, ts, fee, sender",
+      order: "block_topo DESC, hash DESC",
+      limit: PAGE_SIZE,
+      skip: (page - 1) * PAGE_SIZE,
+      extra: { sql: "contract_id = ?", binds: [id] },
+      floorCol: "block_topo",
+    });
   } catch (err) { logErr("page/contract", err); }
 
   if (!ct) return c.html(layout("Not found", notFound("Contract"), "/contracts"));

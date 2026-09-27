@@ -167,15 +167,23 @@ history.get("/api/history/:metric", async (c) => {
 
   // Computed metrics (no stored column): derived from base tables.
   if (spec.table === "blocks") {
+    // block-time: MIN/MAX/COUNT merge across shards; a bucket with fewer than
+    // two blocks had no measurable spacing (0, like the old NULL).
     try {
       const conds: string[] = [];
       const binds: (string | number)[] = [];
       if (since) { conds.push("ts >= ?"); binds.push(Date.parse(since)); }
       if (until) { conds.push("ts < ?"); binds.push(Date.parse(until!) + 86400_000); }
       const whereTs = conds.length ? `WHERE ${conds.join(" AND ")}` : "";
-      rows = await c.env.DB.prepare(
-        `SELECT ${bucketTs} bucket, (MAX(ts) - MIN(ts)) / 1000.0 / NULLIF(COUNT(*) - 1, 0) value FROM blocks ${whereTs} GROUP BY bucket ORDER BY bucket`
-      ).bind(...binds).all<{ bucket: string; value: number }>().then((r) => r.results ?? []);
+      const raw = await mergeGroups(
+        c.env,
+        `SELECT ${bucketTs} bucket, MIN(ts) mn, MAX(ts) mx, COUNT(*) n FROM blocks ${whereTs} GROUP BY bucket ORDER BY bucket`,
+        binds, "bucket", ["n"], { minCols: ["mn"], maxCols: ["mx"], floorCol: "topoheight" },
+      );
+      rows = raw.map((r) => {
+        const n = Number(r.n);
+        return { bucket: String(r.bucket), value: n > 1 ? (Number(r.mx) - Number(r.mn)) / 1000 / (n - 1) : 0 };
+      });
     } catch { rows = []; }
   } else if (spec.table === "difficulty" || spec.table === "cum-difficulty") {
     // Per-bucket average network difficulty, or the chain's cumulative
@@ -187,14 +195,14 @@ history.get("/api/history/:metric", async (c) => {
         const raw = await mergeGroups(
           c.env,
           `SELECT ${bucketTs} bucket, MAX(CAST(cum_difficulty AS REAL)) value FROM blocks ${where} GROUP BY bucket`,
-          binds, "bucket", [], ["value"],
+          binds, "bucket", [], { maxCols: ["value"], floorCol: "topoheight" },
         );
         rows = raw.map((r) => ({ bucket: String(r.bucket), value: Number(r.value) }));
       } else {
         const raw = await mergeGroups(
           c.env,
           `SELECT ${bucketTs} bucket, SUM(difficulty) s, COUNT(*) n FROM blocks ${where} GROUP BY bucket`,
-          binds, "bucket", ["s", "n"],
+          binds, "bucket", ["s", "n"], { floorCol: "topoheight" },
         );
         rows = raw.map((r) => ({ bucket: String(r.bucket), value: Number(r.s) / Math.max(1, Number(r.n)) }));
       }
@@ -208,14 +216,14 @@ history.get("/api/history/:metric", async (c) => {
         const raw = await mergeGroups(
           c.env,
           `SELECT ${bucketTs} || '-' || tx_type bucket, COUNT(*) n FROM tx_index WHERE ${conds.join(" AND ")} GROUP BY bucket, tx_type`,
-          binds, "bucket", ["n"],
+          binds, "bucket", ["n"], { floorCol: "block_topo" },
         );
         rows = raw.map((r) => ({ bucket: String(r.bucket), value: Number(r.n) }));
       } else {
         const raw = await mergeGroups(
           c.env,
           `SELECT ${bucketTs} bucket, COUNT(*) n FROM tx_index WHERE tx_type = ? AND ${conds.join(" AND ")} GROUP BY bucket`,
-          [spec.col, ...binds], "bucket", ["n"],
+          [spec.col, ...binds], "bucket", ["n"], { floorCol: "block_topo" },
         );
         rows = raw.map((r) => ({ bucket: String(r.bucket), value: Number(r.n) }));
       }
@@ -271,9 +279,12 @@ history.get("/api/history/:metric", async (c) => {
       const binds: (string | number)[] = [];
       if (since) { conds.push("ts >= ?"); binds.push(Date.parse(since)); }
       if (until) { conds.push("ts < ?"); binds.push(Date.parse(until) + 86400_000); }
-      rows = await c.env.DB.prepare(
-        `SELECT ${bucketTs} bucket, SUM(transfer_count) value FROM tx_index WHERE ${conds.join(" AND ")} GROUP BY bucket ORDER BY bucket`
-      ).bind(...binds).all<{ bucket: string; value: number }>().then((r) => r.results ?? []);
+      const raw = await mergeGroups(
+        c.env,
+        `SELECT ${bucketTs} bucket, SUM(transfer_count) value FROM tx_index WHERE ${conds.join(" AND ")} GROUP BY bucket ORDER BY bucket`,
+        binds, "bucket", ["value"], { floorCol: "block_topo" },
+      );
+      rows = raw.map((r) => ({ bucket: String(r.bucket), value: Number(r.value) }));
     } catch { rows = []; }
   } else if (spec.table === "tx_encrypted") {
     try {
@@ -281,11 +292,17 @@ history.get("/api/history/:metric", async (c) => {
       const binds: (string | number)[] = [];
       if (since) { conds.push("ts >= ?"); binds.push(Date.parse(since)); }
       if (until) { conds.push("ts < ?"); binds.push(Date.parse(until) + 86400_000); }
-      rows = await c.env.DB.prepare(
-        `SELECT ${bucketTs} bucket, SUM(encrypted) * 100.0 / COUNT(*) value FROM tx_index WHERE ${conds.join(" AND ")} GROUP BY bucket ORDER BY bucket`
-      ).bind(...binds).all<{ bucket: string; value: number }>().then((r) => r.results ?? []);
+      const raw = await mergeGroups(
+        c.env,
+        `SELECT ${bucketTs} bucket, SUM(encrypted) s, COUNT(*) n FROM tx_index WHERE ${conds.join(" AND ")} GROUP BY bucket ORDER BY bucket`,
+        binds, "bucket", ["s", "n"], { floorCol: "block_topo" },
+      );
+      rows = raw.map((r) => ({ bucket: String(r.bucket), value: Number(r.n) > 0 ? (Number(r.s) * 100) / Number(r.n) : 0 }));
     } catch { rows = []; }
   } else if (spec.table === "fee-percentile") {
+    // Reads the hot window only: nearest-rank percentiles cannot be merged
+    // across shards without materialising every fee, so once a bucket's fees
+    // have been rotated out of hot the series stops covering it.
     try {
       // nearest-rank percentile of tx fees per bucket
       const rank = spec.col === "p90"

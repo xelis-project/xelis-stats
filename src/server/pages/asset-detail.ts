@@ -210,7 +210,7 @@ assetDetail.get("/asset/:id", async (c) => {
   try {
     const b = await mergeAgg(c.env,
       "SELECT SUM(burn_amount) sb, COUNT(*) c FROM tx_index WHERE burn_asset = ?",
-      [id], { sum: ["sb", "c"] });
+      [id], { sum: ["sb", "c"], floorCol: "block_topo" });
     burnedTotal = num(b.sb);
     burnedCount = num(b.c);
   } catch { /* not ready */ }

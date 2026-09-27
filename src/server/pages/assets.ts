@@ -6,7 +6,7 @@ import { srvSort } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
 import { esc, flaggedText, num, clampInt, logErr } from "./shared";
 import { PAGE_SIZE, pager } from "./shared";
-import { fetchBlock, fetchBlockTimes, fetchTx } from "../shards";
+import { countRaw, fetchBlock, fetchBlockTimes, fetchTx } from "../shards";
 
 export const assets = new Hono<{ Bindings: Env }>();
 
@@ -96,7 +96,12 @@ search.get("/search/:query", async (c) => {
   if (q.startsWith("xel:")) {
     // miner addresses get the mining profile; everyone else the account page
     try {
-      const inWindow = await db.prepare("SELECT 1 AS m FROM blocks WHERE miner_address = ? LIMIT 1").bind(q).first();
+      // existence check across hot + sealed shards
+      const inWindow = (await countRaw(c.env, {
+        table: "blocks",
+        extra: { sql: "miner_address = ?", binds: [q] },
+        floorCol: "topoheight",
+      })) > 0;
       const inRollups = inWindow ? null : await db.prepare("SELECT 1 AS m FROM daily_miners WHERE address = ? LIMIT 1").bind(q).first();
       if (inWindow || inRollups) return c.redirect(`/miner/${seg}`);
     } catch (err) { logErr("search/miner", err); }

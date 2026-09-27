@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "./app";
 import { parseSort, BLOCK_COLS, TX_COLS, ACCT_COLS } from "./sort";
 import { knownEntity } from "./entities";
-import { fetchBlock, fetchTx, pagedRaw, rangeRaw } from "./shards";
+import { fetchBlock, fetchTx, pagedRaw, rangeRaw, topNRaw } from "./shards";
 import { clampInt } from "./pages/shared";
 import { getLive } from "./live";
 import { getStatsCached, getFeeRatesCached } from "./cache";
@@ -44,14 +44,17 @@ api.get("/api/blocks", async (c) => {
   const type = (c.req.query("type") ?? "").slice(0, 16);
   try {
     const sorted = c.req.query("sort") !== undefined && Object.hasOwn(BLOCK_COLS, c.req.query("sort")!);
-    let sql: string;
-    let binds: (number | string)[];
     if (sorted) {
       const { order } = parseSort((n) => c.req.query(n), BLOCK_COLS, "topo", "topoheight");
-      sql = `SELECT * FROM blocks ${type ? "WHERE UPPER(block_type) = UPPER(?)" : ""} ORDER BY ${order} LIMIT ?`;
-      binds = [...(type ? [type] : []), limit];
-      const rows = await c.env.DB.prepare(sql).bind(...binds).all().then((r) => r.results);
-      return c.json({ blocks: (rows as Row[]).map((r) => tagAddress(r, "miner_address")) });
+      const rows = await topNRaw(c.env, {
+        table: "blocks",
+        select: "*",
+        order,
+        limit,
+        extra: type ? { sql: "UPPER(block_type) = UPPER(?)", binds: [type] } : undefined,
+        floorCol: "topoheight",
+      });
+      return c.json({ blocks: rows.map((r) => tagAddress(r, "miner_address")) });
     }
     // default topo-desc path walks the hot window and sealed shards
     const rows = await pagedRaw(c.env, {
@@ -173,14 +176,17 @@ api.get("/api/transactions", async (c) => {
   // explicit ?sort= runs over the full dataset (cursor pagination is topo-only)
   const sorted = c.req.query("sort") !== undefined && Object.hasOwn(TX_COLS, c.req.query("sort")!);
   try {
-    let sql: string;
-    let binds: (number | string)[];
     if (sorted) {
       const { order } = parseSort((n) => c.req.query(n), TX_COLS, "block", "hash");
-      sql = `SELECT hash, block_topo, ts, fee, size, tx_type, sender, transfer_count, executed FROM tx_index${type ? " WHERE tx_type = ?" : ""} ORDER BY ${order} LIMIT ?`;
-      binds = [...(type ? [type] : []), limit];
-      const rows = await c.env.DB.prepare(sql).bind(...binds).all().then((r) => r.results);
-      return c.json({ transactions: (rows as Row[]).map((r) => tagAddress(r, "sender")) });
+      const rows = await topNRaw(c.env, {
+        table: "tx_index",
+        select: "hash, block_topo, ts, fee, size, tx_type, sender, transfer_count, executed",
+        order,
+        limit,
+        extra: type ? { sql: "tx_type = ?", binds: [type] } : undefined,
+        floorCol: "block_topo",
+      });
+      return c.json({ transactions: rows.map((r) => tagAddress(r, "sender")) });
     }
     const rows = await pagedRaw(c.env, {
       table: "tx_index",

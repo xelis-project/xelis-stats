@@ -65,10 +65,10 @@ account.get("/account/:address", async (c) => {
         `SELECT COUNT(*) c, SUM(fee) fees, MIN(ts) first_tx, MAX(ts) last_tx, MAX(block_topo) last_topo,
                 SUM(encrypted) enc, SUM(CASE WHEN executed = 1 THEN 1 ELSE 0 END) ok
          FROM tx_index WHERE sender = ?`,
-        [address], { sum: ["c", "fees", "enc", "ok"], min: "first_tx", max: ["last_tx", "last_topo"] }),
+        [address], { sum: ["c", "fees", "enc", "ok"], min: "first_tx", max: ["last_tx", "last_topo"], floorCol: "block_topo" }),
       mergeGroups(c.env,
         "SELECT tx_type, COUNT(*) c FROM tx_index WHERE sender = ? GROUP BY tx_type",
-        [address], "tx_type", ["c"]),
+        [address], "tx_type", ["c"], { floorCol: "block_topo" }),
       db.prepare("SELECT SUM(blocks_found) AS c FROM daily_miners WHERE address = ?").bind(address)
         .first<{ c: number | null }>(),
       db.prepare("SELECT MAX(topoheight) AS m FROM blocks").first<{ m: number | null }>(),

@@ -4,7 +4,7 @@ import { layout, notFound, statCard } from "../../client/layout";
 import { icons } from "../../client/icons";
 import { fmt, fmtInt, fmtPct, shortHash, fmtTime, ago, atomic, atomicPrecise } from "../../client/format";
 import { rpc } from "../xelis";
-import { fetchBlock, runOn, type RawTarget } from "../shards";
+import { fetchBlock, fetchBlockTimes, runOn, type RawTarget } from "../shards";
 import { PAGE_SIZE, pager, esc, jsq, entityTag, blkCopyScript, num, logErr } from "./shared";
 
 export const blockDetail = new Hono<{ Bindings: Env }>();
@@ -62,12 +62,8 @@ blockDetail.get("/block/:id", async (c) => {
   let maxTopo: number | null = null;
   try {
     if (view.topo > 0) {
-      if (blockTarget) {
-        const r = (await runOn(c.env, blockTarget, "SELECT ts FROM blocks WHERE topoheight = ?", [view.topo - 1]))[0];
-        prevTs = r && r.ts != null ? Number(r.ts) : null;
-      } else {
-        prevTs = (await db.prepare("SELECT ts FROM blocks WHERE topoheight = ?").bind(view.topo - 1).first<{ ts: number }>())?.ts ?? null;
-      }
+      // grouped per database, so the previous block resolves across shards
+      prevTs = (await fetchBlockTimes(c.env, [view.topo - 1])).get(view.topo - 1) ?? null;
     }
     maxTopo = (await db.prepare("SELECT MAX(topoheight) AS m FROM blocks").first<{ m: number }>())?.m ?? null;
   } catch { /* db unavailable */ }
