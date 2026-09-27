@@ -41,8 +41,8 @@ market.get("/market", async (c) => {
         '<div class="card sk-card"><span class="sk-bar sk-cl"></span><span class="sk-bar sk-cv"></span></div>').join("")}</div>
       <div class="tablewrap"><table id="market-table">
         <thead><tr><th>Exchange</th><th>Market</th><th class="num">Last</th><th class="num">24h %</th><th class="num">High</th><th class="num">Low</th><th class="num">Bid</th><th class="num">Ask</th><th class="num">Vol (XEL)</th><th class="num">Vol (USDT)</th><th>Updated</th></tr></thead>
-        <tbody>${Array.from({ length: 6 }, (_, i) =>
-          `<tr class="sk-tr"><td colspan="11"><div class="sk-row"><span class="sk-bar sk-c1"></span><span class="sk-bar sk-c2" style="width:${i % 2 ? 9 : 13}%"></span></div></td></tr>`).join("")}</tbody>
+        <tbody>${Array.from({ length: 6 }, () =>
+          '<tr class="sk-tr"><td colspan="11"><span class="sk-bar sk-full"></span></td></tr>').join("")}</tbody>
       </table></div>
       <h3 class="sub-h">Volume share</h3>
       <div id="market-volshare" class="volshare"></div>

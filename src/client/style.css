@@ -1023,7 +1023,7 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
 .sk-card .sk-cl { height: 0.95rem; width: 55%; }
 .sk-card .sk-cv { height: 1.6rem; width: 72%; }
 tr.sk-tr td { padding: 0.55rem 0.8rem; }
-tr.sk-tr .sk-row { justify-content: center; }
+.sk-full { display: block; height: 1rem; width: 100%; }
 @media (prefers-reduced-motion: reduce) {
   .widget.loading .w-main::before, .sk-bar { animation: none; }
 }
