@@ -145,6 +145,23 @@ network.get("/network", async (c) => {
       }).join("")
     : emptyRow(4);
 
+  const locBase = mappedTotal || total;
+  const locationRows = cities.length
+    ? cities.map((r, i) => {
+        const code = (r.country_code ?? "").trim();
+        const label = code
+          ? `${esc(r.city)} <span class="badge">${esc(code.toUpperCase())}</span>`
+          : `${esc(r.city)} <span class="badge livesrc">unresolved</span>`;
+        const share = locBase ? (num(r.peers) / locBase) * 100 : 0;
+        return `<tr>
+          <td class="num">${i + 1}</td>
+          <td>${label}</td>
+          <td class="num">${fmtInt(num(r.peers))}</td>
+          <td class="num">${share.toFixed(1)}%</td>
+        </tr>`;
+      }).join("")
+    : countryRows;
+
   const versionRows = versions.length
     ? versions.map((v) => `<tr>
         <td class="mono">${esc(v.version)}</td>
@@ -198,6 +215,10 @@ network.get("/network", async (c) => {
           <noscript><p style="color:var(--text-dim)">Enable JavaScript to see the map.</p></noscript>
         </div>
         <div class="map-legend" id="cluster-legend"></div>
+        <div class="tablewrap scroll-y" style="margin-top:1rem"><table>
+          <thead><tr><th class="num">#</th><th>${cities.length ? "City" : "Country"}</th><th class="num">Peers</th><th class="num">Share</th></tr></thead>
+          <tbody>${locationRows}</tbody>
+        </table></div>
       </div>
     </div>
 
