@@ -12,6 +12,7 @@
     "deploy": "vite build && wrangler deploy",
     "preview": "vite build && vite preview",
     "cf-typegen": "wrangler types",
+    "decompiler:wasm": "node wasm/build.mjs",
     "backfill": "node --experimental-strip-types scripts/backfill.mts",
     "backfill:monitor": "node --experimental-strip-types scripts/monitor.mts",
     "export": "node --experimental-strip-types scripts/export.mts",

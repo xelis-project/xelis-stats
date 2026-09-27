@@ -24,6 +24,8 @@ if (path === "/dashboard") {
   void import("./dag").then((m) => m.initDag()).catch(() => { /* dag viewer unavailable */ });
 } else if (path === "/") {
   void import("./live-dashboard").then((m) => m.initLiveDashboard()).catch(() => { /* live page unavailable */ });
+} else if (path.startsWith("/contracts/")) {
+  void import("./decompile").then((m) => m.initDecompile()).catch(() => { /* decompiler unavailable */ });
 } else if (needsIslands) {
   void import("./islands");
 }

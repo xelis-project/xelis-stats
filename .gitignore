@@ -4,6 +4,9 @@ node_modules/
 # Build output
 dist/
 
+# Rust/wasm build cache (public/decompiler artifacts are committed)
+wasm/target/
+
 # Wrangler / Cloudflare
 .wrangler/
 worker-configuration.d.ts

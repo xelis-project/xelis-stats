@@ -252,11 +252,13 @@ contracts.get("/contracts/:id", async (c) => {
     <div class="stg-more-row" id="stg-more-row"${storageMore ? "" : " hidden"}><button class="btn ghost" type="button" id="stg-more">Load more entries</button></div>
   </div>` : "";
 
-  // bytecode viewer: readable disassembly of the compiled module chunks
+  // bytecode viewer: disassembly rendered here, Silex source reconstructed
+  // client-side (see src/client/decompile.ts) from the module JSON.
   let bytecodePanel = "";
   if (moduleRaw) {
     const dis = disassembleModule(moduleRaw);
     const header = `${dis.chunks.length} chunk${dis.chunks.length === 1 ? "" : "s"} · serialized ~${fmtInt(codeSize ?? 0)} bytes`;
+    let disasmBody: string;
     if (dis.ok) {
       const chunkHtml = dis.chunks.map((ch) => `<details class="disasm-chunk">
         <summary><span class="mono">#chunk${ch.index}</span> <span class="badge">${esc(ch.access)}</span> <span class="disasm-dim">${ch.instructions} ops · ${fmtInt(ch.bytes)} bytes${ch.labels ? ` · ${ch.labels} label${ch.labels === 1 ? "" : "s"}` : ""}</span></summary>
@@ -268,21 +270,35 @@ contracts.get("/contracts/:id", async (c) => {
         <pre class="disasm-pre">${esc(dis.constants.map((c, i) => `${String(i).padStart(3, "0")}  ${c}`).join("\n"))}</pre>
       </details>`
         : "";
-      bytecodePanel = `<div class="panel"><h2>Bytecode <span style="color:var(--text-dim)">${header}</span></h2>
-      <p class="disasm-note">Disassembled XVM opcodes. Jump targets are labelled per chunk; <span class="mono">CONSTANT</span> operands are annotated with the resolved value.</p>
+      disasmBody = `<p class="disasm-note">Disassembled XVM opcodes. Jump targets are labelled per chunk; <span class="mono">CONSTANT</span> operands are annotated with the resolved value.</p>
       <div class="disasm-list">${chunkHtml}${constHtml}</div>
-      ${dis.version ? `<p class="disasm-note">Module version <span class="mono">${esc(dis.version)}</span></p>` : ""}
-    </div>`;
+      ${dis.version ? `<p class="disasm-note">Module version <span class="mono">${esc(dis.version)}</span></p>` : ""}`;
     } else {
       // last-resort fallback so a module that fails to decode is never blank
       let dump = "";
       try { dump = JSON.stringify(moduleRaw, null, 2); } catch { /* malformed */ }
       if (dump.length > 40000) dump = dump.slice(0, 40000) + "\n… truncated";
-      bytecodePanel = `<div class="panel"><h2>Bytecode <span style="color:var(--text-dim)">${header}</span></h2>
-        <p class="disasm-note">Could not disassemble this module; showing the raw module instead.</p>
-        <pre class="json-pre">${esc(dump)}</pre>
-      </div>`;
+      disasmBody = `<p class="disasm-note">Could not disassemble this module; showing the raw module instead.</p>
+        <pre class="json-pre">${esc(dump)}</pre>`;
     }
+    bytecodePanel = `<div class="panel" id="bytecode" data-contract="${esc(deployHash)}">
+      <div class="bc-head">
+        <h2>Bytecode <span style="color:var(--text-dim)">${header}</span></h2>
+        <div class="bc-tabs" role="tablist" aria-label="Bytecode view">
+          <button class="bc-tab on" type="button" role="tab" aria-selected="true" data-bc-tab="disasm">Disassembly</button>
+          <button class="bc-tab" type="button" role="tab" aria-selected="false" data-bc-tab="source">Decompiled source</button>
+        </div>
+      </div>
+      <div class="bc-pane" data-bc-pane="disasm">${disasmBody}</div>
+      <div class="bc-pane" data-bc-pane="source" hidden>
+        <p class="disasm-note">Best-effort reconstruction of Silex source from the compiled module (same engine as the <span class="mono">silex decompile</span> CLI). Local names and erased types are synthesized; modules that need extra type information may only decompile partially.</p>
+        <div class="bc-source-toolbar">
+          <button class="btn ghost" type="button" id="bc-source-copy" disabled>copy</button>
+          <button class="btn ghost" type="button" id="bc-source-download" disabled>download .slx</button>
+        </div>
+        <pre class="disasm-pre bc-source" id="bc-source" aria-live="polite"></pre>
+      </div>
+    </div>`;
   }
 
   const invokeRows = invokes.length
@@ -326,4 +342,18 @@ contracts.get("/contracts/:id/storage", async (c) => {
   const skip = clampInt(c.req.query("skip"), 0, 10_000);
   const { entries, more } = await fetchStorage(id, skip);
   return c.html(storageBatchHtml(entries, more));
+});
+
+// Raw contract module, fetched lazily by the client-side decompiler so the
+// module JSON never bloats the SSR HTML.
+contracts.get("/api/contract/:id/module", async (c) => {
+  const id = c.req.param("id");
+  try {
+    const mod = await rpc<{ topoheight: number; data?: unknown }>("get_contract_module", { contract: id });
+    if (mod.data == null) return c.json({ error: "module unavailable" }, 404);
+    return c.json(mod.data);
+  } catch (err) {
+    logErr("api/contract/module", err);
+    return c.json({ error: "unavailable" }, 503);
+  }
 });

@@ -25,6 +25,12 @@ deploy` runs `vite build` first. Deploying the Worker without a build ships a
 site whose JavaScript entry does not exist, so always deploy via the script (or
 run `npm run build` before `wrangler deploy`).
 
+The contract page can reconstruct Silex source from a deployed module. The
+decompiler is the upstream `silex-decompiler` compiled to wasm; the built
+artifacts live in `public/decompiler/` and are committed, so `npm run build` and
+deploys need no Rust toolchain. Rebuild them with `npm run decompiler:wasm`
+(needs Rust nightly with `rust-src`, `wasm-pack` and a wasm-capable clang).
+
 1. Create the Cloudflare resources once and fill in the ids in
    `wrangler.jsonc` (the `TODO_CREATE_WITH_WRANGLER` placeholders):
 
@@ -80,6 +86,7 @@ export; Workers Logs retention is 3 days on Free and 7 days on Paid.
 | `npm run export`           | Export history to D1 SQL / R2 JSONL chunks |
 | `npm run import:history`   | Import legacy market + chain-size CSV into D1 SQL |
 | `npm run import:d1`        | Apply migrations and load `export/*.sql` into D1 |
+| `npm run decompiler:wasm`  | Rebuild the Silex decompiler wasm under `public/decompiler` |
 
 One-shot legacy/rebuild helpers live in `scripts/legacy/`. You only need
 `contracts` to seed the contract registry ahead of the tx pass, and
