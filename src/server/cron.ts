@@ -15,14 +15,17 @@ const LAG_BLOCKS = 50;
 // A peer is "stale" when we haven't heard a ping in over an hour.
 const STALE_S = 3600;
 
-// GeoIP lookup service (aggregate country only). It requires an Origin header
-// matching the allowed front-end, so a plain server-side fetch is rejected.
+// GeoIP lookup service (country/city aggregates only). It requires an Origin
+// header matching the allowed front-end, so a plain server-side fetch is rejected.
 const GEOIP_URL = "https://geoip.xelis.io/";
 
 interface GeoIpEntry {
   success?: boolean;
   country?: string;
   country_code?: string;
+  city?: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 // Extract the bare host from a peer address, handling "host:port" and
@@ -37,10 +40,10 @@ function hostOf(addr: string | undefined): string {
   return colon > 0 ? a.slice(0, colon) : a;
 }
 
-// Resolve a batch of peer hosts to countries. Returns only successful hits;
-// unresolved hosts are bucketed as "Unknown" by the caller.
-async function resolveCountries(hosts: string[]): Promise<Map<string, { country: string; code: string }>> {
-  const out = new Map<string, { country: string; code: string }>();
+// Resolve a batch of peer hosts to country + city (with coordinates). Returns
+// only successful hits; unresolved hosts are bucketed as "Unknown" by the caller.
+async function resolveGeo(hosts: string[]): Promise<Map<string, { country: string; code: string; city: string; lat: number; lon: number }>> {
+  const out = new Map<string, { country: string; code: string; city: string; lat: number; lon: number }>();
   if (!hosts.length) return out;
   try {
     const res = await fetch(`${GEOIP_URL}?ips=${encodeURIComponent(hosts.join(","))}`, {
@@ -49,7 +52,15 @@ async function resolveCountries(hosts: string[]): Promise<Map<string, { country:
     if (!res.ok) return out;
     const data = await res.json<Record<string, GeoIpEntry>>();
     for (const [ip, v] of Object.entries(data)) {
-      if (v?.success && v.country) out.set(ip, { country: v.country, code: v.country_code ?? "" });
+      if (v?.success && v.country) {
+        out.set(ip, {
+          country: v.country,
+          code: v.country_code ?? "",
+          city: v.city ?? "",
+          lat: Number(v.latitude),
+          lon: Number(v.longitude),
+        });
+      }
     }
   } catch (err) {
     console.error("geoip:", (err as Error).message);
@@ -137,21 +148,32 @@ export async function snapshotPeers(
         env.DB.prepare("INSERT OR REPLACE INTO daily_peer_prefixes (date, prefix, peers) VALUES (?, ?, ?)").bind(date, prefix.slice(0, 64), n)
       );
 
-      // country concentration from GeoIP (aggregate only)
+      // country + city concentration from GeoIP (aggregates only, no raw addresses)
       const hosts = [...new Set(peers.map((p) => hostOf(p.addr)).filter(Boolean))];
-      const geo = await resolveCountries(hosts);
+      const geo = await resolveGeo(hosts);
       const countries = new Map<string, { code: string; peers: number }>();
+      const cities = new Map<string, { country: string; code: string; city: string; lat: number; lon: number; peers: number }>();
       for (const p of peers) {
         const g = geo.get(hostOf(p.addr));
         const name = g?.country ?? "Unknown";
         const e = countries.get(name) ?? { code: g?.code ?? "", peers: 0 };
         e.peers += 1;
         countries.set(name, e);
+        // city rollup only for hits that actually resolved a named place
+        if (!g || !g.city || !Number.isFinite(g.lat) || !Number.isFinite(g.lon)) continue;
+        const key = `${g.code}\u0000${g.city}\u0000${g.lat}\u0000${g.lon}`;
+        const c = cities.get(key) ?? { country: g.country, code: g.code, city: g.city, lat: g.lat, lon: g.lon, peers: 0 };
+        c.peers += 1;
+        cities.set(key, c);
       }
       const countryStmts = [...countries.entries()].map(([country, e]) =>
         env.DB.prepare("INSERT OR REPLACE INTO daily_peer_countries (date, country, country_code, peers) VALUES (?, ?, ?, ?)").bind(date, country.slice(0, 64), e.code.slice(0, 8), e.peers)
       );
-      if (tagStmts.length || prefixStmts.length || countryStmts.length) await env.DB.batch([...tagStmts, ...prefixStmts, ...countryStmts]);
+      const cityStmts = [...cities.values()].map((c) =>
+        env.DB.prepare("INSERT OR REPLACE INTO daily_peer_cities (date, country, country_code, city, latitude, longitude, peers) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(date, c.country.slice(0, 64), c.code.slice(0, 8), c.city.slice(0, 64), c.lat, c.lon, c.peers)
+      );
+      const rollups = [...tagStmts, ...prefixStmts, ...countryStmts, ...cityStmts];
+      if (rollups.length) await env.DB.batch(rollups);
     }
   } catch (err) {
     console.error("peers cron:", (err as Error).message);

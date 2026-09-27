@@ -20,6 +20,14 @@ interface TagRow {
   tag: string;
   peers: number;
 }
+interface CityRow {
+  city: string;
+  country: string;
+  country_code: string;
+  latitude: number;
+  longitude: number;
+  peers: number;
+}
 interface Snapshot {
   ts: number;
   total: number;
@@ -46,6 +54,7 @@ network.get("/network", async (c) => {
   let snapshot: Snapshot | null = null;
   let versions: VersionRow[] = [];
   let tags: TagRow[] = [];
+  let cities: CityRow[] = [];
 
   try {
     const drow = await db.prepare(
@@ -53,7 +62,7 @@ network.get("/network", async (c) => {
     ).first<{ d: string }>();
     date = drow?.d ?? date;
 
-    const [crows, latest, vrows, trows] = await Promise.all([
+    const [crows, latest, vrows, trows, cityRows] = await Promise.all([
       db.prepare(
         "SELECT country, country_code, peers FROM daily_peer_countries WHERE date = ? ORDER BY peers DESC"
       ).bind(date).all<CountryRow>().then((r) => r.results ?? []),
@@ -64,12 +73,18 @@ network.get("/network", async (c) => {
       db.prepare(
         "SELECT tag, peers FROM daily_peer_tags WHERE date = (SELECT MAX(date) FROM daily_peer_tags) ORDER BY peers DESC LIMIT 10"
       ).all<TagRow>().then((r) => r.results ?? []),
+      // daily_peer_cities may not exist until migration 0002 is applied; fall
+      // back to an empty list so the page still renders the country map.
+      db.prepare(
+        "SELECT city, country, country_code, latitude, longitude, peers FROM daily_peer_cities WHERE date = ? ORDER BY peers DESC"
+      ).bind(date).all<CityRow>().then((r) => r.results ?? []).catch(() => [] as CityRow[]),
     ]);
 
     countries = crows;
     snapshot = latest ? { ...latest, ts: Number(latest.ts) } : null;
     versions = vrows;
     tags = trows;
+    cities = cityRows;
   } catch (err) {
     logErr("page/network", err);
   }
@@ -84,12 +99,24 @@ network.get("/network", async (c) => {
   const mapJson = JSON.stringify({
     date,
     total,
+    cities: cities.map((c) => ({
+      city: c.city,
+      country: c.country,
+      code: (c.country_code ?? "").trim(),
+      lat: num(c.latitude),
+      lon: num(c.longitude),
+      peers: num(c.peers),
+    })),
     countries: mapped.map((r) => ({
       code: (r.country_code ?? "").trim(),
       name: r.country,
       peers: num(r.peers),
     })),
   }).replace(/</g, "\\u003c");
+
+  const locLabel = cities.length
+    ? `clustered GeoIP cities · ${fmtInt(cities.length)}`
+    : "clustered country centroids";
 
   const s = snapshot;
   const nic = new Intl.NumberFormat("en-US");
@@ -163,7 +190,7 @@ network.get("/network", async (c) => {
           <div class="map-legend" id="map-legend"></div>
         </div>
         <div>
-          <h3 class="sub-h">Node locations <span class="map-sub">clustered country centroids</span></h3>
+          <h3 class="sub-h">Node locations <span class="map-sub">${locLabel}</span></h3>
           <div id="world-map-clusters" class="world-map world-map-clusters" role="img" aria-label="World map of peer locations clustered by country">
             <noscript><p style="color:var(--text-dim)">Enable JavaScript to see the map, or use the table below.</p></noscript>
           </div>

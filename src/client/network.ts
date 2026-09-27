@@ -5,9 +5,18 @@ interface CountryDatum {
   name: string;
   peers: number;
 }
+interface CityDatum {
+  city: string;
+  country: string;
+  code: string;
+  lat: number;
+  lon: number;
+  peers: number;
+}
 interface MapData {
   date: string;
   total: number;
+  cities: CityDatum[];
   countries: CountryDatum[];
 }
 interface Pt {
@@ -24,6 +33,13 @@ interface Cluster {
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
+const D2R = Math.PI / 180;
+// Mercator fit to the vendored MapSVG/amCharts world SVG (viewBox 0 0 1010 666).
+// Calibrated against ~120 capitals: max residual ~4 map units (<0.5% of width).
+const project = (lat: number, lon: number): { x: number; y: number } => ({
+  x: 2.7722 * lon + 476.61,
+  y: -2.8314 * (Math.log(Math.tan(Math.PI / 4 + (lat * D2R) / 2)) / D2R) + 465.6,
+});
 
 // Two views of the same vendored per-country SVG:
 //   1. choropleth coloured by peer count, and
@@ -61,7 +77,7 @@ export function initNetwork(): void {
       if (clusterHost) {
         clusterHost.innerHTML = svg;
         const clusterMap = clusterHost.querySelector("svg");
-        if (clusterMap) renderClusters(clusterHost, clusterMap, byCode);
+        if (clusterMap) renderClusters(clusterHost, clusterMap, byCode, data.cities ?? []);
       }
     })
     .catch(() => { /* map asset unavailable */ });
@@ -135,25 +151,36 @@ function renderChoropleth(host: HTMLElement, svgEl: SVGSVGElement, byCode: Map<s
   }
 }
 
-function renderClusters(host: HTMLElement, svgEl: SVGSVGElement, byCode: Map<string, CountryDatum>): void {
+function renderClusters(host: HTMLElement, svgEl: SVGSVGElement, byCode: Map<string, CountryDatum>, cities: CityDatum[]): void {
   const pts: Pt[] = [];
-  for (const path of Array.from(svgEl.querySelectorAll<SVGPathElement>("path[id]"))) {
-    const c = byCode.get((path.id || "").toLowerCase());
-    if (!c) continue;
-    let bbox: DOMRect;
-    try {
-      bbox = path.getBBox();
-    } catch {
-      continue;
+  const usingCities = cities.some((c) => Number.isFinite(c.lat) && Number.isFinite(c.lon));
+  if (usingCities) {
+    for (const c of cities) {
+      if (!Number.isFinite(c.lat) || !Number.isFinite(c.lon)) continue;
+      const { x, y } = project(c.lat, c.lon);
+      pts.push({ x, y, peers: c.peers, name: `${c.city}, ${c.country}` });
     }
-    if (!bbox || (!bbox.width && !bbox.height)) continue;
-    pts.push({ x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2, peers: c.peers, name: c.name });
+  } else {
+    // Fallback for days captured before the city rollup: one point per country
+    // at its SVG path centre.
+    for (const path of Array.from(svgEl.querySelectorAll<SVGPathElement>("path[id]"))) {
+      const c = byCode.get((path.id || "").toLowerCase());
+      if (!c) continue;
+      let bbox: DOMRect;
+      try {
+        bbox = path.getBBox();
+      } catch {
+        continue;
+      }
+      if (!bbox || (!bbox.width && !bbox.height)) continue;
+      pts.push({ x: bbox.x + bbox.width / 2, y: bbox.y + bbox.height / 2, peers: c.peers, name: c.name });
+    }
   }
   if (!pts.length) return;
 
-  // Greedy merge of nearby centroids in the SVG's own coordinate space, seeded
-  // by the largest peers so a cluster centre is pulled toward the busiest node.
-  const RADIUS = 26;
+  // Greedy merge of nearby points in the SVG's own coordinate space, seeded by
+  // the largest peers so a cluster centre is pulled toward the busiest node.
+  const RADIUS = usingCities ? 18 : 26;
   const clusters: Cluster[] = [];
   for (const p of [...pts].sort((a, b) => b.peers - a.peers)) {
     let best: Cluster | null = null;
@@ -177,6 +204,7 @@ function renderClusters(host: HTMLElement, svgEl: SVGSVGElement, byCode: Map<str
   layer.setAttribute("class", "cluster-layer");
   const tip = attachTooltip(host);
   const maxCluster = Math.max(...clusters.map((c) => c.peers));
+  const unit = usingCities ? "cities" : "countries";
 
   for (const cl of clusters) {
     const node = document.createElementNS(SVG_NS, "circle");
@@ -189,7 +217,7 @@ function renderClusters(host: HTMLElement, svgEl: SVGSVGElement, byCode: Map<str
     const members = [...cl.members].sort((a, b) => b.peers - a.peers);
     const names = members.slice(0, 3).map((m) => m.name).join(", ") + (members.length > 3 ? ` +${members.length - 3} more` : "");
     const text = members.length > 1
-      ? `${members.length} countries · ${fmtInt(cl.peers)} peers — ${names}`
+      ? `${members.length} ${unit} · ${fmtInt(cl.peers)} peers — ${names}`
       : `${members[0].name} — ${fmtInt(cl.peers)} peer${cl.peers === 1 ? "" : "s"}`;
     node.setAttribute("aria-label", text);
     const title = document.createElementNS(SVG_NS, "title");
@@ -204,6 +232,6 @@ function renderClusters(host: HTMLElement, svgEl: SVGSVGElement, byCode: Map<str
   if (legend) {
     legend.innerHTML = `
       <span class="map-swatch cluster-swatch"></span>
-      <span class="map-legend-note">${clusters.length} cluster${clusters.length === 1 ? "" : "s"} · ${pts.length} countries · bubble size = peers</span>`;
+      <span class="map-legend-note">${clusters.length} cluster${clusters.length === 1 ? "" : "s"} · ${pts.length} ${unit} · bubble size = peers</span>`;
   }
 }
