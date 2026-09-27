@@ -245,20 +245,32 @@ export function initDag(): void {
   }
 
   function drawGrid(): void {
+    // Graph-paper grid anchored in world space, so it pans and zooms with the
+    // DAG and block columns land on grid lines. Spacing doubles as needed to
+    // keep cells from getting denser than ~22px on screen when zoomed out.
+    let wx = COL;
+    while (wx * cam.k < 22) wx *= 2;
+    let wy = ROW;
+    while (wy * cam.k < 22) wy *= 2;
+
+    const x0 = (0 - W / 2) / cam.k + cam.x;
+    const x1 = (W - W / 2) / cam.k + cam.x;
+    const y0 = (0 - H / 2) / cam.k + cam.y;
+    const y1 = (H - H / 2) / cam.k + cam.y;
+
     ctx!.strokeStyle = GRID;
     ctx!.lineWidth = 1;
-    for (const c of columns) {
-      const px = Math.round(sx(c.x)) + 0.5;
-      if (px < -2 || px > W + 2) continue;
-      ctx!.beginPath();
+    ctx!.beginPath();
+    for (let x = Math.floor(x0 / wx) * wx; x <= x1; x += wx) {
+      const px = Math.round(sx(x)) + 0.5;
       ctx!.moveTo(px, 0);
       ctx!.lineTo(px, H);
-      ctx!.stroke();
     }
-    const py = Math.round(sy(0)) + 0.5;
-    ctx!.beginPath();
-    ctx!.moveTo(0, py);
-    ctx!.lineTo(W, py);
+    for (let y = Math.floor(y0 / wy) * wy; y <= y1; y += wy) {
+      const py = Math.round(sy(y)) + 0.5;
+      ctx!.moveTo(0, py);
+      ctx!.lineTo(W, py);
+    }
     ctx!.stroke();
   }
 
