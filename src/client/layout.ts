@@ -23,7 +23,6 @@ export function layout(title: string, content: string, active: string, bodyClass
     ["/market", "Market"],
     ["/miners", "Miners"],
     ["/network", "Network"],
-    ["/charts", "Charts"],
   ]
     .map(([href, name]) => `<a href="${href}" class="${active === href ? "active" : ""}">${name}</a>`)
     .join("");
@@ -58,6 +57,7 @@ export function layout(title: string, content: string, active: string, bodyClass
     <footer class="site">
       <a class="footer-brand" href="/">${XEL_LOGO}<span>XELIS&nbsp;<span style="color:var(--mint)">STATS</span></span></a>
       <nav class="footer-links">
+        <a href="/charts">Charts</a>
         <a href="/tools">Tools</a>
         <a href="/api/docs">API</a>
         <a href="/status">Status</a>
