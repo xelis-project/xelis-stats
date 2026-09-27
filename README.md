@@ -83,7 +83,7 @@ export; Workers Logs retention is 3 days on Free and 7 days on Paid.
 | ---------------------------- | ------------------------------------------ |
 | `npm run backfill`         | Resumable local historical scan (SQLite)   |
 | `npm run backfill:monitor` | Backfill progress and ETA                  |
-| `npm run export`           | Export history to D1 SQL / R2 JSONL chunks |
+| `npm run export`           | Export the live local D1 to D1 SQL / R2 JSONL chunks |
 | `npm run import:history`   | Import legacy market + chain-size CSV into D1 SQL |
 | `npm run import:d1`        | Apply migrations and load `export/*.sql` into D1 |
 | `npm run decompiler:wasm`  | Rebuild the Silex decompiler wasm under `public/decompiler` |
@@ -93,21 +93,23 @@ One-shot legacy/rebuild helpers live in `scripts/legacy/`. You only need
 `import:history` when rebuilding from the old Postgres cluster; neither runs
 during normal operation.
 
-### Local D1 import
+### Export and D1 import
 
-After a backfill + `npm run export`, load the artifacts into the local D1 that
-`npm run dev` uses:
+`npm run export` reads the live local D1 SQLite that `npm run dev` writes and
+produces the D1 SQL artifacts in `export/`. Set `BACKFILL_DB` to export from a
+standalone backfill file instead. Apply the artifacts with:
 
 ```sh
-npm run import:d1 -- --reset      # local, clean re-init (stop dev/preview first)
-npm run import:d1                 # local, incremental
 npm run import:d1 -- --remote     # deployed D1
+npm run import:d1                 # local Miniflare D1, incremental
 ```
 
-`--reset` wipes `.wrangler/state/v3/d1` first. Prefer it after a fresh backfill:
+`--reset` wipes the local target `.wrangler/state/v3/d1` first (stop dev/preview
+first). It is refused when the source resolves to that same local D1, so it only
+applies alongside an explicit `BACKFILL_DB`. Prefer it after a fresh backfill:
 the aggregate tables are exported with `INSERT OR IGNORE`, so an incremental
 import never refreshes aggregate rows already present in an existing DB. The script also
-seeds the `live_blocks`/`live_txs` cursors to the backfill tip so the collector
+seeds the `live_blocks`/`live_txs` cursors to the source top (max topoheight) so the collector
 resumes from the top instead of re-walking history. Use `--only=a,b`, `--dry-run`,
 `--no-seed`, or `--cursor=N` to control a run.
 

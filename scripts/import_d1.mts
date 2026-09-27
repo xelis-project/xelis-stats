@@ -7,9 +7,11 @@
  * Default target is the local Miniflare D1 (`.wrangler/state/v3/d1`); pass
  * --remote for the deployed database.
  *
- * --reset wipes the local D1 state first (refused for --remote). Use it after a
- * fresh backfill: the aggregate tables are exported with INSERT OR IGNORE, so a
- * re-import never refreshes aggregate rows already present in an existing DB.
+ * --reset wipes the local D1 state first (refused for --remote, and refused when
+ * the resolved source is the local D1 itself, since that would delete the data
+ * before it can be read). Use it after a fresh backfill: the aggregate tables
+ * are exported with INSERT OR IGNORE, so a re-import never refreshes aggregate
+ * rows already present in an existing DB.
  *
  * Order: schema -> legacy market/chain-size -> daily aggregates -> chain rows.
  * Large dumps may be split by export.mts into numbered chunks (`blocks.000.sql`
@@ -18,12 +20,12 @@
  * (e.g. produced by an older export) is re-split on statement boundaries into
  * temporary parts before being applied.
  * The live collector cursors ('live_blocks'/'live_txs') are then seeded to the
- * backfill top (max topoheight in BACKFILL_DB, or --cursor=N) so `npm run dev`
+ * source top (max topoheight in the local D1, or --cursor=N) so `npm run dev`
  * resumes from the tip instead of re-walking history, which would double-count
  * the daily_miners/daily_block_types upserts.
  */
 import { existsSync, rmSync, writeFileSync, unlinkSync, statSync, readdirSync, createReadStream, createWriteStream, mkdtempSync } from "node:fs";
-import { join, basename } from "node:path";
+import { join, basename, resolve, relative, isAbsolute } from "node:path";
 import { tmpdir } from "node:os";
 import { once } from "node:events";
 import { spawnSync } from "node:child_process";
@@ -40,10 +42,30 @@ const NO_MIGRATE = has("no-migrate");
 const NO_SEED = has("no-seed");
 const ONLY = (arg("only") ?? "").split(",").filter((x) => x.length > 0);
 const OUT_DIR = arg("out") ?? process.env.EXPORT_DIR ?? "export";
-const DB_PATH = process.env.BACKFILL_DB ?? "data/backfill.db";
 const DB_NAME = process.env.D1_NAME ?? "xelis-stats";
 const STATE_DIR = ".wrangler/state/v3/d1";
+const STATE_D1_DIR = join(STATE_DIR, "miniflare-D1DatabaseObject");
 const TARGET = REMOTE ? "--remote" : "--local";
+
+/** The local Miniflare D1 SQLite file, if the state directory exists. */
+function localD1Path(): string | undefined {
+  try {
+    const f = readdirSync(STATE_D1_DIR).find((n) => n.endsWith(".sqlite") && n !== "metadata.sqlite");
+    return f ? join(STATE_D1_DIR, f) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** True when `child` is the same as, or nested under, `parent`. */
+function isInside(parent: string, child: string): boolean {
+  const rel = relative(resolve(parent), resolve(child));
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+}
+
+// Source of truth for the cursor seed is the live local D1; set BACKFILL_DB to
+// point at a standalone backfill file instead.
+const DB_PATH = process.env.BACKFILL_DB ?? localD1Path() ?? "data/backfill.db";
 // `wrangler d1 execute --file` reads the whole dump into a JS string, so V8's
 // max string length (0x1fffffe8 ≈ 512 MiB) is the real cap — not D1's 2 GiB
 // file limit. Keep parts comfortably under it; larger files are re-split.
@@ -206,6 +228,11 @@ function backfillTop(): number | undefined {
 if (RESET) {
   if (REMOTE) {
     console.error("--reset only applies to --local; refusing to touch the remote database.");
+    process.exit(1);
+  }
+  if (isInside(STATE_DIR, DB_PATH)) {
+    console.error("--reset would wipe the local D1 that is also the export source;");
+    console.error("set BACKFILL_DB to a separate source file, or drop --reset.");
     process.exit(1);
   }
   try {

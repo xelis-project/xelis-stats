@@ -1,5 +1,5 @@
 /**
- * Export local backfill SQLite → D1 SQL + R2-ready archives.
+ * Export the live local D1 SQLite → D1 SQL + R2-ready archives.
  *
  * D1:
  *   - daily_stats, daily_miners, daily_block_types (aggregates, full history)
@@ -15,6 +15,10 @@
  * Usage: node --experimental-strip-types scripts/export.mts [--full] [--only=a,b] [--remote]
  * Env:   BACKFILL_DB, EXPORT_DIR
  *
+ * The source is the Miniflare SQLite behind the local D1 that `npm run dev`
+ * writes (the dedicated backfill DB was retired). `BACKFILL_DB` still overrides
+ * it to export from a standalone backfill file.
+ *
  * The printed import commands target local D1 by default; pass --remote to
  * print the deployed-database commands instead.
  */
@@ -22,7 +26,21 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, writeFileSync, existsSync, statSync, rmSync, unlinkSync, renameSync, readdirSync } from "node:fs";
 import { join, basename } from "node:path";
 
-const DB_PATH = process.env.BACKFILL_DB ?? "data/backfill.db";
+const STATE_D1_DIR = ".wrangler/state/v3/d1/miniflare-D1DatabaseObject";
+
+/** The local Miniflare D1 SQLite file, if the state directory exists. */
+function localD1Path(): string | undefined {
+  try {
+    const f = readdirSync(STATE_D1_DIR).find((n) => n.endsWith(".sqlite") && n !== "metadata.sqlite");
+    return f ? join(STATE_D1_DIR, f) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Source of truth is the live local D1; set BACKFILL_DB to export a standalone
+// backfill file instead.
+const DB_PATH = process.env.BACKFILL_DB ?? localD1Path() ?? "data/backfill.db";
 const OUT_DIR = process.env.EXPORT_DIR ?? "export";
 // `wrangler d1 execute --file` reads the whole dump into a JS string, so V8's
 // max string length (0x1fffffe8 ≈ 512 MiB) is the real cap — not D1's 2 GiB
@@ -35,7 +53,7 @@ const onlyRaw: string = (process.argv.find((a: string) => a.startsWith("--only="
 const ONLY: string[] = onlyRaw.split(",").filter((x) => x.length > 0);
 
 if (!existsSync(DB_PATH)) {
-  console.error(`No database at ${DB_PATH} — run backfill first.`);
+  console.error(`No source database at ${DB_PATH} — start the local D1 (npm run dev) or set BACKFILL_DB.`);
   process.exit(1);
 }
 
