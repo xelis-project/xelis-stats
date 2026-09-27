@@ -99,6 +99,7 @@ tools.get("/tools/hashrate", (c) => {
       <button class="btn ghost calc-refresh" type="button" data-calc-refresh>Refresh</button>
     </div>
     <p class="calc-note">Estimates rewards from your share of the estimated network hashrate. Actual returns vary with luck, DAG side blocks and pool rules.</p>
+    <div class="calc-split">
     <div class="calc-form">
       <div class="calc-field">
         <label for="hp-hashrate">Your hashrate</label>
@@ -126,6 +127,7 @@ tools.get("/tools/hashrate", (c) => {
     </div>
     <div class="calc-results" id="hp-results" aria-live="polite">
       <p class="calc-status">Loading network data…</p>
+    </div>
     </div>
   </div>`;
 

@@ -1660,6 +1660,15 @@ body.layout-dag .dag-viewport { border-left: none; border-right: none; border-ra
 .calc-row.net.pos .v { color: var(--mint); }
 .calc-row.net.neg .v { color: var(--danger); }
 
+/* Desktop split layout: inputs left, results right. */
+.calc-split { display: grid; gap: 1.8rem; }
+.calc-split .calc-form { margin-bottom: 0; }
+@media (min-width: 900px) {
+  .calc-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 2.6rem; align-items: start; }
+  .calc-split .calc-form { grid-template-columns: 1fr; }
+  .calc-split .calc-results { border-top: none; border-left: 1px solid var(--border); padding-top: 0; padding-left: 2.6rem; }
+}
+
 /* ---------- Tools index (/tools) ---------- */
 .tool-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(24rem, 1fr)); gap: 1.6rem; }
 .tool-card {
