@@ -270,7 +270,7 @@ export function liveRecentTxRowsHtml(d: LiveData): string {
       <td><span class="badge ${type}">${type}</span></td>
       <td title="${esc(t.source)}"><a href="/account/${esc(t.source)}">${esc(shortHash(t.source, 6))}</a></td>
       <td class="num">${atomicPrecise(t.fee)}</td>
-      <td class="num">${fmtInt(t.size)}</td>
+      <td class="num" title="${fmtInt(t.size)} bytes">${fmtBytes(t.size)}</td>
     </tr>`;
   }).join("");
 }
