@@ -566,6 +566,12 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
 .bc-source-toolbar { display: flex; gap: 0.6rem; margin: 0.2rem 0 0.6rem; }
 .bc-source { min-height: 4rem; }
 .bc-source-err { color: #ff9a9a; }
+.bc-source-warning {
+  color: #ffcf7a; background: rgba(255, 207, 122, 0.06);
+  border: 1px solid rgba(255, 207, 122, 0.25); border-radius: 0.6rem;
+  padding: 0.5rem 0.8rem; margin: 0 0 0.6rem;
+  font-family: var(--mono); font-size: 1.1rem; word-break: break-word;
+}
 
 /* ---------- Contract storage ---------- */
 .stg-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.8rem; margin: 0.4rem 0 1.2rem; }

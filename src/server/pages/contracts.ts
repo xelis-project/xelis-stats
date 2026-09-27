@@ -292,6 +292,7 @@ contracts.get("/contracts/:id", async (c) => {
       <div class="bc-pane" data-bc-pane="disasm">${disasmBody}</div>
       <div class="bc-pane" data-bc-pane="source" hidden>
         <p class="disasm-note">Best-effort reconstruction of Silex source from the compiled module (same engine as the <span class="mono">silex decompile</span> CLI). Local names and erased types are synthesized; modules that need extra type information may only decompile partially.</p>
+        <p class="bc-source-warning" id="bc-source-warning" hidden></p>
         <div class="bc-source-toolbar">
           <button class="btn ghost" type="button" id="bc-source-copy" disabled>copy</button>
           <button class="btn ghost" type="button" id="bc-source-download" disabled>download .slx</button>

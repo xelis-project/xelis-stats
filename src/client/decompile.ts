@@ -65,6 +65,7 @@ export function initDecompile(): void {
   if (!tabs.length || !panes.length || !contract) return;
 
   const source = document.getElementById("bc-source") as HTMLPreElement | null;
+  const warning = document.getElementById("bc-source-warning") as HTMLElement | null;
   const copyBtn = document.getElementById("bc-source-copy") as HTMLButtonElement | null;
   const dlBtn = document.getElementById("bc-source-download") as HTMLButtonElement | null;
 
@@ -72,10 +73,14 @@ export function initDecompile(): void {
   let sourceText: string | null = null;
   let loading = false;
 
-  const render = (text: string, failed: boolean): void => {
+  const render = (text: string, failed: boolean, note: string | null = null): void => {
     if (source) {
       source.textContent = text;
       source.classList.toggle("bc-source-err", failed);
+    }
+    if (warning) {
+      warning.textContent = note ?? "";
+      warning.hidden = !note;
     }
     if (copyBtn) copyBtn.disabled = failed;
     if (dlBtn) dlBtn.disabled = failed;
@@ -92,8 +97,12 @@ export function initDecompile(): void {
         moduleJson = JSON.stringify(await res.json());
       }
       const glue = await loadGlue();
-      sourceText = glue.decompile(moduleJson);
-      render(sourceText, false);
+      const payload = JSON.parse(glue.decompile(moduleJson)) as {
+        source: string;
+        warning?: string | null;
+      };
+      sourceText = payload.source;
+      render(payload.source, false, payload.warning ?? null);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       render(

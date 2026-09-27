@@ -8,15 +8,22 @@
 
 use console_error_panic_hook::set_once;
 use silex_bytecode::Module;
-use silex_decompiler::Decompiler;
 use wasm_bindgen::prelude::*;
 use xelis_common::contract::{build_environment, ContractVersion};
 use xelis_common::transaction::mock::MockStorageProvider;
+
+mod decompiler;
+use decompiler::Decompiler;
 
 /// Reconstruct Silex source from a contract module JSON payload.
 ///
 /// Accepts either the `get_contract_module` response shape
 /// (`{ "version": "v1", "module": { ... } }`) or a bare module object.
+///
+/// Returns a JSON payload `{ "source": string, "warning": string | null }`.
+/// `warning` is set when the recovered source did not pass the decompiler's own
+/// Silex validation, in which case `source` is still the best-effort
+/// reconstruction.
 #[wasm_bindgen]
 pub fn decompile(module_json: &str) -> Result<String, JsValue> {
     set_once();
@@ -41,7 +48,13 @@ pub fn decompile(module_json: &str) -> Result<String, JsValue> {
         .map_err(|e| JsValue::from_str(&format!("invalid contract module: {e}")))?;
 
     let environment = build_environment::<MockStorageProvider>(version);
-    Decompiler::new(&module, &environment)
-        .decompile()
-        .map_err(|e| JsValue::from_str(&e.to_string()))
+    let recovered = Decompiler::new(&module, &environment)
+        .decompile_lenient()
+        .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+    let payload = serde_json::json!({
+        "source": recovered.source,
+        "warning": recovered.warning,
+    });
+    Ok(payload.to_string())
 }

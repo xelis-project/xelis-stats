@@ -3,6 +3,11 @@
  *
  * Accepts either the `get_contract_module` response shape
  * (`{ "version": "v1", "module": { ... } }`) or a bare module object.
+ *
+ * Returns a JSON payload `{ "source": string, "warning": string | null }`.
+ * `warning` is set when the recovered source did not pass the decompiler's own
+ * Silex validation, in which case `source` is still the best-effort
+ * reconstruction.
  * @param {string} module_json
  * @returns {string}
  */

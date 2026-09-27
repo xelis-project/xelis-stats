@@ -11,20 +11,25 @@ crate-type = ["cdylib", "rlib"]
 wasm-bindgen = "0.2"
 serde_json = "1"
 console_error_panic_hook = "0.1"
-silex-decompiler = { git = "https://github.com/xelis-project/xelis-vm", tag = "v1.4.0" }
+thiserror = "2"
+# The decompiler is vendored under src/decompiler (from xelis-vm v1.4.0) so a
+# lenient mode can return partial source; these are the crates it needs.
+silex-ast = { git = "https://github.com/xelis-project/xelis-vm", tag = "v1.4.0" }
+silex-builder = { git = "https://github.com/xelis-project/xelis-vm", tag = "v1.4.0" }
 silex-bytecode = { git = "https://github.com/xelis-project/xelis-vm", tag = "v1.4.0" }
+silex-types = { git = "https://github.com/xelis-project/xelis-vm", tag = "v1.4.0" }
+silex-lexer = { git = "https://github.com/xelis-project/xelis-vm", tag = "v1.4.0" }
+silex-parser = { git = "https://github.com/xelis-project/xelis-vm", tag = "v1.4.0" }
 xelis_common = { git = "https://github.com/xelis-project/xelis-blockchain", branch = "dev", package = "xelis_common" }
 
 # xelis_common pulls these transitively on wasm32; the backend cfg is supplied
-# by the build script (see build.sh).
+# by the build script (see build.mjs).
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
 getrandom_04 = { package = "getrandom", version = "0.4.0-rc.0", features = ["wasm_js"] }
 web-time = "1.1.0"
 
 [dev-dependencies]
-silex-lexer = { git = "https://github.com/xelis-project/xelis-vm", tag = "v1.4.0" }
-silex-parser = { git = "https://github.com/xelis-project/xelis-vm", tag = "v1.4.0" }
 silex-compiler = { git = "https://github.com/xelis-project/xelis-vm", tag = "v1.4.0" }
 
 [profile.release]
