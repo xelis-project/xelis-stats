@@ -445,7 +445,7 @@ html.reveal-flags .flag-shown { display: inline; }
 .kv { width: 100%; font-size: 1.35rem; }
 .kv td { padding: 0.8rem; border-bottom: 1px solid hsla(0, 0%, 100%, 0.05); }
 .kv td:first-child { color: var(--text-dim); text-transform: uppercase; font-size: 1.1rem; font-weight: 700; letter-spacing: 0.08em; width: 22rem; }
-.kv td:last-child { font-variant-numeric: tabular-nums; word-break: break-all; }
+.kv td:last-child { font-variant-numeric: tabular-nums; white-space: normal; word-break: break-all; }
 
 /* ---------- Block detail ---------- */
 .blk-head { display: flex; align-items: flex-start; gap: 1.6rem; flex-wrap: wrap; }
