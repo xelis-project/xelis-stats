@@ -1317,7 +1317,16 @@ version = "0.1.0"
 source = "git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0#259e287d2a32bdcd68ed952775c5e3af8ae673cf"
 dependencies = [
  "indexmap",
- "silex-types",
+ "silex-types 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
+]
+
+[[package]]
+name = "silex-ast"
+version = "0.1.0"
+source = "git+https://github.com/xelis-project/xelis-vm?branch=master#a52af5dfb38cc793593f10d910b61269371a95ff"
+dependencies = [
+ "indexmap",
+ "silex-types 0.1.0 (git+https://github.com/xelis-project/xelis-vm?branch=master)",
 ]
 
 [[package]]
@@ -1329,9 +1338,9 @@ dependencies = [
  "hex",
  "log",
  "paste",
- "silex-ast",
- "silex-environment",
- "silex-types",
+ "silex-ast 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
+ "silex-environment 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
+ "silex-types 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
  "thiserror 2.0.21",
 ]
 
@@ -1344,20 +1353,33 @@ dependencies = [
  "indexmap",
  "schemars",
  "serde",
- "silex-types",
+ "silex-types 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "silex-bytecode"
+version = "0.1.0"
+source = "git+https://github.com/xelis-project/xelis-vm?branch=master#a52af5dfb38cc793593f10d910b61269371a95ff"
+dependencies = [
+ "hex",
+ "indexmap",
+ "schemars",
+ "serde",
+ "silex-types 0.1.0 (git+https://github.com/xelis-project/xelis-vm?branch=master)",
  "thiserror 2.0.21",
 ]
 
 [[package]]
 name = "silex-compiler"
 version = "0.1.0"
-source = "git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0#259e287d2a32bdcd68ed952775c5e3af8ae673cf"
+source = "git+https://github.com/xelis-project/xelis-vm?branch=master#a52af5dfb38cc793593f10d910b61269371a95ff"
 dependencies = [
  "log",
- "silex-ast",
- "silex-bytecode",
- "silex-environment",
- "silex-types",
+ "silex-ast 0.1.0 (git+https://github.com/xelis-project/xelis-vm?branch=master)",
+ "silex-bytecode 0.1.0 (git+https://github.com/xelis-project/xelis-vm?branch=master)",
+ "silex-environment 0.1.0 (git+https://github.com/xelis-project/xelis-vm?branch=master)",
+ "silex-types 0.1.0 (git+https://github.com/xelis-project/xelis-vm?branch=master)",
  "thiserror 2.0.21",
 ]
 
@@ -1372,8 +1394,24 @@ dependencies = [
  "hashbrown",
  "indexmap",
  "runtime-context",
- "silex-bytecode",
- "silex-types",
+ "silex-bytecode 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
+ "silex-types 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "silex-environment"
+version = "0.1.0"
+source = "git+https://github.com/xelis-project/xelis-vm?branch=master#a52af5dfb38cc793593f10d910b61269371a95ff"
+dependencies = [
+ "anyhow",
+ "better_any",
+ "futures",
+ "hashbrown",
+ "indexmap",
+ "runtime-context",
+ "silex-bytecode 0.1.0 (git+https://github.com/xelis-project/xelis-vm?branch=master)",
+ "silex-types 0.1.0 (git+https://github.com/xelis-project/xelis-vm?branch=master)",
  "thiserror 2.0.21",
 ]
 
@@ -1383,8 +1421,8 @@ version = "0.1.0"
 source = "git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0#259e287d2a32bdcd68ed952775c5e3af8ae673cf"
 dependencies = [
  "log",
- "silex-ast",
- "silex-types",
+ "silex-ast 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
+ "silex-types 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
  "thiserror 2.0.21",
 ]
 
@@ -1397,10 +1435,10 @@ dependencies = [
  "indexmap",
  "log",
  "paste",
- "silex-ast",
+ "silex-ast 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
  "silex-builder",
- "silex-environment",
- "silex-types",
+ "silex-environment 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
+ "silex-types 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
  "thiserror 2.0.21",
 ]
 
@@ -1408,6 +1446,22 @@ dependencies = [
 name = "silex-types"
 version = "0.1.0"
 source = "git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0#259e287d2a32bdcd68ed952775c5e3af8ae673cf"
+dependencies = [
+ "anyhow",
+ "hex",
+ "indexmap",
+ "itertools",
+ "lazy_static",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "silex-types"
+version = "0.1.0"
+source = "git+https://github.com/xelis-project/xelis-vm?branch=master#a52af5dfb38cc793593f10d910b61269371a95ff"
 dependencies = [
  "anyhow",
  "hex",
@@ -1888,13 +1942,13 @@ dependencies = [
  "getrandom 0.2.17",
  "getrandom 0.4.3",
  "serde_json",
- "silex-ast",
+ "silex-ast 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
  "silex-builder",
- "silex-bytecode",
+ "silex-bytecode 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
  "silex-compiler",
  "silex-lexer",
  "silex-parser",
- "silex-types",
+ "silex-types 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
  "thiserror 2.0.21",
  "wasm-bindgen",
  "web-time",
@@ -1910,9 +1964,9 @@ dependencies = [
  "futures",
  "indexmap",
  "log",
- "silex-bytecode",
- "silex-environment",
- "silex-types",
+ "silex-bytecode 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
+ "silex-environment 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
+ "silex-types 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
  "thiserror 2.0.21",
 ]
 
@@ -1951,8 +2005,8 @@ dependencies = [
  "serde_regex",
  "sha3",
  "silex-builder",
- "silex-bytecode",
- "silex-types",
+ "silex-bytecode 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
+ "silex-types 0.1.0 (git+https://github.com/xelis-project/xelis-vm?tag=v1.4.0)",
  "strum",
  "thiserror 2.0.21",
  "web-time",

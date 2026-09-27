@@ -31,7 +31,7 @@ getrandom_04 = { package = "getrandom", version = "0.4.0-rc.0", features = ["was
 web-time = "1.1.0"
 
 [dev-dependencies]
-silex-compiler = { git = "https://github.com/xelis-project/xelis-vm", tag = "v1.4.0" }
+silex-compiler = { git = "https://github.com/xelis-project/xelis-vm", branch = "master" }
 
 [profile.release]
 opt-level = "s"
