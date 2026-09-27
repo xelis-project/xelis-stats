@@ -547,8 +547,13 @@ export function initDag(): void {
   function updateUrl(): void {
     try {
       // Live is the default view, so it needs no query; historical windows keep
-      // their topoheight so the link reopens the same window.
-      const qs = !live && data.center > 0 ? `?topo=${data.center}` : "";
+      // their topoheight so the link reopens the same window. topo=0 (the
+      // earliest window) needs live=0 because a bare topo=0 means live.
+      let qs = "";
+      if (!live) {
+        const topo = Math.max(0, Math.round(data.center));
+        qs = `?topo=${topo}${topo <= 0 ? "&live=0" : ""}`;
+      }
       history.replaceState(null, "", `/dag${qs}`);
     } catch { /* history unavailable */ }
   }
@@ -556,7 +561,9 @@ export function initDag(): void {
   async function loadHistory(center?: number): Promise<void> {
     setLive(false);
     const q = new URLSearchParams({ span: String(SPAN) });
-    if (center && center > 0) q.set("center", String(Math.floor(center)));
+    // center=0 is a valid target (the earliest window); only an omitted center
+    // falls back to the latest window.
+    if (center !== undefined && Number.isFinite(center)) q.set("center", String(Math.max(0, Math.floor(center))));
     status.textContent = "loading…";
     loading.hidden = false;
     try {
@@ -726,14 +733,14 @@ export function initDag(): void {
   goBtn.addEventListener("click", () => {
     const v = Number(input.value);
     if (!Number.isFinite(v) || v < 0) return;
-    void loadHistory(v || undefined);
+    void loadHistory(v);
   });
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") goBtn.click();
   });
   prevBtn.addEventListener("click", () => {
     const base = data.center || data.hi || 1;
-    void loadHistory(Math.max(1, base - SPAN));
+    void loadHistory(Math.max(0, base - SPAN));
   });
   nextBtn.addEventListener("click", () => {
     const base = data.center || data.hi || 1;
@@ -794,5 +801,5 @@ export function initDag(): void {
   setScrubberMax(Math.max(startTip, startTopo, 1));
   setScrubberValue(startTopo > 0 ? startTopo : startTip);
   if (app.dataset.live === "1") setLive(true);
-  else void loadHistory(startTopo > 0 ? startTopo : undefined);
+  else void loadHistory(app.dataset.live === "0" || startTopo > 0 ? startTopo : undefined);
 }

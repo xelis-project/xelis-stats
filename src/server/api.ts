@@ -80,7 +80,11 @@ api.get("/api/block/:id", async (c) => {
 // it, e.g. while the collector catches up or the node is unreachable).
 api.get("/api/dag", async (c) => {
   const span = clampInt(c.req.query("span"), 100, 300);
-  const requested = Number(c.req.query("center") ?? 0);
+  // An explicit center=0 means the earliest indexed window, which must stay
+  // distinct from an omitted center (the latest window).
+  const rawCenter = c.req.query("center");
+  const hasCenter = rawCenter !== undefined && rawCenter !== "";
+  const requested = Number(rawCenter ?? 0);
   try {
     const maxRow = await c.env.DB.prepare("SELECT MAX(topoheight) AS m FROM blocks").first<{ m: number | null }>();
     const dbMax = Number(maxRow?.m ?? 0);
@@ -94,8 +98,8 @@ api.get("/api/dag", async (c) => {
       stable = Number.isFinite(stats.info?.stable_topoheight) ? stats.info.stable_topoheight : null;
     } catch { /* node optional */ }
     const maxBound = Math.max(dbMax, tip ?? 0, 1);
-    const center = Number.isFinite(requested) && requested > 0
-      ? Math.min(Math.floor(requested), maxBound)
+    const center = hasCenter && Number.isFinite(requested)
+      ? Math.min(Math.max(0, Math.floor(requested)), maxBound)
       : maxBound;
     const lo = Math.max(0, center - span);
     const hi = Math.min(center + span, maxBound);

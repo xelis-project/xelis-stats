@@ -32,7 +32,7 @@ dag.get("/dag", async (c) => {
     logErr("page/dag", err);
   }
 
-  const topo = requested > 0 ? requested : (tip ?? 0);
+  const topo = live ? (tip ?? 0) : requested;
   // Range/value for the bottom history scrubber: the full known chain height so
   // a drag can jump anywhere in history (or snap back to the live tip).
   const sliderMax = Math.max(tip ?? 0, topo, 1);
