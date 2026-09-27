@@ -248,10 +248,10 @@ api.get("/api/cron", async (c) => {
   try {
     const [jobs, runs] = await Promise.all([
       c.env.DB.prepare(
-        "SELECT job, last_ts, last_ok, last_ms, last_error, fail_streak, ok_total, fail_total FROM cron_jobs ORDER BY job"
+        "SELECT job, last_ts, last_ok, last_ms, fail_streak, ok_total, fail_total FROM cron_jobs ORDER BY job"
       ).all().then((r) => r.results),
       c.env.DB.prepare(
-        "SELECT ts, schedule, duration_ms, jobs, failed, errors FROM cron_runs ORDER BY ts DESC LIMIT 50"
+        "SELECT ts, schedule, duration_ms, jobs, failed FROM cron_runs ORDER BY ts DESC LIMIT 50"
       ).all().then((r) => r.results),
     ]);
     const last = runs[0] as Row | undefined;

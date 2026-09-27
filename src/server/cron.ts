@@ -164,7 +164,6 @@ export interface CronJobStatus {
   job: string;
   ok: boolean;
   ms: number;
-  error?: string;
 }
 
 const CRON_RUN_RETENTION_MS = 7 * 86400_000;
@@ -179,30 +178,30 @@ async function recordCronRun(
   if (!jobs.length) return;
   const ts = Date.now();
   const failed = jobs.filter((j) => !j.ok);
+  // Error text is deliberately not persisted here: /api/cron and /status are
+  // public. Full messages are emitted to Workers Logs (observability) instead.
   const jobStmt = env.DB.prepare(
-    `INSERT INTO cron_jobs (job, last_ts, last_ok, last_ms, last_error, fail_streak, ok_total, fail_total)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO cron_jobs (job, last_ts, last_ok, last_ms, fail_streak, ok_total, fail_total)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(job) DO UPDATE SET
        last_ts = excluded.last_ts,
        last_ok = excluded.last_ok,
        last_ms = excluded.last_ms,
-       last_error = excluded.last_error,
        fail_streak = CASE WHEN excluded.last_ok = 1 THEN 0 ELSE cron_jobs.fail_streak + 1 END,
        ok_total = cron_jobs.ok_total + excluded.ok_total,
        fail_total = cron_jobs.fail_total + excluded.fail_total`
   );
   const stmts = jobs.map((j) =>
-    jobStmt.bind(j.job, ts, j.ok ? 1 : 0, j.ms, j.error?.slice(0, 500) ?? null, j.ok ? 0 : 1, j.ok ? 1 : 0, j.ok ? 0 : 1)
+    jobStmt.bind(j.job, ts, j.ok ? 1 : 0, j.ms, j.ok ? 0 : 1, j.ok ? 1 : 0, j.ok ? 0 : 1)
   );
   stmts.push(env.DB.prepare(
-    "INSERT INTO cron_runs (ts, schedule, duration_ms, jobs, failed, errors) VALUES (?, ?, ?, ?, ?, ?)"
+    "INSERT INTO cron_runs (ts, schedule, duration_ms, jobs, failed) VALUES (?, ?, ?, ?, ?)"
   ).bind(
     ts,
     schedule,
     ts - startedAt,
     jobs.length,
     failed.length,
-    failed.length ? JSON.stringify(failed.map((j) => ({ job: j.job, error: j.error }))).slice(0, 2000) : null,
   ));
   await env.DB.batch(stmts);
   await env.DB.prepare("DELETE FROM cron_runs WHERE ts < ?").bind(ts - CRON_RUN_RETENTION_MS).run();
@@ -221,8 +220,10 @@ export async function handleCron(env: Env, schedule = "unknown"): Promise<void> 
       return value;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      jobs.push({ job, ok: false, ms: Date.now() - t0, error: message });
-      console.error(`${job} cron:`, message);
+      jobs.push({ job, ok: false, ms: Date.now() - t0 });
+      // structured so Workers Logs can filter by job/event; this is the only
+      // place the full error text is kept (the DB and public API stay clean)
+      console.error({ event: "cron_job_failed", job, ms: Date.now() - t0, error: message });
       return null;
     }
   };
@@ -305,7 +306,7 @@ export async function handleCron(env: Env, schedule = "unknown"): Promise<void> 
   try {
     await recordCronRun(env, schedule, startedAt, jobs);
   } catch (err) {
-    console.error("cron monitor:", (err as Error).message);
+    console.error({ event: "cron_monitor_failed", error: (err as Error).message });
   }
 }
 

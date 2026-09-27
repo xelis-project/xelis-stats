@@ -60,6 +60,17 @@ run `npm run build` before `wrangler deploy`).
 
 For local development, secrets go in `.dev.vars` (gitignored).
 
+### Cron error logs
+
+The public `/api/cron` endpoint and the `/status` panel only report pass/fail,
+durations, and fail streaks — never error text. Failed scheduled jobs log a
+structured `{ event: "cron_job_failed", job, ms, error }` record instead, which
+Workers Logs captures because `observability.enabled` is set in
+`wrangler.jsonc`. View and filter them in the Cloudflare dashboard under
+**Workers & Pages → xelis-stats → Observability** (query `event = "cron_job_failed"`),
+or via a `wrangler tail`. For external shipping, use Logpush or OpenTelemetry
+export; Workers Logs retention is 3 days on Free and 7 days on Paid.
+
 ### Scripts
 
 | Command                      | Purpose                                    |
