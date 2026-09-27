@@ -114,10 +114,6 @@ network.get("/network", async (c) => {
     })),
   }).replace(/</g, "\\u003c");
 
-  const locLabel = cities.length
-    ? `clustered GeoIP cities · ${fmtInt(cities.length)}`
-    : "clustered country centroids";
-
   const s = snapshot;
   const nic = new Intl.NumberFormat("en-US");
   const cards = `<div class="cards">
@@ -209,7 +205,7 @@ network.get("/network", async (c) => {
         </table></div>
       </div>
       <div class="panel">
-        <div class="panel-head"><h2>Node locations <span class="map-sub">${locLabel}</span></h2></div>
+        <div class="panel-head"><h2>Node locations</h2></div>
         <div id="world-map-clusters" class="world-map world-map-clusters" role="img" aria-label="World map of peer locations clustered by country">
           <noscript><p style="color:var(--text-dim)">Enable JavaScript to see the map.</p></noscript>
         </div>
