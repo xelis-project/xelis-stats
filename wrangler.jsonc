@@ -54,7 +54,10 @@
     }
   ],
   "triggers": {
-    "crons": ["*/2 * * * *", "0 * * * *"]
+    // "1-59/2" (not "*/2") so the 2-min trigger never lands on minute 0; the
+    // hourly trigger below is then the only run at :00, so the hourly-only jobs
+    // (asset-supply, daily-rollup, shard-rotation, peer concentration) run once.
+    "crons": ["1-59/2 * * * *", "0 * * * *"]
   },
   "vars": {
     "XELIS_NODE": "https://node.xelis.io",

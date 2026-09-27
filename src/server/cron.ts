@@ -86,6 +86,7 @@ export async function snapshotPeers(
   env: Env,
   ourTopo: number,
   ourTopHash: string,
+  hourly = false,
 ): Promise<void> {
   try {
     const res = await rpc<{ peers?: PeerEntry[]; hidden_peers?: number }>("get_peers", undefined, env.XELIS_NODE);
@@ -115,7 +116,7 @@ export async function snapshotPeers(
     // keep ~30 days of 2-min snapshots
     await env.DB.prepare("DELETE FROM peer_snapshots WHERE ts < ?").bind(row.ts - 30 * 86400_000).run();
 
-    if (new Date().getUTCMinutes() === 0) {
+    if (hourly) {
       // per-version counts incl. pruned nodes
       const versions = new Map<string, { count: number; pruned: number }>();
       for (const p of peers) {
@@ -232,6 +233,11 @@ async function recordCronRun(
 export async function handleCron(env: Env, schedule = "unknown"): Promise<void> {
   const startedAt = Date.now();
   const jobs: CronJobStatus[] = [];
+  // The hourly trigger is "0 * * * *" and the every-2-min trigger is
+  // "1-59/2 * * * *": the latter deliberately skips minute 0 so this hourly
+  // flag is the sole owner of the top-of-hour work (otherwise both triggers
+  // fire at :00 and rotateShards could race itself into a duplicate shard).
+  const hourly = schedule === "0 * * * *";
   // Each task is timed and its failure captured instead of silently logged, so
   // /status and /api/cron can surface which scheduled work is unhealthy.
   const run = async <T>(job: string, fn: () => Promise<T>): Promise<T | null> => {
@@ -284,7 +290,7 @@ export async function handleCron(env: Env, schedule = "unknown"): Promise<void> 
   // peer network snapshot (every run). Skipped when get_info failed — the
   // mempool job already records that failure, so peers is not double-counted.
   if (info) {
-    await run("peers", () => snapshotPeers(env, info.topoheight, info.top_block_hash));
+    await run("peers", () => snapshotPeers(env, info.topoheight, info.top_block_hash, hourly));
   }
 
   // on-disk chain size snapshot; the node may not expose get_size_on_disk
@@ -305,9 +311,8 @@ export async function handleCron(env: Env, schedule = "unknown"): Promise<void> 
     if (written) console.log(`asset registry: synced ${written} rows`);
   });
 
-  // hourly tasks (single cron schedule; use minute to distinguish — run when minute === 0)
-  const minute = new Date().getUTCMinutes();
-  if (minute === 0) {
+  // hourly tasks; the "0 * * * *" trigger owns these (see `hourly` above)
+  if (hourly) {
     // asset supply history (the node only exposes the current minted supply)
     await run("asset-supply", async () => {
       const snapped = await snapshotAssetSupply(env);
