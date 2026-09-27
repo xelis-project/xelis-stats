@@ -8,7 +8,6 @@ import { knownEntity } from "./entities";
 import type { LiveBlock, LiveData, LiveFees, LiveMempoolTx, LivePeers, LiveRecentTx } from "../client/live-render";
 
 // get_blocks_range_by_topoheight accepts at most a 20-topoheight span.
-const WINDOW = 20;         // newest tip blocks (unstable window)
 const STABLE_WINDOW = 24;  // stable blocks shown before the stability boundary
 const RPC_SPAN = 20;
 const MEMPOOL_LIMIT = 25;
@@ -158,19 +157,15 @@ async function load(env: Env): Promise<LiveData> {
   const top = info.topoheight;
   const stable = info.stable_topoheight;
   const lag = Math.max(0, top - stable);
-  // Newest tip window (may still contain stable blocks when the lag is small)
-  // plus a run of stable blocks ending at the boundary, so the DAG shows more
-  // than the single boundary block. Overlap between the two ranges is removed
-  // when the client merges them by topoheight.
-  const tipFrom = Math.max(1, top - (WINDOW - 1));
-  const stableFrom = Math.max(1, stable - STABLE_WINDOW + 1);
+  // Fetch one contiguous range from the start of the stable history through the
+  // tip so no topoheight is skipped between the stability boundary and the
+  // newest block. Blocks at or below the boundary form the stable run; every
+  // block above it is the unstable window.
+  const from = Math.max(1, stable - STABLE_WINDOW + 1);
 
-  const [rawBlocks, rawBoundary, rawMempool, rawRates, rawKb, rawTips, rawPeers] = await Promise.all([
-    tipFrom <= top
-      ? rangeBlocks(env, tipFrom, top)
-      : Promise.resolve([] as Array<Record<string, unknown>>),
-    stable >= 1 && stableFrom <= stable
-      ? rangeBlocks(env, stableFrom, stable)
+  const [rawBlocks, rawMempool, rawRates, rawKb, rawTips, rawPeers] = await Promise.all([
+    from <= top
+      ? rangeBlocks(env, from, top)
       : Promise.resolve([] as Array<Record<string, unknown>>),
     rpc<{ total: number; transactions: Array<Record<string, unknown>> }>("get_mempool_summary", { skip: 0, maximum: MEMPOOL_LIMIT }, env.XELIS_NODE).catch(() => null),
     rpc<Record<string, number>>("get_estimated_fee_rates", undefined, env.XELIS_NODE).catch(() => null),
@@ -179,8 +174,9 @@ async function load(env: Env): Promise<LiveData> {
     rpc<{ peers?: Array<{ pruned_topoheight?: number | null }>; hidden_peers?: number }>("get_peers", undefined, env.XELIS_NODE).catch(() => null),
   ]);
 
-  const unstable: LiveBlock[] = (Array.isArray(rawBlocks) ? rawBlocks : []).map((b) => toBlock(b, stable));
-  const boundary: LiveBlock[] = (Array.isArray(rawBoundary) ? rawBoundary : []).map((b) => toBlock(b, stable));
+  const allBlocks: LiveBlock[] = (Array.isArray(rawBlocks) ? rawBlocks : []).map((b) => toBlock(b, stable));
+  const unstable: LiveBlock[] = allBlocks.filter((b) => !b.stable);
+  const boundary: LiveBlock[] = allBlocks.filter((b) => b.stable);
 
   // Stats cover every distinct block that will be drawn, stable boundary blocks
   // included, so the side/sync counters match the DAG.
