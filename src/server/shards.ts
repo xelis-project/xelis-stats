@@ -23,7 +23,7 @@
  * Required setup:
  *   wrangler secret put CLOUDFLARE_ACCOUNT_ID
  *   wrangler secret put CLOUDFLARE_API_TOKEN
- *   vars: XELIS_STATS_DB_ID (hot DB uuid, for size checks), SHARD_MAX_BYTES
+ *   vars: XELIS_EXPLORER_DB_ID (hot DB uuid, for size checks), SHARD_MAX_BYTES
  * Without the secrets the whole module is a no-op and the app behaves as before.
  */
 import type { Env } from "./app";
@@ -202,7 +202,7 @@ async function hotFileBytes(env: Env): Promise<number | null> {
     ).first<{ bytes: number }>();
     if (row?.bytes) return Number(row.bytes);
   } catch { /* fall through to REST */ }
-  return env.XELIS_STATS_DB_ID ? dbFileBytes(env, env.XELIS_STATS_DB_ID) : null;
+  return env.XELIS_EXPLORER_DB_ID ? dbFileBytes(env, env.XELIS_EXPLORER_DB_ID) : null;
 }
 
 // ---------- registry ----------
@@ -949,7 +949,7 @@ export async function rotateShards(env: Env, budgetMs = 25_000): Promise<string>
     const minTopo = Math.max(Number(b?.mn ?? 0), hotFloor(shards) + 1);
     const cut = maxTopo - KEEP_HOT_BLOCKS;
     if (!maxTopo || cut <= minTopo) return joinStatus(pruned, "ok (nothing to cut yet)");
-    const name = `xelis-stats-shard-${shards.length + 1}`;
+    const name = `xelis-explorer-shard-${shards.length + 1}`;
     const dbId = await createShardDatabase(env, name);
     if (!dbId) throw new Error("shard create: no uuid returned");
     await initShardSchema(env, dbId);

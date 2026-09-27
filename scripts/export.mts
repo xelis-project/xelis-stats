@@ -490,7 +490,7 @@ const IMPORT_FILES = [
 ];
 console.log(`
 Done. Import to D1 (${REMOTE ? "remote" : "local"}, in order):
-${IMPORT_FILES.flatMap((name) => resolveOutFiles(name)).map((f) => `  npx wrangler d1 execute xelis-stats --file ${f.replace(/\\/g, "/")} ${TARGET}`).join("\n")}
+${IMPORT_FILES.flatMap((name) => resolveOutFiles(name)).map((f) => `  npx wrangler d1 execute xelis-explorer --file ${f.replace(/\\/g, "/")} ${TARGET}`).join("\n")}
 Then seed cursor: sync_state.last_backfill_topoheight = (max stable at export time).
 ${REMOTE ? "" : "Pass --remote for the deployed D1 instead of local.\n"}${FULL ? "R2: upload export/r2/*.jsonl with wrangler r2 object put." : "(re-run with --full for R2 raw archives)"}`);
 

@@ -14,9 +14,9 @@
  * both            -> exchanges           (name/status/url/added/retired)
  *
  * Remote import:
- *   npx wrangler d1 execute xelis-stats --file export/exchanges.sql --remote
- *   npx wrangler d1 execute xelis-stats --file export/market_snapshots.sql --remote
- *   npx wrangler d1 execute xelis-stats --file export/chain_size_snapshots.sql --remote
+ *   npx wrangler d1 execute xelis-explorer --file export/exchanges.sql --remote
+ *   npx wrangler d1 execute xelis-explorer --file export/market_snapshots.sql --remote
+ *   npx wrangler d1 execute xelis-explorer --file export/chain_size_snapshots.sql --remote
  */
 import { readFileSync, writeFileSync, mkdirSync, unlinkSync, statSync, renameSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -216,6 +216,6 @@ if (CHAIN_SIZE_CSV) {
 }
 
 console.log("\nDone. Import to D1 (after migrations):");
-console.log("  npx wrangler d1 execute xelis-stats --file export/exchanges.sql --remote");
-console.log("  npx wrangler d1 execute xelis-stats --file export/market_snapshots.sql --remote");
-console.log("  npx wrangler d1 execute xelis-stats --file export/chain_size_snapshots.sql --remote");
+console.log("  npx wrangler d1 execute xelis-explorer --file export/exchanges.sql --remote");
+console.log("  npx wrangler d1 execute xelis-explorer --file export/market_snapshots.sql --remote");
+console.log("  npx wrangler d1 execute xelis-explorer --file export/chain_size_snapshots.sql --remote");

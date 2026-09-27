@@ -1,4 +1,4 @@
-# xelis-stats
+# xelis-explorer
 
 Charts and stats for the Xelis network, built with Vite, Hono, and uPlot. Runs on Cloudflare Workers (D1 + KV + Durable Objects).
 
@@ -35,17 +35,17 @@ deploys need no Rust toolchain. Rebuild them with `npm run decompiler:wasm`
    `wrangler.jsonc` (the `TODO_CREATE_WITH_WRANGLER` placeholders):
 
    ```sh
-   npx wrangler d1 create xelis-stats
+   npx wrangler d1 create xelis-explorer
    npx wrangler kv namespace create KV
    ```
 
-   `XELIS_STATS_DB_ID` must be the hot D1 database uuid (same as
+   `XELIS_EXPLORER_DB_ID` must be the hot D1 database uuid (same as
    `database_id`).
 
 2. Apply the schema to the remote database:
 
    ```sh
-   npx wrangler d1 migrations apply xelis-stats --remote
+   npx wrangler d1 migrations apply xelis-explorer --remote
    ```
 
 3. Optional — D1 shard rotation (the 10 GB per-database workaround). Without
@@ -73,7 +73,7 @@ durations, and fail streaks — never error text. Failed scheduled jobs log a
 structured `{ event: "cron_job_failed", job, ms, error }` record instead, which
 Workers Logs captures because `observability.enabled` is set in
 `wrangler.jsonc`. View and filter them in the Cloudflare dashboard under
-**Workers & Pages → xelis-stats → Observability** (query `event = "cron_job_failed"`),
+**Workers & Pages → xelis-explorer → Observability** (query `event = "cron_job_failed"`),
 or via a `wrangler tail`. For external shipping, use Logpush or OpenTelemetry
 export; Workers Logs retention is 3 days on Free and 7 days on Paid.
 
@@ -139,10 +139,10 @@ COPY (SELECT height, timestamp, size_in_bytes
 SQL
 
 npm run import:history -- --tickers=/tmp/market_tickers.csv --chain-size=/tmp/blockchain_size.csv
-npx wrangler d1 migrations apply xelis-stats --remote
-npx wrangler d1 execute xelis-stats --file export/exchanges.sql --remote
-npx wrangler d1 execute xelis-stats --file export/market_snapshots.sql --remote
-npx wrangler d1 execute xelis-stats --file export/chain_size_snapshots.sql --remote
+npx wrangler d1 migrations apply xelis-explorer --remote
+npx wrangler d1 execute xelis-explorer --file export/exchanges.sql --remote
+npx wrangler d1 execute xelis-explorer --file export/market_snapshots.sql --remote
+npx wrangler d1 execute xelis-explorer --file export/chain_size_snapshots.sql --remote
 ```
 
 `blockchain_size` is real on-disk chain growth sampled from the node, which

@@ -112,7 +112,7 @@ interface Summary {
 
 const STORAGE_KEY = "xelis-dashboard-v4";
 const LEGACY_KEY = "xelis-dashboard"; // pre-tabs single-layout storage
-const OLDEST_KEY = "xelis-stats-layout";
+const OLDEST_KEY = "xelis-explorer-layout";
 const FS_KEY = "xelis:dash-fullscreen"; // per browser tab, so each window can be fullscreen independently
 const CANON_COLS = 12;
 

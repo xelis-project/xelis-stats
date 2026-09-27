@@ -1868,20 +1868,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "xelis-hash"
-version = "0.1.0"
-source = "git+https://github.com/xelis-project/xelis-hash?tag=v3.1.0#f48262b931438fdbf2932711613e020c02f1ea04"
-dependencies = [
- "aes",
- "blake3",
- "bytemuck",
- "chacha20 0.9.1",
- "thiserror 1.0.69",
- "tiny-keccak",
-]
-
-[[package]]
-name = "xelis-stats-decompiler"
+name = "xelis-explorer-decompiler"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
@@ -1899,6 +1886,19 @@ dependencies = [
  "wasm-bindgen",
  "web-time",
  "xelis_common",
+]
+
+[[package]]
+name = "xelis-hash"
+version = "0.1.0"
+source = "git+https://github.com/xelis-project/xelis-hash?tag=v3.1.0#f48262b931438fdbf2932711613e020c02f1ea04"
+dependencies = [
+ "aes",
+ "blake3",
+ "bytemuck",
+ "chacha20 0.9.1",
+ "thiserror 1.0.69",
+ "tiny-keccak",
 ]
 
 [[package]]

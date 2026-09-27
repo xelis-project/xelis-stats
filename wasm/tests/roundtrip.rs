@@ -5,7 +5,7 @@ use silex_lexer::Lexer;
 use silex_parser::Parser;
 use xelis_common::contract::{build_environment, ContractModule, ContractVersion};
 use xelis_common::transaction::mock::MockStorageProvider;
-use xelis_stats_decompiler::decompile;
+use xelis_explorer_decompiler::decompile;
 
 fn module_json(source: &str) -> String {
     let environment = build_environment::<MockStorageProvider>(ContractVersion::V1);

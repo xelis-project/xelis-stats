@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "xelis-stats",
+  "name": "xelis-explorer",
   "main": "src/server/index.ts",
   "compatibility_date": "2026-09-25",
   "compatibility_flags": ["nodejs_compat"],
@@ -15,8 +15,8 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "xelis-stats",
-      // `wrangler d1 create xelis-stats` — see README "Deploy"
+      "database_name": "xelis-explorer",
+      // `wrangler d1 create xelis-explorer` — see README "Deploy"
       "database_id": "TODO_CREATE_WITH_WRANGLER"
     }
   ],
@@ -61,7 +61,7 @@
   },
   "vars": {
     "XELIS_NODE": "https://node.xelis.io",
-    "XELIS_STATS_DB_ID": "TODO_CREATE_WITH_WRANGLER",
+    "XELIS_EXPLORER_DB_ID": "TODO_CREATE_WITH_WRANGLER",
     "SHARD_MAX_BYTES": "8589934592"
   }
 }

@@ -42,7 +42,7 @@ const NO_MIGRATE = has("no-migrate");
 const NO_SEED = has("no-seed");
 const ONLY = (arg("only") ?? "").split(",").filter((x) => x.length > 0);
 const OUT_DIR = arg("out") ?? process.env.EXPORT_DIR ?? "export";
-const DB_NAME = process.env.D1_NAME ?? "xelis-stats";
+const DB_NAME = process.env.D1_NAME ?? "xelis-explorer";
 const STATE_DIR = ".wrangler/state/v3/d1";
 const STATE_D1_DIR = join(STATE_DIR, "miniflare-D1DatabaseObject");
 const TARGET = REMOTE ? "--remote" : "--local";
