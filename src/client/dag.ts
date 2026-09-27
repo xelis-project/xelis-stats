@@ -241,7 +241,6 @@ export function initDag(): void {
     drawGrid();
     drawEdges();
     drawBoxes();
-    drawColumns();
     drawStabilityLine();
   }
 
@@ -298,7 +297,6 @@ export function initDag(): void {
   function drawBoxes(): void {
     const size = BOX * cam.k;
     const showLetter = cam.k >= 0.34;
-    const showTopo = cam.k >= 0.5;
     const showHash = cam.k >= 0.85;
     for (const p of placements) {
       const b = p.block;
@@ -329,38 +327,12 @@ export function initDag(): void {
         ctx!.font = `700 ${clamp(size * 0.42, 9, 20)}px "JetBrains Mono", monospace`;
         ctx!.fillText(b.type.charAt(0).toUpperCase(), cx, cy + size * 0.02);
       }
-      if (showTopo) {
-        ctx!.fillStyle = "rgba(245, 247, 251, 0.7)";
-        ctx!.font = `${clamp(size * 0.24, 8, 12)}px "JetBrains Mono", monospace`;
-        ctx!.fillText(String(b.topo), cx, y + size + clamp(size * 0.3, 7, 12));
-      }
       if (showHash) {
         ctx!.fillStyle = "rgba(245, 247, 251, 0.5)";
         ctx!.font = `${clamp(size * 0.22, 8, 11)}px "JetBrains Mono", monospace`;
         ctx!.fillText(b.hash.slice(-4), cx, y - clamp(size * 0.26, 7, 11));
       }
     }
-  }
-
-  function drawColumns(): void {
-    if (cam.k < 0.2) return;
-    const fs = clamp(cam.k * 12, 8, 14);
-    ctx!.textAlign = "center";
-    ctx!.textBaseline = "top";
-    ctx!.font = `700 ${fs}px "JetBrains Mono", monospace`;
-    for (const c of columns) {
-      const px = sx(c.x);
-      if (px < -40 || px > W + 40) continue;
-      const py = sy(c.bottom) + clamp(cam.k * 20, 10, 22);
-      ctx!.fillStyle = "rgba(245, 247, 251, 0.55)";
-      ctx!.fillText(String(c.height), px, py);
-      if (cam.k >= 0.45 && c.minTopo !== c.maxTopo) {
-        ctx!.fillStyle = "rgba(155, 179, 178, 0.6)";
-        ctx!.font = `${clamp(fs * 0.82, 7, 11)}px "JetBrains Mono", monospace`;
-        ctx!.fillText(`${c.minTopo}–${c.maxTopo}`, px, py + fs * 1.3);
-      }
-    }
-    ctx!.textBaseline = "middle";
   }
 
   function drawStabilityLine(): void {
