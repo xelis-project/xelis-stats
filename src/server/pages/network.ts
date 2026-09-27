@@ -20,10 +20,6 @@ interface TagRow {
   tag: string;
   peers: number;
 }
-interface PrefixRow {
-  prefix: string;
-  peers: number;
-}
 interface Snapshot {
   ts: number;
   total: number;
@@ -50,7 +46,6 @@ network.get("/network", async (c) => {
   let snapshot: Snapshot | null = null;
   let versions: VersionRow[] = [];
   let tags: TagRow[] = [];
-  let prefixes: PrefixRow[] = [];
 
   try {
     const drow = await db.prepare(
@@ -58,7 +53,7 @@ network.get("/network", async (c) => {
     ).first<{ d: string }>();
     date = drow?.d ?? date;
 
-    const [crows, latest, vrows, trows, prows] = await Promise.all([
+    const [crows, latest, vrows, trows] = await Promise.all([
       db.prepare(
         "SELECT country, country_code, peers FROM daily_peer_countries WHERE date = ? ORDER BY peers DESC"
       ).bind(date).all<CountryRow>().then((r) => r.results ?? []),
@@ -69,16 +64,12 @@ network.get("/network", async (c) => {
       db.prepare(
         "SELECT tag, peers FROM daily_peer_tags WHERE date = (SELECT MAX(date) FROM daily_peer_tags) ORDER BY peers DESC LIMIT 10"
       ).all<TagRow>().then((r) => r.results ?? []),
-      db.prepare(
-        "SELECT prefix, peers FROM daily_peer_prefixes WHERE date = (SELECT MAX(date) FROM daily_peer_prefixes) ORDER BY peers DESC LIMIT 10"
-      ).all<PrefixRow>().then((r) => r.results ?? []),
     ]);
 
     countries = crows;
     snapshot = latest ? { ...latest, ts: Number(latest.ts) } : null;
     versions = vrows;
     tags = trows;
-    prefixes = prows;
   } catch (err) {
     logErr("page/network", err);
   }
@@ -139,10 +130,6 @@ network.get("/network", async (c) => {
     ? tags.map((t) => `<tr><td>${flaggedText(t.tag)}</td><td class="num">${fmtInt(num(t.peers))}</td></tr>`).join("")
     : emptyRow(2);
 
-  const prefixRows = prefixes.length
-    ? prefixes.map((p) => `<tr><td class="mono">${esc(p.prefix)}</td><td class="num">${fmtInt(num(p.peers))}</td></tr>`).join("")
-    : emptyRow(2);
-
   const content = `
     <div class="panel">
       <div class="panel-head"><h2>Peer network <span style="color:var(--text-dim)">${esc(date)}</span></h2></div>
@@ -174,14 +161,6 @@ network.get("/network", async (c) => {
       <div class="tablewrap scroll-y" style="margin-top:1rem"><table>
         <thead><tr><th class="num">#</th><th>Country</th><th class="num">Peers</th><th class="num">Share</th></tr></thead>
         <tbody>${countryRows}</tbody>
-      </table></div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head"><h2>IP-prefix concentration <span style="color:var(--text-dim)">top ${prefixes.length}</span></h2></div>
-      <div class="tablewrap"><table>
-        <thead><tr><th>Prefix</th><th class="num">Peers</th></tr></thead>
-        <tbody>${prefixRows}</tbody>
       </table></div>
     </div>
 
