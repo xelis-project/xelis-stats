@@ -1,6 +1,7 @@
 import { XEL_LOGO } from "./format";
 import { icons } from "./icons";
 import { mainScriptUrl } from "./entry-url";
+import { version as appVersion } from "../../package.json";
 import appCss from "./style.css?inline";
 import flatpickrCss from "flatpickr/dist/flatpickr.min.css?inline";
 import uplotCss from "uplot/dist/uPlot.min.css?inline";
@@ -60,7 +61,7 @@ export function layout(title: string, content: string, active: string, bodyClass
         <a href="/status">Status</a>
         <a href="/settings">Settings</a>
       </nav>
-      <div class="footer-copy">© ${new Date().getFullYear()} Xelis Stats · Data from the Xelis network</div>
+      <div class="footer-copy">© ${new Date().getFullYear()} Xelis Stats · v${escHtml(appVersion)} · Data from the Xelis network</div>
     </footer>
     <div class="search-overlay" id="search-overlay" hidden>
       <div class="search-pop" role="dialog" aria-modal="true">
