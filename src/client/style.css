@@ -126,6 +126,13 @@ header.site .status {
   transition: color 0.2s, background 0.2s, border-color 0.2s, box-shadow 0.2s;
   cursor: default;
 }
+/* Desktop header controls share one height so the status pill, search and
+   icon buttons line up as equal pills (mobile uses 3.6rem below). */
+header.site .status,
+header.site .searchbox,
+header.site .icon-btn {
+  height: 3.2rem; box-sizing: border-box;
+}
 header.site .status.connecting {
   color: var(--gold);
   background: rgba(245, 217, 95, 0.06);
