@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout } from "../../client/layout";
-import { fmtInt, shortHash, timeCell, atomic } from "../../client/format";
+import { fmtInt, shortHash, timeCell, atomic, fmtBytes } from "../../client/format";
 import { srvSort, TX_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
 import { PAGE_SIZE, pager, cursorPager, entityTag, esc, clampInt, logErr } from "./shared";
@@ -144,10 +144,11 @@ transactions.get("/transactions", async (c) => {
         <td>${txType ? `<span class="badge ${esc(txType)}">${esc(txType)}</span>` : dim("—")}</td>
         <td>${sender ? `<a class="mono" href="/account/${esc(sender)}">${esc(shortHash(sender, 8))}</a>${entityTag(sender)}` : dim("—")}</td>
         <td class="num"${Number(t.transfer_count) === 0 ? ' style="color:var(--text-dim)"' : ""}>${fmtInt(Number(t.transfer_count))}</td>
+        <td class="num">${fmtBytes(t.size as number)}</td>
         <td class="num">${atomic(t.fee as number, 6)}</td>
       </tr>`;
       }).join("")
-    : `<tr><td colspan="7" style="color:var(--text-dim)">No indexed transactions yet — backfill pending.</td></tr>`;
+    : `<tr><td colspan="8" style="color:var(--text-dim)">No indexed transactions yet — backfill pending.</td></tr>`;
 
   const content = `<div class="panel">
     <div class="panel-head">
@@ -156,7 +157,7 @@ transactions.get("/transactions", async (c) => {
       ${fPop}
     </div>
     <div class="tablewrap"><table data-srvsort="1">
-      <thead><tr><th>Hash</th>${srt.th("block", "Block")}${srt.th("time", "Age")}${srt.th("type", "Type")}${srt.th("sender", "Sender")}${srt.th("transfers", "Transfers", true)}${srt.th("fee", "Fee (XEL)", true)}</tr></thead>
+      <thead><tr><th>Hash</th>${srt.th("block", "Block")}${srt.th("time", "Age")}${srt.th("type", "Type")}${srt.th("sender", "Sender")}${srt.th("transfers", "Transfers", true)}${srt.th("size", "Size", true)}${srt.th("fee", "Fee (XEL)", true)}</tr></thead>
       <tbody>${body}</tbody>
     </table></div>
     ${pagerHtml}

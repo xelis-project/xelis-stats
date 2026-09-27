@@ -66,6 +66,7 @@ export const TX_COLS: Record<string, SortCol> = {
   type: { sql: "tx_type", def: "asc" },
   sender: { sql: "sender", def: "asc" },
   transfers: { sql: "transfer_count", def: "desc" },
+  size: { sql: "size", def: "desc" },
   fee: { sql: "fee", def: "desc" },
   executed: { sql: "executed", def: "asc" },
 };
