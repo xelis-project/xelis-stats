@@ -199,7 +199,6 @@ network.get("/network", async (c) => {
     <div class="grid-2" style="align-items:start">
       <div class="panel">
         <div class="panel-head"><h2>Peer concentration <span style="color:var(--text-dim)">${fmtInt(mappedTotal)} geolocated peers · ${esc(date)}</span></h2></div>
-        <h3 class="sub-h">Country choropleth</h3>
         <div id="world-map" class="world-map" role="img" aria-label="World map of peers by country">
           <noscript><p style="color:var(--text-dim)">Enable JavaScript to see the map, or use the table below.</p></noscript>
         </div>
