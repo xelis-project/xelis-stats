@@ -161,6 +161,8 @@ app.get("/api/summary", async (c) => {
     block_time_s: s.info.average_block_time / 1000,
     block_time_target_s: s.info.block_time_target / 1000,
     block_reward: s.info.miner_reward + s.info.dev_reward,
+    miner_reward: s.info.miner_reward,
+    dev_reward: s.info.dev_reward,
     mempool: s.info.mempool_size,
     chain_size_bytes: s.chainSize?.size_bytes ?? null,
     chain_size_formatted: s.chainSize?.size_formatted ?? null,

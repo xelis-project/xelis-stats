@@ -27,3 +27,59 @@ export async function getStatsCached(env: Env): Promise<StatsValue> {
   await env.KV.put(cacheKey, JSON.stringify(value), { expirationTtl: 60 });
   return value;
 }
+
+// Protocol fee constants (atomic XEL). Kept in sync with the Xelis docs:
+// https://docs.xelis.io/features/transaction-fees
+const FEE_CONSTANTS = {
+  per_output: 5_000,        // per transaction output (transfer)
+  per_new_address: 100_000, // per address registered by the tx
+  per_signature: 5_000,     // per extra multisig signature
+  min_fee_per_kb: 10_000,   // protocol floor for the dynamic per-KiB base fee
+} as const;
+
+// Estimated transaction fee rates from the node, all in atomic XEL per KiB.
+// `low`/`medium`/`high` are priority suggestions derived from the mempool;
+// `fee_per_kb` is the current dynamic base and `predicated_fee_per_kb` the
+// projected next value. Cached briefly since these move slowly.
+export interface FeeRates {
+  ok: boolean;
+  low: number;
+  medium: number;
+  high: number;
+  default: number;
+  fee_per_kb: number | null;
+  predicated_fee_per_kb: number | null;
+  per_output: number;
+  per_new_address: number;
+  per_signature: number;
+  min_fee_per_kb: number;
+  timestamp: number;
+}
+
+export async function getFeeRatesCached(env: Env): Promise<FeeRates> {
+  const cacheKey = "fee-rates:v1";
+  const cached = await env.KV.get<FeeRates>(cacheKey, "json").catch(() => null);
+  if (cached) return cached;
+  const [rates, kb] = await Promise.all([
+    rpc<Record<string, unknown>>("get_estimated_fee_rates", undefined, env.XELIS_NODE).catch(() => null),
+    rpc<Record<string, unknown>>("get_estimated_fee_per_kb", undefined, env.XELIS_NODE).catch(() => null),
+  ]);
+  const n = (v: unknown, d = 0): number => {
+    const x = Number(v);
+    return Number.isFinite(x) ? x : d;
+  };
+  const value: FeeRates = {
+    ok: rates !== null || kb !== null,
+    low: n(rates?.low),
+    medium: n(rates?.medium),
+    high: n(rates?.high),
+    default: n(rates?.default ?? rates?.low),
+    fee_per_kb: kb ? n(kb.fee_per_kb) : null,
+    predicated_fee_per_kb: kb ? n(kb.predicated_fee_per_kb) : null,
+    ...FEE_CONSTANTS,
+    timestamp: Date.now(),
+  };
+  // Only cache a real answer; a failed RPC should retry on the next request.
+  if (value.ok) await env.KV.put(cacheKey, JSON.stringify(value), { expirationTtl: 60 }).catch(() => { /* cache best effort */ });
+  return value;
+}

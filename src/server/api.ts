@@ -5,7 +5,7 @@ import { knownEntity } from "./entities";
 import { fetchBlock, fetchTx, pagedRaw, rangeRaw } from "./shards";
 import { clampInt } from "./pages/shared";
 import { getLive } from "./live";
-import { getStatsCached } from "./cache";
+import { getStatsCached, getFeeRatesCached } from "./cache";
 
 export { clampInt };
 
@@ -28,6 +28,13 @@ api.get("/api/live", async (c) => {
   const data = await getLive(c.env);
   c.header("Cache-Control", "no-store");
   return c.json(data);
+});
+
+// Estimated fee rates + protocol fee constants, for the /tools fee calculator.
+// All amounts are atomic XEL per KiB.
+api.get("/api/fee-rates", async (c) => {
+  const rates = await getFeeRatesCached(c.env);
+  return c.json(rates, rates.ok ? 200 : 503);
 });
 
 api.get("/api/blocks", async (c) => {

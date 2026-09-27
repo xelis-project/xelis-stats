@@ -16,6 +16,7 @@ import { assetDetail } from "./pages/asset-detail";
 import { contracts } from "./pages/contracts";
 import { settings } from "./pages/settings";
 import { livePage } from "./pages/live";
+import { tools } from "./pages/tools";
 import { search } from "./pages/assets";
 
 export const pages = new Hono<{ Bindings: Env }>();
@@ -36,4 +37,5 @@ pages.route("/", assetDetail);
 pages.route("/", contracts);
 pages.route("/", settings);
 pages.route("/", livePage);
+pages.route("/", tools);
 pages.route("/", search);
