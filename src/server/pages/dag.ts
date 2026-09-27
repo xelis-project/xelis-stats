@@ -33,13 +33,17 @@ dag.get("/dag", async (c) => {
   }
 
   const topo = requested > 0 ? requested : (tip ?? 0);
+  // Range/value for the bottom history scrubber: the full known chain height so
+  // a drag can jump anywhere in history (or snap back to the live tip).
+  const sliderMax = Math.max(tip ?? 0, topo, 1);
+  const sliderValue = Math.min(topo, sliderMax);
   const context = [
     network ? esc(network) : "",
     tip != null ? `tip ${tip.toLocaleString("en-US")}` : "",
     stable != null ? `stable ${stable.toLocaleString("en-US")}` : "",
   ].filter(Boolean).join(" · ");
 
-  const content = `<div class="panel dag-panel" id="dag-app" data-topo="${topo}" data-live="${live ? "1" : "0"}">
+  const content = `<div class="panel dag-panel" id="dag-app" data-topo="${topo}" data-live="${live ? "1" : "0"}" data-tip="${tip ?? ""}">
     <div class="dag-viewport" id="dag-viewport">
       <canvas id="dag-canvas" aria-label="Block DAG graph" role="img"></canvas>
 
@@ -78,6 +82,18 @@ dag.get("/dag", async (c) => {
 
       <div class="dag-detail" id="dag-detail" hidden></div>
       <div class="dag-hover" id="dag-hover" hidden></div>
+
+      <div class="dag-scrubber" id="dag-scrubber">
+        <div class="dag-scrubber-head">
+          <span class="dag-scrubber-cap">History</span>
+          <span class="dag-scrubber-val" id="dag-scrubber-val">${sliderValue > 0 ? sliderValue.toLocaleString("en-US") : "—"}</span>
+        </div>
+        <div class="dag-scrubber-body">
+          <input type="range" id="dag-scrubber-range" min="0" max="${sliderMax}" step="1" value="${sliderValue}" aria-label="Block DAG history position" />
+          <div class="dag-scrubber-grades" id="dag-scrubber-grades" aria-hidden="true"></div>
+        </div>
+      </div>
+
       <div class="dag-loading" id="dag-loading"><span class="dag-spinner" aria-hidden="true"></span>Loading blocks…</div>
     </div>
   </div>

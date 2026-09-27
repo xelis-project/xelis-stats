@@ -54,6 +54,15 @@ const TYPE_STYLE: Record<string, { fill: string; stroke: string; text: string }>
 
 const typeStyle = (type: string) => TYPE_STYLE[type.toLowerCase()] ?? TYPE_STYLE.normal;
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
+
+// Compact topoheight label for the scrubber's grade marks (1.2M, 850k, …).
+function compactTopo(v: number): string {
+  const a = Math.abs(v);
+  if (a >= 1e9) return `${(v / 1e9).toFixed(a >= 1e10 ? 0 : 1)}B`;
+  if (a >= 1e6) return `${(v / 1e6).toFixed(a >= 1e7 ? 0 : 1)}M`;
+  if (a >= 1e3) return `${(v / 1e3).toFixed(a >= 1e4 ? 0 : 1)}k`;
+  return String(Math.round(v));
+}
 const esc = (v: unknown): string =>
   String(v ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] as string));
 
@@ -88,12 +97,18 @@ export function initDag(): void {
   const loadingEl = $("dag-loading");
   const hoverEl = $("dag-hover");
   const detailEl = $("dag-detail");
-  if (!input || !goBtn || !prevBtn || !nextBtn || !liveBtn || !fitBtn || !fsBtn || !statusEl || !loadingEl || !hoverEl || !detailEl) return;
+  const scrubberEl = $<HTMLInputElement>("dag-scrubber-range");
+  const scrubberValEl = $("dag-scrubber-val");
+  const scrubberGradesEl = $("dag-scrubber-grades");
+  if (!input || !goBtn || !prevBtn || !nextBtn || !liveBtn || !fitBtn || !fsBtn || !statusEl || !loadingEl || !hoverEl || !detailEl || !scrubberEl || !scrubberValEl || !scrubberGradesEl) return;
   const hover = hoverEl;
   const detail = detailEl;
   const status = statusEl;
   const loading = loadingEl;
   const liveButton = liveBtn;
+  const scrubber = scrubberEl;
+  const scrubberVal = scrubberValEl;
+  const scrubberGrades = scrubberGradesEl;
   // Aliases keep the non-null element types inside hoisted functions (TS does
   // not carry the guard narrowing into function declarations).
   const vpEl = viewport;
@@ -117,6 +132,7 @@ export function initDag(): void {
   let inFlight = false;
   let liveTimer: number | undefined;
   let tipTimer: number | undefined;
+  let scrubberMax = 0;
 
   // ---------- camera / transforms ----------
 
@@ -477,6 +493,8 @@ export function initDag(): void {
       if (!placements.length) cam.x = 0;
     }
     updateStatus();
+    setScrubberMax(Math.max(next.tip ?? 0, next.hi || 0, next.center || 0, 1));
+    setScrubberValue(next.center);
     draw();
   }
 
@@ -501,6 +519,45 @@ export function initDag(): void {
     if (data.tip != null) parts.push(`tip ${fmtInt(data.tip)}`);
     if (live) parts.push("live");
     status.textContent = parts.join(" · ");
+  }
+
+  // ---------- history scrubber ----------
+
+  // Big bottom slider: its range spans the full chain height and its thumb marks
+  // the current window center, so a drag jumps between DAG history windows. The
+  // far-right end re-enters live mode.
+  function scrubberFill(value: number): void {
+    const frac = scrubberMax > 0 ? clamp(value / scrubberMax, 0, 1) : 0;
+    scrubber.style.setProperty("--dag-fill", `calc(var(--thumb-half) + (100% - var(--thumb)) * ${frac})`);
+  }
+
+  function setScrubberMax(max: number): void {
+    const rounded = Math.round(max);
+    if (!Number.isFinite(rounded) || rounded <= 0 || rounded === scrubberMax) return;
+    scrubberMax = rounded;
+    scrubber.max = String(rounded);
+    renderGrades();
+  }
+
+  function renderGrades(): void {
+    const steps = 5; // 6 graded marks, matching the reference height control
+    scrubberGrades.innerHTML = "";
+    if (scrubberMax <= 0) return;
+    for (let i = 0; i <= steps; i++) {
+      const frac = i / steps;
+      const grade = document.createElement("span");
+      grade.className = "dag-grade";
+      grade.style.left = `calc(var(--thumb-half) + (100% - var(--thumb)) * ${frac})`;
+      grade.innerHTML = `<span class="dag-grade-mark"></span><span class="dag-grade-label">${compactTopo(scrubberMax * frac)}</span>`;
+      scrubberGrades.appendChild(grade);
+    }
+  }
+
+  function setScrubberValue(value: number): void {
+    const clamped = clamp(Math.round(value), 0, scrubberMax > 0 ? scrubberMax : 100);
+    scrubber.value = String(clamped);
+    scrubberVal.textContent = clamped > 0 ? fmtInt(clamped) : "—";
+    scrubberFill(clamped);
   }
 
   function updateUrl(): void {
@@ -698,6 +755,17 @@ export function initDag(): void {
     const base = data.center || data.hi || 1;
     void loadHistory(base + SPAN);
   });
+  // Dragging previews the target height; releasing loads that history window.
+  // The right edge snaps back to live instead of freezing at the tip.
+  scrubber.addEventListener("input", () => {
+    setScrubberValue(Number(scrubber.value));
+  });
+  scrubber.addEventListener("change", () => {
+    const v = Number(scrubber.value);
+    if (!Number.isFinite(v) || v < 0) return;
+    if (scrubberMax > 0 && v >= scrubberMax) setLive(true);
+    else void loadHistory(v);
+  });
   liveButton.addEventListener("click", () => {
     if (live) {
       void loadHistory(data.center || undefined);
@@ -738,6 +806,9 @@ export function initDag(): void {
   fitViewportHeight();
   resize();
   const startTopo = Number(app.dataset.topo ?? 0);
+  const startTip = Number(app.dataset.tip ?? 0);
+  setScrubberMax(Math.max(startTip, startTopo, 1));
+  setScrubberValue(startTopo > 0 ? startTopo : startTip);
   if (app.dataset.live === "1") setLive(true);
   else void loadHistory(startTopo > 0 ? startTopo : undefined);
 }

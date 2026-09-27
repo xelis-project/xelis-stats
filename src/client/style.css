@@ -1394,9 +1394,10 @@ body.layout-dag .dag-viewport { border-left: none; border-right: none; border-ra
   backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
 }
 
-/* Floating controls over the bottom-right of the canvas */
+/* Floating controls over the bottom-right of the canvas. Lifted clear of the
+   history scrubber bar that spans the bottom edge. */
 .dag-controls {
-  position: absolute; right: 0.9rem; bottom: 0.9rem; z-index: 7;
+  position: absolute; right: 0.9rem; bottom: 7.7rem; z-index: 7;
   max-width: calc(100% - 1.8rem);
   display: flex; flex-direction: column; align-items: stretch; gap: 0.5rem;
   padding: 0.8rem 0.9rem;
@@ -1454,7 +1455,7 @@ body.layout-dag .dag-viewport { border-left: none; border-right: none; border-ra
 }
 
 .dag-legend {
-  position: absolute; bottom: 0.8rem; left: 0.9rem; z-index: 5; pointer-events: none;
+  position: absolute; bottom: 7.7rem; left: 0.9rem; z-index: 5; pointer-events: none;
   display: flex; flex-wrap: wrap; gap: 0.4rem 1.4rem;
   background: color-mix(in srgb, var(--panel-solid) 72%, transparent);
   border: 1px solid var(--border); border-radius: 0.6rem; padding: 0.5rem 0.8rem;
@@ -1463,6 +1464,87 @@ body.layout-dag .dag-viewport { border-left: none; border-right: none; border-ra
 .dag-key-line { width: 1.6rem; height: 0; border-top: 2px solid var(--mint); align-self: center; }
 .dag-key-dash { width: 1.6rem; height: 0; border-top: 2px dashed var(--gold); align-self: center; }
 
+/* Big graded history scrubber spanning the bottom of the canvas. Drag to jump
+   the viewer between indexed DAG windows; the far right snaps back to LIVE. */
+.dag-scrubber {
+  --thumb: 2.6rem;
+  --thumb-half: 1.3rem;
+  --track: 1.4rem;
+  position: absolute; left: 0; right: 0; bottom: 0; z-index: 6;
+  display: flex; flex-direction: column; gap: 0.3rem;
+  padding: 0.5rem 1.4rem 0.9rem;
+  background: linear-gradient(0deg, rgba(4, 10, 12, 0.94), rgba(4, 10, 12, 0.62) 70%, transparent);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  user-select: none;
+}
+.dag-scrubber-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: 0 0.2rem; }
+.dag-scrubber-cap { font-size: 0.95rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.14em; color: var(--text-dim); }
+.dag-scrubber-val {
+  font-family: var(--mono); font-size: 1.35rem; font-weight: 700; color: var(--mint);
+  text-shadow: 0 0 14px var(--mint-glow);
+}
+.dag-scrubber-body { position: relative; height: calc(var(--thumb) + 1.5rem); }
+
+.dag-scrubber-body input[type="range"] {
+  --dag-fill: var(--thumb-half);
+  -webkit-appearance: none; appearance: none;
+  position: absolute; top: 0; left: 0; width: 100%; height: var(--thumb);
+  margin: 0; padding: 0; background: transparent; cursor: ew-resize;
+}
+.dag-scrubber-body input[type="range"]:focus-visible { outline: none; }
+.dag-scrubber-body input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(2, 255, 207, 0.35), 0 0 20px var(--mint-glow);
+}
+.dag-scrubber-body input[type="range"]:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px rgba(2, 255, 207, 0.35), 0 0 20px var(--mint-glow);
+}
+
+.dag-scrubber-body input[type="range"]::-webkit-slider-runnable-track {
+  height: var(--track); border-radius: 0.4rem;
+  border: 1px solid rgba(2, 255, 207, 0.22);
+  background:
+    linear-gradient(90deg, rgba(2, 255, 207, 0.85), rgba(127, 255, 231, 0.45) var(--dag-fill), transparent var(--dag-fill)),
+    rgba(2, 255, 207, 0.06);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 0 18px rgba(2, 255, 207, 0.08);
+}
+.dag-scrubber-body input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: var(--thumb); height: var(--thumb);
+  margin-top: calc((var(--track) - var(--thumb)) / 2);
+  border-radius: 0.55rem;
+  background: var(--mint-grad);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 0 1px rgba(4, 20, 20, 0.7), 0 0 18px var(--mint-glow);
+  cursor: grab;
+}
+.dag-scrubber-body input[type="range"]:active::-webkit-slider-thumb { cursor: grabbing; }
+
+.dag-scrubber-body input[type="range"]::-moz-range-track {
+  height: var(--track); border-radius: 0.4rem;
+  border: 1px solid rgba(2, 255, 207, 0.22); background: rgba(2, 255, 207, 0.06);
+}
+.dag-scrubber-body input[type="range"]::-moz-range-progress {
+  height: var(--track); border-radius: 0.4rem;
+  background: linear-gradient(90deg, var(--mint), rgba(127, 255, 231, 0.5));
+}
+.dag-scrubber-body input[type="range"]::-moz-range-thumb {
+  width: var(--thumb); height: var(--thumb); border-radius: 0.55rem;
+  background: var(--mint-grad);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 0 18px var(--mint-glow);
+}
+
+.dag-scrubber-grades {
+  position: absolute; left: 0; right: 0; top: calc((var(--thumb) + var(--track)) / 2);
+  height: 1.4rem; pointer-events: none;
+}
+.dag-grade {
+  position: absolute; top: 0; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 0.1rem;
+}
+.dag-grade-mark { width: 1px; height: 0.6rem; background: rgba(2, 255, 207, 0.32); }
+.dag-grade-label { font-family: var(--mono); font-size: 0.85rem; color: var(--text-dim); white-space: nowrap; }
+
 .dag-hint {
   margin-left: auto; align-self: center;
   font-size: 1.05rem; color: var(--text-dim); text-align: right;
@@ -1470,8 +1552,8 @@ body.layout-dag .dag-viewport { border-left: none; border-right: none; border-ra
 
 /* Floating block-details card (overlaid, not part of the page flow) */
 .dag-detail {
-  position: absolute; left: 0.9rem; bottom: 4.6rem; z-index: 6;
-  width: min(46rem, calc(100% - 1.8rem)); max-height: calc(100% - 12rem); overflow: auto;
+  position: absolute; left: 0.9rem; bottom: 11rem; z-index: 6;
+  width: min(46rem, calc(100% - 1.8rem)); max-height: calc(100% - 18rem); overflow: auto;
   margin: 0; padding: 1.2rem 1.4rem;
   border: 1px solid var(--border); border-radius: var(--radius);
   background: color-mix(in srgb, var(--panel-solid) 92%, transparent);
@@ -1497,6 +1579,10 @@ body.layout-dag .dag-viewport { border-left: none; border-right: none; border-ra
   .dag-viewport { height: calc(100dvh - 14rem); }
   .dag-detail-item .k { flex-basis: 8rem; }
   .dag-hint { display: none; }
+  .dag-scrubber { --thumb: 2.3rem; --thumb-half: 1.15rem; padding: 0.4rem 0.9rem 0.7rem; }
+  .dag-controls { bottom: 6.6rem; }
+  .dag-legend { display: none; }
+  .dag-detail { bottom: 9.4rem; }
 }
 
 
