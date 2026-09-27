@@ -37,16 +37,13 @@ const FEE_CONSTANTS = {
   min_fee_per_kb: 10_000,   // protocol floor for the dynamic per-KiB base fee
 } as const;
 
-// Estimated transaction fee rates from the node, all in atomic XEL per KiB.
-// `low`/`medium`/`high` are priority suggestions derived from the mempool;
-// `fee_per_kb` is the current dynamic base and `predicated_fee_per_kb` the
-// projected next value. Cached briefly since these move slowly.
+// Transaction fee data from the node, all in atomic XEL per KiB. Xelis has no
+// user-set priority fee: the per-KiB rate is a protocol base fee that
+// auto-regulates with chain usage. `fee_per_kb` is the current base and
+// `predicated_fee_per_kb` the projected next value. Cached briefly since these
+// move slowly.
 export interface FeeRates {
   ok: boolean;
-  low: number;
-  medium: number;
-  high: number;
-  default: number;
   fee_per_kb: number | null;
   predicated_fee_per_kb: number | null;
   per_output: number;
@@ -57,23 +54,16 @@ export interface FeeRates {
 }
 
 export async function getFeeRatesCached(env: Env): Promise<FeeRates> {
-  const cacheKey = "fee-rates:v1";
+  const cacheKey = "fee-rates:v2";
   const cached = await env.KV.get<FeeRates>(cacheKey, "json").catch(() => null);
   if (cached) return cached;
-  const [rates, kb] = await Promise.all([
-    rpc<Record<string, unknown>>("get_estimated_fee_rates", undefined, env.XELIS_NODE).catch(() => null),
-    rpc<Record<string, unknown>>("get_estimated_fee_per_kb", undefined, env.XELIS_NODE).catch(() => null),
-  ]);
+  const kb = await rpc<Record<string, unknown>>("get_estimated_fee_per_kb", undefined, env.XELIS_NODE).catch(() => null);
   const n = (v: unknown, d = 0): number => {
     const x = Number(v);
     return Number.isFinite(x) ? x : d;
   };
   const value: FeeRates = {
-    ok: rates !== null || kb !== null,
-    low: n(rates?.low),
-    medium: n(rates?.medium),
-    high: n(rates?.high),
-    default: n(rates?.default ?? rates?.low),
+    ok: kb !== null,
     fee_per_kb: kb ? n(kb.fee_per_kb) : null,
     predicated_fee_per_kb: kb ? n(kb.predicated_fee_per_kb) : null,
     ...FEE_CONSTANTS,

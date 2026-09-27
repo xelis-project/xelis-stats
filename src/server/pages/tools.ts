@@ -67,21 +67,6 @@ tools.get("/tools/fee-estimator", (c) => {
         <input type="number" id="fee-sigs" min="0" step="1" value="0" inputmode="numeric" />
         <span class="hint">0.00005 XEL each</span>
       </div>
-      <div class="calc-field">
-        <label for="fee-priority">Priority</label>
-        <select id="fee-priority">
-          <option value="low">Low (economy)</option>
-          <option value="medium" selected>Medium</option>
-          <option value="high">High (fast)</option>
-          <option value="custom">Custom rate</option>
-        </select>
-        <span class="hint" id="fee-rate-hint">live rates load on page open</span>
-      </div>
-      <div class="calc-field" id="fee-rate-field" hidden>
-        <label for="fee-rate">Custom rate (atomic/KiB)</label>
-        <input type="number" id="fee-rate" min="0" step="1" value="10000" inputmode="numeric" />
-        <span class="hint" id="fee-rate-custom-hint">atomic XEL per KiB</span>
-      </div>
     </div>
     <div class="calc-results" id="fee-results" aria-live="polite">
       <p class="calc-status">Loading live fee rates…</p>

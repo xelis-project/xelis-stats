@@ -8,7 +8,7 @@ export const docs = new Hono<{ Bindings: Env }>();
 const ENDPOINTS: Array<[string, string, string]> = [
   ["GET", "/api/stats", "Aggregated chain overview (KV-cached 60s)"],
   ["GET", "/api/summary", "Compact full-state JSON — AI/agent friendly"],
-  ["GET", "/api/fee-rates", "Estimated tx fee rates (low/medium/high, atomic XEL per KiB) + protocol fee constants (powers /tools/fee-estimator)"],
+  ["GET", "/api/fee-rates", "Current protocol base fee per KiB (atomic XEL) + projected next value + static fee constants (powers /tools/fee-estimator)"],
   ["GET", "/api/market", "Aggregated XEL market data + per-exchange tickers"],
   ["GET", "/api/live", "Live unstable node data (unindexed, uncached): info, DAG window, mempool, fee rates"],
   ["GET", "/api/blocks?before=&type=&limit=&sort=&dir=", "Blocks (D1). ?type filters block_type (Normal|Side|Sync). ?sort runs over the full dataset: topo|hash|time|txs|difficulty|reward|type"],

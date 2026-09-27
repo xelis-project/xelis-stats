@@ -1,6 +1,6 @@
 // Tool pages (/tools/fee-estimator, /tools/hashrate): transaction fee
 // estimator + mining hashrate / profitability. Live values come from
-// /api/fee-rates (node fee estimates + protocol constants) and /api/summary
+// /api/fee-rates (protocol base fee + constants) and /api/summary
 // (difficulty, block time/reward, price). Each page loads one island and the
 // panels are guarded, so the shared module powers either tool. Inputs are
 // persisted per browser so a reload keeps the last scenario.
@@ -10,10 +10,6 @@ import { getPref, setPref } from "./prefs";
 
 interface FeeRates {
   ok: boolean;
-  low: number;
-  medium: number;
-  high: number;
-  default: number;
   fee_per_kb: number | null;
   predicated_fee_per_kb: number | null;
   per_output: number;
@@ -75,14 +71,6 @@ function fmtSharePct(p: number): string {
   return `${p.toPrecision(3)}%`;
 }
 
-function rateFor(rates: FeeRates, priority: string): number {
-  switch (priority) {
-    case "low": return rates.low;
-    case "high": return rates.high;
-    default: return rates.medium;
-  }
-}
-
 // ---------- fee calculator ----------
 
 function renderFee(): void {
@@ -96,9 +84,7 @@ function renderFee(): void {
   const outputs = numOf($<HTMLInputElement>("fee-outputs"));
   const newAddr = numOf($<HTMLInputElement>("fee-newaddr"));
   const sigs = numOf($<HTMLInputElement>("fee-sigs"));
-  const priority = $<HTMLSelectElement>("fee-priority")?.value ?? "medium";
-  const custom = priority === "custom";
-  const rate = custom ? numOf($<HTMLInputElement>("fee-rate"), feeRates.default) : rateFor(feeRates, priority);
+  const rate = feeRates.fee_per_kb ?? feeRates.min_fee_per_kb;
 
   const storage = (size / 1024) * rate;
   const outputsFee = outputs * feeRates.per_output;
@@ -109,11 +95,7 @@ function renderFee(): void {
   const price = summary?.market?.price ?? 0;
   const usd = price > 0 ? `≈ ${fmtUsd((total / 1e8) * price, 4)} at current price` : "";
 
-  const source = custom ? "custom" : priority;
-  const base = feeRates.fee_per_kb !== null
-    ? ` · base ${fmt(feeRates.fee_per_kb, 0)} atomic/KiB`
-    : "";
-  const pred = feeRates.predicated_fee_per_kb !== null
+  const pred = feeRates.predicated_fee_per_kb !== null && feeRates.predicated_fee_per_kb !== rate
     ? ` · projected ${fmt(feeRates.predicated_fee_per_kb, 0)}`
     : "";
 
@@ -130,22 +112,7 @@ function renderFee(): void {
       ${row(`Signatures (${fmtInt(sigs)} × 0.00005)`, `${fmtXel(sigFee / 1e8)} XEL`)}
       ${row("Total", `${fmtXel(total / 1e8)} XEL`, "net")}
     </div>
-    <p class="calc-status">${source} rate ${fmt(rate, 0)} atomic/KiB (${fmtXel(rate / 1e8)} XEL/KiB)${base}${pred} · updated ${ago(feeRates.timestamp)}</p>`;
-}
-
-function syncFeeControls(): void {
-  const priority = $<HTMLSelectElement>("fee-priority");
-  const rateField = $("fee-rate-field");
-  const custom = priority?.value === "custom";
-  if (rateField) rateField.hidden = !custom;
-  const hint = $("fee-rate-hint");
-  if (hint && feeRates) {
-    hint.textContent = `low ${fmtXel(feeRates.low / 1e8)} · med ${fmtXel(feeRates.medium / 1e8)} · high ${fmtXel(feeRates.high / 1e8)} XEL/KiB`;
-  }
-  const customHint = $("fee-rate-custom-hint");
-  if (customHint && feeRates) {
-    customHint.textContent = `atomic XEL per KiB · floor ${fmtInt(feeRates.min_fee_per_kb)}`;
-  }
+    <p class="calc-status">Base rate ${fmt(rate, 0)} atomic/KiB (${fmtXel(rate / 1e8)} XEL/KiB)${pred} · updated ${ago(feeRates.timestamp)}</p>`;
 }
 
 // ---------- hashrate / profitability calculator ----------
@@ -215,8 +182,6 @@ function saveInputs(): void {
     outputs: $<HTMLInputElement>("fee-outputs")?.value ?? "",
     newaddr: $<HTMLInputElement>("fee-newaddr")?.value ?? "",
     sigs: $<HTMLInputElement>("fee-sigs")?.value ?? "",
-    priority: $<HTMLSelectElement>("fee-priority")?.value ?? "",
-    rate: $<HTMLInputElement>("fee-rate")?.value ?? "",
   }));
   setPref(HP_KEY, JSON.stringify({
     hashrate: $<HTMLInputElement>("hp-hashrate")?.value ?? "",
@@ -240,16 +205,9 @@ function restoreInputs(): void {
       if (el && typeof v === "string" && v !== "") el.value = v;
     }
   };
-  restore(FEE_KEY, { "fee-size": "size", "fee-outputs": "outputs", "fee-newaddr": "newaddr", "fee-sigs": "sigs", "fee-rate": "rate" });
+  restore(FEE_KEY, { "fee-size": "size", "fee-outputs": "outputs", "fee-newaddr": "newaddr", "fee-sigs": "sigs" });
   restore(HP_KEY, { "hp-hashrate": "hashrate", "hp-power": "power", "hp-elec": "elec", "hp-pool": "pool" });
-  const feePriority = $<HTMLSelectElement>("fee-priority");
   const hpUnit = $<HTMLSelectElement>("hp-unit");
-  try {
-    const f = JSON.parse(getPref(FEE_KEY, "")) as { priority?: unknown } | null;
-    if (feePriority && f && typeof f.priority === "string" && feePriority.querySelector(`option[value="${f.priority}"]`)) {
-      feePriority.value = f.priority;
-    }
-  } catch { /* ignore */ }
   try {
     const h = JSON.parse(getPref(HP_KEY, "")) as { unit?: unknown } | null;
     if (hpUnit && h && typeof h.unit === "string" && hpUnit.querySelector(`option[value="${h.unit}"]`)) {
@@ -271,7 +229,6 @@ async function load(): Promise<void> {
   ]);
   feeRates = fr && fr.ok ? fr : null;
   summary = sm && Number.isFinite(sm.difficulty) ? sm : null;
-  syncFeeControls();
   renderFee();
   renderHashrate();
 }
@@ -282,7 +239,6 @@ export function initTools(): void {
   if (!feePanel && !hpPanel) return;
 
   restoreInputs();
-  syncFeeControls();
 
   const recompute = (): void => {
     renderFee();
@@ -291,8 +247,8 @@ export function initTools(): void {
   };
 
   for (const el of feePanel?.querySelectorAll("input, select") ?? []) {
-    el.addEventListener("input", () => { syncFeeControls(); recompute(); });
-    el.addEventListener("change", () => { syncFeeControls(); recompute(); });
+    el.addEventListener("input", recompute);
+    el.addEventListener("change", recompute);
   }
   for (const el of hpPanel?.querySelectorAll("input, select") ?? []) {
     el.addEventListener("input", recompute);
