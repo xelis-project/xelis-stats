@@ -8,7 +8,7 @@ import { knownEntity } from "./entities";
 import type { LiveBlock, LiveData, LiveFees, LiveMempoolTx, LivePeers, LiveRecentTx } from "../client/live-render";
 
 // get_blocks_range_by_topoheight accepts at most a 20-topoheight span.
-const STABLE_WINDOW = 24;  // stable blocks shown before the stability boundary
+const STABLE_WINDOW = 10;  // stable blocks shown before the stability boundary
 const RPC_SPAN = 20;
 const MEMPOOL_LIMIT = 25;
 const RECENT_TX_LIMIT = 25; // txs pulled from the newest blocks for the live panel
