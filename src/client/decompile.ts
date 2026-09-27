@@ -8,28 +8,51 @@
 
 import { copyText } from "./storage";
 
-interface DecompilerGlue {
-  default: (input?: BufferSource | WebAssembly.Module) => Promise<unknown>;
+interface Glue {
   decompile: (moduleJson: string) => string;
 }
 
-let gluePromise: Promise<DecompilerGlue> | null = null;
+const READY_EVENT = "xelis-decompiler-ready";
 
-function loadGlue(): Promise<DecompilerGlue> {
-  if (!gluePromise) {
-    // public/ asset, copied verbatim; resolved at runtime so Vite does not try
-    // to bundle the emscripten-style glue.
-    const url = "/decompiler/decompiler.js";
-    gluePromise = import(/* @vite-ignore */ url)
-      .then(async (mod: DecompilerGlue) => {
-        await mod.default();
-        return mod;
-      })
-      .catch((err: unknown) => {
-        gluePromise = null;
-        throw err;
-      });
-  }
+interface ReadyDetail {
+  decompile?: (moduleJson: string) => string;
+  error?: string;
+}
+
+let gluePromise: Promise<Glue> | null = null;
+
+function loadGlue(): Promise<Glue> {
+  if (gluePromise) return gluePromise;
+  gluePromise = new Promise<Glue>((resolve, reject) => {
+    window.addEventListener(
+      READY_EVENT,
+      (event) => {
+        const detail = (event as CustomEvent<ReadyDetail>).detail;
+        if (detail.decompile) resolve({ decompile: detail.decompile });
+        else reject(new Error(detail.error ?? "decompiler failed to load"));
+      },
+      { once: true },
+    );
+
+    // public/ is copied verbatim and Vite refuses to import it from source, so
+    // the wasm-bindgen glue is bootstrapped with an inline module script (which
+    // our CSP allows) that hands the export back through an event.
+    const script = document.createElement("script");
+    script.type = "module";
+    script.textContent = `
+      import init, { decompile } from "/decompiler/decompiler.js";
+      init({ module_or_path: "/decompiler/decompiler_bg.wasm" })
+        .then(() => window.dispatchEvent(new CustomEvent("${READY_EVENT}", { detail: { decompile } })))
+        .catch((error) => window.dispatchEvent(new CustomEvent("${READY_EVENT}", {
+          detail: { error: String((error && error.message) || error) },
+        })));
+    `;
+    script.addEventListener("error", () => reject(new Error("failed to load the decompiler module")));
+    document.head.append(script);
+  }).catch((err: unknown) => {
+    gluePromise = null;
+    throw err;
+  });
   return gluePromise;
 }
 
