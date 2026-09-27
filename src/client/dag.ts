@@ -188,7 +188,7 @@ export function initDag(): void {
   function zoomAt(px: number, py: number, factor: number): void {
     const wx = (px - W / 2) / cam.k + cam.x;
     const wy = (py - H / 2) / cam.k + cam.y;
-    cam.k = clamp(cam.k * factor, 0.08, 4);
+    cam.k = clamp(cam.k * factor, 0.25, 4);
     cam.x = wx - (px - W / 2) / cam.k;
     cam.y = wy - (py - H / 2) / cam.k;
     draw();
