@@ -30,7 +30,7 @@ api.get("/api/live", async (c) => {
   return c.json(data);
 });
 
-// Estimated fee rates + protocol fee constants, for the /tools fee calculator.
+// Estimated fee rates + protocol fee constants, for the /tools/fee-estimator calculator.
 // All amounts are atomic XEL per KiB.
 api.get("/api/fee-rates", async (c) => {
   const rates = await getFeeRatesCached(c.env);

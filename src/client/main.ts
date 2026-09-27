@@ -26,7 +26,7 @@ if (path === "/dashboard") {
   void import("./live-dashboard").then((m) => m.initLiveDashboard()).catch(() => { /* live page unavailable */ });
 } else if (path.startsWith("/contracts/")) {
   void import("./decompile").then((m) => m.initDecompile()).catch(() => { /* decompiler unavailable */ });
-} else if (path === "/tools") {
+} else if (path.startsWith("/tools/")) {
   void import("./tools").then((m) => m.initTools()).catch(() => { /* calculators unavailable */ });
 } else if (needsIslands) {
   void import("./islands");

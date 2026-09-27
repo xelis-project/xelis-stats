@@ -1,7 +1,9 @@
-// Calculators page (/tools): transaction fee estimator + mining hashrate /
-// profitability. Live values come from /api/fee-rates (node fee estimates +
-// protocol constants) and /api/summary (difficulty, block time/reward, price).
-// Inputs are persisted per browser so a reload keeps the last scenario.
+// Tool pages (/tools/fee-estimator, /tools/hashrate): transaction fee
+// estimator + mining hashrate / profitability. Live values come from
+// /api/fee-rates (node fee estimates + protocol constants) and /api/summary
+// (difficulty, block time/reward, price). Each page loads one island and the
+// panels are guarded, so the shared module powers either tool. Inputs are
+// persisted per browser so a reload keeps the last scenario.
 
 import { fmt, fmtInt, fmtXel, ago } from "./format";
 import { getPref, setPref } from "./prefs";

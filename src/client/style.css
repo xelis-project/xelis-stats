@@ -1659,6 +1659,24 @@ body.layout-dag .dag-viewport { border-left: none; border-right: none; border-ra
 .calc-row.net .v { font-weight: 700; }
 .calc-row.net.pos .v { color: var(--mint); }
 .calc-row.net.neg .v { color: var(--danger); }
+
+/* ---------- Tools index (/tools) ---------- */
+.tool-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(24rem, 1fr)); gap: 1.6rem; }
+.tool-card {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: linear-gradient(180deg, hsla(0, 0%, 100%, 0.045), hsla(0, 0%, 100%, 0.015));
+  padding: 1.8rem; display: flex; flex-direction: column; gap: 0.8rem; min-width: 0;
+  color: inherit; text-decoration: none;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.tool-card:hover { border-color: var(--border-hover); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32), 0 0 12px var(--mint-glow); transform: translateY(-2px); }
+.tool-card-title { font-size: 1.6rem; font-weight: 700; color: var(--text); }
+.tool-card-desc { font-size: 1.25rem; color: var(--text-dim); line-height: 1.5; }
+.tool-card-cta { margin-top: auto; padding-top: 0.6rem; display: inline-flex; align-items: center; gap: 0.5rem; font-size: 1.15rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--mint); }
+.tool-back { margin: 0 0 1.4rem; font-size: 1.2rem; }
+.tool-back a { color: var(--mint); text-decoration: none; display: inline-flex; align-items: center; gap: 0.5rem; }
+.tool-back a:hover { text-decoration: underline; }
+
 @media (max-width: 620px) {
   .calc-total-value { font-size: 2.4rem; }
 }
