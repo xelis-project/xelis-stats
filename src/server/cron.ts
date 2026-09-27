@@ -395,24 +395,49 @@ export async function snapshotAssetSupply(env: Env): Promise<number> {
 /** Recompute a single day's daily_stats row from blocks/tx_index in D1. */
 export async function rollupDailyStats(env: Env, date: string): Promise<void> {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const row = await env.DB.prepare(`
-      SELECT
-        (SELECT COUNT(DISTINCT sender) FROM tx_index WHERE date(ts/1000,'unixepoch') = ?) AS active_accounts,
-        (SELECT COUNT(*) FROM accounts WHERE date(first_seen/1000,'unixepoch') = ?) AS new_accounts,
-        (SELECT COUNT(*) FROM tx_index WHERE date(ts/1000,'unixepoch') = ?) AS tx_count,
-        (SELECT AVG(fee) FROM tx_index WHERE date(ts/1000,'unixepoch') = ?) AS avg_fee,
-        (SELECT SUM(transfer_count) FROM tx_index WHERE date(ts/1000,'unixepoch') = ?) AS transfer_count,
-        (SELECT AVG(difficulty)/5.0 FROM blocks WHERE date(ts/1000,'unixepoch') = ?) AS hashrate,
-        (SELECT COUNT(DISTINCT miner_address) FROM blocks WHERE date(ts/1000,'unixepoch') = ?) AS unique_miners,
-        (SELECT SUM(CASE WHEN block_type='Side' THEN 1 ELSE 0 END) FROM blocks WHERE date(ts/1000,'unixepoch') = ?) AS side_count,
-        (SELECT SUM(fee_total) FROM blocks WHERE date(ts/1000,'unixepoch') = ?) AS fee_total_sum,
-        (SELECT SUM(miner_reward+dev_reward) FROM blocks WHERE date(ts/1000,'unixepoch') = ?) AS miner_revenue,
-        (SELECT SUM(burned) FROM blocks WHERE date(ts/1000,'unixepoch') = ?) AS burned_day,
-        (SELECT SUM(peer_count) FROM node_versions WHERE date = ?) AS peer_count
-    `).bind(date, date, date, date, date, date, date, date, date, date, date, date).first<Record<string, unknown>>();
+    // Half-open millisecond bounds for the UTC calendar day. `ts >= ? AND ts < ?`
+    // can use the (ts, ...) indexes, unlike `date(ts/1000,'unixepoch') = ?`,
+    // which is not sargable and forced a full scan per subquery.
+    const startMs = Date.parse(`${date}T00:00:00Z`);
+    const endMs = startMs + 86400_000;
 
-    if (!row || (row.tx_count === 0 && row.active_accounts === 0 && (row.miner_revenue ?? 0) === 0 && (row.peer_count ?? 0) === 0)) return;
+    // One scan per table instead of 12 correlated scalar subqueries (SQLite
+    // evaluates each as an independent full scan of blocks/tx_index).
+    const [tx, accounts, blocks, versions] = await Promise.all([
+      env.DB.prepare(`
+        SELECT
+          COUNT(*) AS tx_count,
+          COUNT(DISTINCT sender) AS active_accounts,
+          AVG(fee) AS avg_fee,
+          SUM(transfer_count) AS transfer_count
+        FROM tx_index WHERE ts >= ? AND ts < ?
+      `).bind(startMs, endMs).first<Record<string, unknown>>(),
+      env.DB.prepare(
+        "SELECT COUNT(*) AS new_accounts FROM accounts WHERE first_seen >= ? AND first_seen < ?"
+      ).bind(startMs, endMs).first<Record<string, unknown>>(),
+      env.DB.prepare(`
+        SELECT
+          AVG(difficulty)/5.0 AS hashrate,
+          COUNT(DISTINCT miner_address) AS unique_miners,
+          SUM(CASE WHEN block_type='Side' THEN 1 ELSE 0 END) AS side_count,
+          SUM(fee_total) AS fee_total_sum,
+          SUM(miner_reward+dev_reward) AS miner_revenue,
+          SUM(burned) AS burned_day
+        FROM blocks WHERE ts >= ? AND ts < ?
+      `).bind(startMs, endMs).first<Record<string, unknown>>(),
+      env.DB.prepare(
+        "SELECT SUM(peer_count) AS peer_count FROM node_versions WHERE date = ?"
+      ).bind(date).first<Record<string, unknown>>(),
+    ]);
+
+    const row: Record<string, unknown> = {
+      ...(tx ?? {}),
+      ...(accounts ?? {}),
+      ...(blocks ?? {}),
+      ...(versions ?? {}),
+    };
+
+    if (row.tx_count === 0 && row.active_accounts === 0 && (row.miner_revenue ?? 0) === 0 && (row.peer_count ?? 0) === 0) return;
 
     // supply is cumulative: continue from the last stored day, adding today's
     // emitted (block rewards) and burned (block fees burned) amounts.
