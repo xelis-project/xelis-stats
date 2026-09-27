@@ -73,8 +73,8 @@ network.get("/network", async (c) => {
       db.prepare(
         "SELECT tag, peers FROM daily_peer_tags WHERE date = (SELECT MAX(date) FROM daily_peer_tags) ORDER BY peers DESC LIMIT 10"
       ).all<TagRow>().then((r) => r.results ?? []),
-      // daily_peer_cities may not exist until migration 0002 is applied; fall
-      // back to an empty list so the page still renders the country map.
+      // Fall back to an empty list so the page still renders the country map
+      // if the city table is not present (e.g. an older database).
       db.prepare(
         "SELECT city, country, country_code, latitude, longitude, peers FROM daily_peer_cities WHERE date = ? ORDER BY peers DESC"
       ).bind(date).all<CityRow>().then((r) => r.results ?? []).catch(() => [] as CityRow[]),
