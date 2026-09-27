@@ -20,7 +20,7 @@ livePage.get("/", async (c) => {
 
   const content = `<div class="live-cards" id="live-stats">${liveStatsHtml(live)}</div>
   <div class="panel">
-    <div class="panel-head"><h2>Unstable window</h2><span class="live-hint">newest blocks at the tip · click a node to inspect</span></div>
+    <div class="panel-head"><h2>Unstable window</h2><span class="live-hint">newest blocks at the tip</span></div>
     <div id="live-dag">${liveDagHtml(live)}</div>
   </div>
   <div class="grid-2 live-split">

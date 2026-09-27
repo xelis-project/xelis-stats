@@ -211,8 +211,6 @@ export function liveDagHtml(d: LiveData): string {
   const unstable = blocks.filter((b) => !b.stable);
   const stableTopos = stable.map((b) => b.topoheight);
   const unstableTopos = unstable.map((b) => b.topoheight);
-  const stableRange = stableTopos.length ? (stableTopos.length > 1 ? `${fmtInt(Math.min(...stableTopos))}–${fmtInt(Math.max(...stableTopos))}` : fmtInt(stableTopos[0])) : "";
-  const unstableRange = unstableTopos.length ? (unstableTopos.length > 1 ? `${fmtInt(Math.min(...unstableTopos))}–${fmtInt(Math.max(...unstableTopos))}` : fmtInt(unstableTopos[0])) : "";
   const boundary = stableTopos.length && unstableTopos.length
     ? { from: Math.max(...stableTopos), to: Math.min(...unstableTopos) }
     : null;
@@ -220,7 +218,7 @@ export function liveDagHtml(d: LiveData): string {
   const segs: string[] = [];
   if (stable.length) {
     segs.push(`<div class="live-dag-seg">
-      <div class="live-dag-seg-head"><span class="live-dag-cap">stable</span><span class="live-dag-range">topo ${stableRange}</span></div>
+      <div class="live-dag-seg-head"><span class="live-dag-cap">stable</span></div>
       <div class="live-dag-nodes">${stable.map(dagNode).join("")}</div>
     </div>`);
   }
@@ -229,14 +227,13 @@ export function liveDagHtml(d: LiveData): string {
   }
   if (unstable.length) {
     segs.push(`<div class="live-dag-seg">
-      <div class="live-dag-seg-head"><span class="live-dag-cap unstable">unstable · may reorg</span><span class="live-dag-range">topo ${unstableRange}</span></div>
+      <div class="live-dag-seg-head"><span class="live-dag-cap unstable">unstable · may reorg</span></div>
       <div class="live-dag-nodes">${unstable.map(dagNode).join("")}</div>
     </div>`);
   }
 
   const hidden = Math.max(0, d.lag - unstable.length);
   const parts: string[] = [];
-  if (boundary) parts.push(`stability boundary at topo ${fmtInt(boundary.from)} → ${fmtInt(boundary.to)}`);
   if (hidden > 0) parts.push(`${fmtInt(hidden)} ${hidden === 1 ? "topoheight is" : "topoheights are"} hidden between the boundary and the tip window`);
   if (!unstable.length && stable.length) parts.push("no unstable blocks right now");
   const note = parts.length ? `<p class="live-dag-note">${parts.join(" · ")}</p>` : "";
