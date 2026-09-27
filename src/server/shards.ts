@@ -71,6 +71,12 @@ const SHARD_SCHEMA = [
   "CREATE INDEX IF NOT EXISTS idx_tx_contracts_cid ON tx_contracts(contract_id)",
 ];
 
+// The index DDL from SHARD_SCHEMA. SHARD_SCHEMA is only applied when a shard is
+// created, so indexes added later (e.g. idx_blocks_size_topo) are missing from
+// shards sealed before the change. ensureShardIndexes replays these on existing
+// shards. Regex-captured names must match the DDL identifiers.
+const SHARD_INDEXES = SHARD_SCHEMA.filter((s) => s.startsWith("CREATE INDEX"));
+
 // column order used when copying rows into shard databases
 const SHARD_TABLES: Record<string, string[]> = {
   blocks: ["topoheight", "height", "hash", "ts", "version", "nonce", "difficulty", "size", "tx_count", "block_type", "miner_address", "miner_reward", "dev_reward", "burned", "fee_total", "cum_difficulty", "tips", "txs_hashes"],
@@ -145,6 +151,31 @@ async function createShardDatabase(env: Env, name: string): Promise<string> {
 
 async function initShardSchema(env: Env, dbId: string): Promise<void> {
   for (const stmt of SHARD_SCHEMA) await restQuery(env, dbId, stmt);
+}
+
+/**
+ * Reconcile indexes on already-sealed shards. initShardSchema only runs at shard
+ * creation, so an index added to SHARD_SCHEMA afterwards (like the blocks size
+ * sort index) is absent on existing shards — every size/difficulty/reward sort
+ * then does a full scan plus a temp B-tree sort per shard instead of an ordered
+ * index scan. Idempotent: reads each shard's index list and creates only the
+ * missing ones. Best-effort; a failed shard is retried on the next run.
+ */
+async function ensureShardIndexes(env: Env, shards: ShardRow[]): Promise<void> {
+  const expected = SHARD_INDEXES.flatMap((sql) => {
+    const name = /INDEX\s+(?:IF NOT EXISTS\s+)?([A-Za-z0-9_]+)/i.exec(sql)?.[1];
+    return name ? [{ sql, name }] : [];
+  });
+  for (const s of shards) {
+    if (!s.sealed) continue;
+    try {
+      const rows = await restQuery(env, s.db_id, "SELECT name FROM sqlite_master WHERE type = 'index'");
+      const have = new Set(rows.map((r) => String(r.name)));
+      for (const { sql, name } of expected) {
+        if (!have.has(name)) await restQuery(env, s.db_id, sql);
+      }
+    } catch { /* shard unreachable: retry on the next hourly run */ }
+  }
 }
 
 /** File size of any D1 database via the REST API (null if unknown). */
@@ -805,6 +836,7 @@ const KEEP_HOT_BLOCKS = 200_000;
 export async function rotateShards(env: Env, budgetMs = 25_000): Promise<string> {
   if (!shardsConfigured(env)) return "disabled";
   let shards = await getShards(env, true);
+  await ensureShardIndexes(env, shards);
   let open = shards.find((s) => !s.sealed && s.last_topo != null);
 
   if (!open) {
