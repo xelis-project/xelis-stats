@@ -1222,6 +1222,37 @@ span.flatpickr-weekday { color: var(--text-dim); font-weight: 700; }
 .palette-item.is-used { border-color: rgba(2, 255, 207, 0.16); }
 .palette-item .pd { font-size: 1.1rem; color: var(--text-dim); white-space: normal; }
 
+/* Fullscreen presentation mode. This is a CSS-only mode, not the Fullscreen
+   API, so several browser windows can each show a different dashboard tab
+   "fullscreen" at the same time. It hides the site chrome and lets the canvas
+   fill the viewport. */
+html.dash-fullscreen, html.dash-fullscreen body { overflow: hidden; }
+html.dash-fullscreen #app { max-width: none; margin: 0; padding: 0; }
+html.dash-fullscreen header.site,
+html.dash-fullscreen footer.site,
+html.dash-fullscreen .nav-backdrop { display: none; }
+html.dash-fullscreen .dash-toolbar,
+html.dash-fullscreen .dash-toolbar-sentinel,
+html.dash-fullscreen .dash-tabs { display: none; }
+html.dash-fullscreen .dash-canvas {
+  height: 100vh; min-height: 0;
+  border: none; border-radius: 0;
+  overflow: auto;
+}
+.dash-toolbar .icon-btn { padding: 0.8rem; line-height: 0; }
+.dash-toolbar .icon-btn .ic { width: 1.6rem; height: 1.6rem; }
+.dash-fs-exit { display: none; }
+.dash-fs-exit.icon-btn { padding: 0.8rem; line-height: 0; }
+.dash-fs-exit .ic { width: 1.6rem; height: 1.6rem; }
+html.dash-fullscreen .dash-fs-exit {
+  display: inline-flex;
+  position: fixed; top: 1.2rem; right: 1.6rem; z-index: 90;
+  opacity: 0.35;
+  transition: opacity 0.2s;
+}
+html.dash-fullscreen .dash-fs-exit:hover,
+html.dash-fullscreen .dash-fs-exit:focus-visible { opacity: 1; }
+
 [hidden] { display: none !important; }
 
 @media (max-width: 620px) {

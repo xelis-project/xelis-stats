@@ -113,6 +113,7 @@ interface Summary {
 const STORAGE_KEY = "xelis-dashboard-v4";
 const LEGACY_KEY = "xelis-dashboard"; // pre-tabs single-layout storage
 const OLDEST_KEY = "xelis-stats-layout";
+const FS_KEY = "xelis:dash-fullscreen"; // per browser tab, so each window can be fullscreen independently
 const CANON_COLS = 12;
 
 const CATALOG: CatalogItem[] = [
@@ -2035,9 +2036,36 @@ function togglePalette(show: boolean): void {
   }
 }
 
+// Fullscreen here is a CSS presentation mode, not the Fullscreen API: it hides
+// the site chrome and fills the viewport, so several browser windows can each
+// show a different dashboard tab "fullscreen" at the same time. State is kept in
+// sessionStorage so it is per browser tab and survives reloads.
+function isDashFullscreen(): boolean {
+  return document.documentElement.classList.contains("dash-fullscreen");
+}
+
+function setDashFullscreen(on: boolean): void {
+  if (on === isDashFullscreen()) return;
+  document.documentElement.classList.toggle("dash-fullscreen", on);
+  try { sessionStorage.setItem(FS_KEY, on ? "1" : "0"); } catch { /* storage blocked */ }
+  const enterBtn = document.getElementById("btn-dash-fullscreen");
+  enterBtn?.setAttribute("aria-pressed", on ? "true" : "false");
+  // The canvas box changes size when the chrome is hidden, so remeasure once
+  // the new layout has been applied.
+  requestAnimationFrame(() => { measure(); layout(); });
+}
+
+function toggleDashFullscreen(): void {
+  setDashFullscreen(!isDashFullscreen());
+}
+
 export function initDashboard(): void {
   canvas = document.getElementById("custom-grid");
   if (!canvas) return;
+
+  try {
+    if (sessionStorage.getItem(FS_KEY) === "1") document.documentElement.classList.add("dash-fullscreen");
+  } catch { /* storage blocked */ }
 
   const state = loadState();
   tabs = state.tabs;
@@ -2096,6 +2124,12 @@ export function initDashboard(): void {
   });
 
   addBtn?.addEventListener("click", () => togglePalette(true));
+
+  const fsBtn = document.getElementById("btn-dash-fullscreen");
+  const fsExitBtn = document.getElementById("dash-fs-exit");
+  fsBtn?.addEventListener("click", toggleDashFullscreen);
+  fsExitBtn?.addEventListener("click", () => setDashFullscreen(false));
+  fsBtn?.setAttribute("aria-pressed", isDashFullscreen() ? "true" : "false");
   const menuToggle = document.getElementById("dash-menu-toggle");
   const menuItems = document.getElementById("dash-menu-items");
   const toggleMenu = (show: boolean): void => {
@@ -2135,9 +2169,16 @@ export function initDashboard(): void {
   closeBtn?.addEventListener("click", () => togglePalette(false));
   window.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape") {
-      togglePalette(false);
-      toggleMenu(false);
+      if (overlay && !overlay.hidden) { togglePalette(false); return; }
+      if (menuItems && !menuItems.hidden) { toggleMenu(false); return; }
+      setDashFullscreen(false);
+      return;
     }
+    if (ev.key.toLowerCase() !== "f" || ev.ctrlKey || ev.metaKey || ev.altKey || ev.shiftKey) return;
+    const target = ev.target as HTMLElement | null;
+    if (target && (target.isContentEditable || target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")) return;
+    ev.preventDefault();
+    toggleDashFullscreen();
   });
 
   // settings popovers: dismiss on outside click / Escape, follow layout changes

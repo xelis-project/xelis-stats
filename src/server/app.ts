@@ -102,6 +102,7 @@ app.get("/dashboard", (c) => {
       <span class="dash-hint">Drag a header to dock a widget · drag the corner to resize · Alt + arrows to nudge · rearrange on a wide window</span>
       <span class="dash-spacer"></span>
       <button class="btn" id="btn-add-widget">${icons.plus} Add widget</button>
+      <button class="btn ghost icon-btn" id="btn-dash-fullscreen" type="button" title="Fullscreen (F)" aria-label="Enter fullscreen" aria-pressed="false">${icons.maximize}</button>
       <div class="dash-menu" id="dash-menu">
         <button class="btn ghost" id="dash-menu-toggle" title="Layout actions" aria-haspopup="menu" aria-expanded="false" aria-label="Layout actions">${icons.more}</button>
         <div class="dash-menu-items" id="dash-menu-items" role="menu" hidden>
@@ -114,6 +115,7 @@ app.get("/dashboard", (c) => {
     </div>
     <div id="dash-tabs" class="dash-tabs" role="tablist" aria-label="Dashboard tabs"></div>
     <div id="custom-grid" class="dash-canvas" aria-label="Dashboard canvas"></div>
+    <button class="btn ghost icon-btn dash-fs-exit" id="dash-fs-exit" type="button" title="Exit fullscreen (Esc)" aria-label="Exit fullscreen">${icons.minimize}</button>
     <div class="palette-overlay" id="palette" hidden>
       <div class="palette-sheet" role="dialog" aria-modal="true" aria-label="Add widget">
         <div class="palette-head">

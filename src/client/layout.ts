@@ -35,7 +35,7 @@ export function layout(title: string, content: string, active: string, bodyClass
   <title>${escHtml(title)} · Xelis Stats</title>
   <meta name="description" content="Xelis blockchain statistics, market data and explorer" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-  <script>try{var s=localStorage,d=document.documentElement;if(s.getItem("xelis:reveal-flags")==="1")d.classList.add("reveal-flags");if(s.getItem("xelis:density")==="compact")d.classList.add("density-compact");if(s.getItem("xelis:reduce-motion")==="1")d.classList.add("reduce-motion");}catch(e){}</script>
+  <script>try{var s=localStorage,d=document.documentElement;if(s.getItem("xelis:reveal-flags")==="1")d.classList.add("reveal-flags");if(s.getItem("xelis:density")==="compact")d.classList.add("density-compact");if(s.getItem("xelis:reduce-motion")==="1")d.classList.add("reduce-motion");if(location.pathname==="/dashboard"&&sessionStorage.getItem("xelis:dash-fullscreen")==="1")d.classList.add("dash-fullscreen");}catch(e){}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Jura:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
