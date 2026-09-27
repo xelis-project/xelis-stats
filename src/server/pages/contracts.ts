@@ -9,6 +9,7 @@ import { rpc } from "../xelis";
 import { fetchBlockTimes } from "../shards";
 import { esc, jsq, entityTag, blkCopyScript, flaggedText, num, PAGE_SIZE, pager, clampInt, logErr } from "./shared";
 import { fetchStorage, storageBatchHtml, storageEntry, storageHeadText } from "./storage";
+import { disassembleModule } from "../disasm";
 
 export const contracts = new Hono<{ Bindings: Env }>();
 
@@ -251,20 +252,37 @@ contracts.get("/contracts/:id", async (c) => {
     <div class="stg-more-row" id="stg-more-row"${storageMore ? "" : " hidden"}><button class="btn ghost" type="button" id="stg-more">Load more entries</button></div>
   </div>` : "";
 
-  // bytecode viewer: collapsible dump of the compiled module chunks
+  // bytecode viewer: readable disassembly of the compiled module chunks
   let bytecodePanel = "";
   if (moduleRaw) {
-    let chunks = 0;
-    try { chunks = ((moduleRaw as { chunks?: unknown[] }).chunks ?? []).length; } catch { /* malformed */ }
-    let dump = "";
-    try { dump = JSON.stringify(moduleRaw, null, 2); } catch { /* malformed */ }
-    const truncated = dump.length > 40000;
-    if (truncated) dump = dump.slice(0, 40000) + "\n… truncated";
-    bytecodePanel = `<div class="panel"><h2>Bytecode <span style="color:var(--text-dim)">${chunks} chunks · serialized ~${fmtInt(codeSize ?? 0)} bytes</span></h2>
-      <details><summary style="cursor:pointer">Show compiled module</summary>
-        <pre class="json-pre">${esc(dump)}</pre>
-      </details>
+    const dis = disassembleModule(moduleRaw);
+    const header = `${dis.chunks.length} chunk${dis.chunks.length === 1 ? "" : "s"} · serialized ~${fmtInt(codeSize ?? 0)} bytes`;
+    if (dis.ok) {
+      const chunkHtml = dis.chunks.map((ch) => `<details class="disasm-chunk">
+        <summary><span class="mono">#chunk${ch.index}</span> <span class="badge">${esc(ch.access)}</span> <span class="disasm-dim">${ch.instructions} ops · ${fmtInt(ch.bytes)} bytes${ch.labels ? ` · ${ch.labels} label${ch.labels === 1 ? "" : "s"}` : ""}</span></summary>
+        <pre class="disasm-pre">${esc(ch.lines || "—")}</pre>
+      </details>`).join("");
+      const constHtml = dis.constants.length
+        ? `<details class="disasm-chunk">
+        <summary>Constants <span class="disasm-dim">${dis.constants.length}</span></summary>
+        <pre class="disasm-pre">${esc(dis.constants.map((c, i) => `${String(i).padStart(3, "0")}  ${c}`).join("\n"))}</pre>
+      </details>`
+        : "";
+      bytecodePanel = `<div class="panel"><h2>Bytecode <span style="color:var(--text-dim)">${header}</span></h2>
+      <p class="disasm-note">Disassembled XVM opcodes. Jump targets are labelled per chunk; <span class="mono">CONSTANT</span> operands are annotated with the resolved value.</p>
+      <div class="disasm-list">${chunkHtml}${constHtml}</div>
+      ${dis.version ? `<p class="disasm-note">Module version <span class="mono">${esc(dis.version)}</span></p>` : ""}
     </div>`;
+    } else {
+      // last-resort fallback so a module that fails to decode is never blank
+      let dump = "";
+      try { dump = JSON.stringify(moduleRaw, null, 2); } catch { /* malformed */ }
+      if (dump.length > 40000) dump = dump.slice(0, 40000) + "\n… truncated";
+      bytecodePanel = `<div class="panel"><h2>Bytecode <span style="color:var(--text-dim)">${header}</span></h2>
+        <p class="disasm-note">Could not disassemble this module; showing the raw module instead.</p>
+        <pre class="json-pre">${esc(dump)}</pre>
+      </div>`;
+    }
   }
 
   const invokeRows = invokes.length
