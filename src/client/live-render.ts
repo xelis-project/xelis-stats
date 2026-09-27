@@ -2,7 +2,7 @@
 // page renders the first paint with these helpers and the client poller reuses
 // them, so the node-sourced values never touch D1.
 
-import { fmt, fmtInt, fmtBytes, atomic, atomicPrecise, shortHash, timeCell } from "./format";
+import { fmt, fmtInt, fmtBytes, atomic, atomicPrecise, shortHash, timeCell, ago } from "./format";
 
 const esc = (v: unknown): string =>
   String(v ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] as string));
@@ -146,7 +146,49 @@ export function liveStatsHtml(d: LiveData): string {
 function dagNode(b: LiveBlock): string {
   const cls = `live-node ${esc(b.block_type.toLowerCase())}${b.stable ? "" : " unstable"}`;
   const detail = `topo ${b.topoheight} · height ${b.height} · ${b.block_type} · ${b.txs} tx · ${shortHash(b.hash, 8)}`;
-  return `<a class="${cls}" href="/block/${b.topoheight}" data-topo="${b.topoheight}" title="${esc(detail)}" aria-label="${esc(detail)}"></a>`;
+  const attrs = [
+    `data-topo="${b.topoheight}"`,
+    `data-height="${b.height}"`,
+    `data-ts="${b.ts}"`,
+    `data-type="${esc(b.block_type.toLowerCase())}"`,
+    `data-txs="${b.txs}"`,
+    `data-size="${b.size}"`,
+    `data-reward="${esc(atomic(b.miner_reward + b.dev_reward))}"`,
+    `data-fees="${esc(atomicPrecise(b.feesBurned))}"`,
+    `data-miner="${esc(b.miner_label ?? "")}"`,
+    `data-miner-hash="${esc(b.miner)}"`,
+    `data-hash="${esc(b.hash)}"`,
+    `data-stable="${b.stable ? "1" : "0"}"`,
+  ].join(" ");
+  return `<a class="${cls}" href="/block/${b.topoheight}" ${attrs} aria-label="${esc(detail)}"></a>`;
+}
+
+// Hover card for a DAG tip node. Values are read back from the data-* attributes
+// dagNode() stamps on the anchor so the tooltip works from the first server paint
+// and survives the client poller re-rendering the window.
+export function liveNodeTipHtml(ds: Record<string, string | undefined>): string {
+  const type = esc(ds.type ?? "");
+  const stable = ds.stable === "1";
+  const miner = ds.miner
+    ? `${esc(ds.miner)} <span class="lnt-dim">${esc(shortHash(ds.minerHash, 6))}</span>`
+    : esc(shortHash(ds.minerHash, 8));
+  const rows: Array<[string, string]> = [
+    ["Height", fmtInt(Number(ds.height))],
+    ["Age", esc(ago(ds.ts ? Number(ds.ts) : null))],
+    ["Transactions", fmtInt(Number(ds.txs))],
+    ["Size", fmtBytes(Number(ds.size))],
+    ["Reward", `${esc(ds.reward)} XEL`],
+    ["Fees burned", `${esc(ds.fees)} XEL`],
+  ];
+  return `<div class="lnt-top">
+      <span class="lnt-topo">topo ${fmtInt(Number(ds.topo))}</span>
+      <span class="badge ${type}">${type}</span>
+      <span class="badge ${stable ? "ok" : "unstable"}">${stable ? "stable" : "unstable"}</span>
+    </div>
+    <div class="lnt-grid">${rows.map(([k, v]) => `<span class="lnt-k">${k}</span><span class="lnt-v">${v}</span>`).join("")}</div>
+    <div class="lnt-miner"><span class="lnt-k">Miner</span><span class="lnt-v">${miner}</span></div>
+    <div class="lnt-hash mono">${esc(ds.hash)}</div>
+    ${stable ? "" : `<div class="lnt-note">Unstable — can still be reorged out of the chain.</div>`}`;
 }
 
 function dagBlocks(d: LiveData): LiveBlock[] {

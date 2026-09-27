@@ -11,10 +11,71 @@ import {
   liveMempoolRowsHtml,
   liveRecentTxRowsHtml,
   liveTxTypesHtml,
+  liveNodeTipHtml,
   type LiveData,
 } from "./live-render";
 
 const POLL_MS = 5000;
+
+// Fixed-position hover card for the tip-window nodes. It lives on <body> so the
+// DAG re-renders never wipe it, and follows the cursor with edge flipping.
+function initNodeTip(dag: HTMLElement, onHide: (fn: () => void) => void): void {
+  const tip = document.createElement("div");
+  tip.className = "live-node-tip";
+  tip.hidden = true;
+  document.body.appendChild(tip);
+
+  const hide = (): void => { tip.hidden = true; };
+  onHide(hide);
+
+  const place = (x: number, y: number): void => {
+    const pad = 14;
+    const r = tip.getBoundingClientRect();
+    let left = x + pad;
+    let top = y + pad;
+    if (left + r.width > window.innerWidth - 8) left = x - r.width - pad;
+    if (top + r.height > window.innerHeight - 8) top = y - r.height - pad;
+    tip.style.left = `${Math.max(8, left)}px`;
+    tip.style.top = `${Math.max(8, top)}px`;
+  };
+
+  const nodeFrom = (ev: Event): HTMLElement | null => {
+    const target = ev.target as Element | null;
+    const node = target?.closest<HTMLElement>(".live-node[data-topo]") ?? null;
+    return node && dag.contains(node) ? node : null;
+  };
+
+  const show = (node: HTMLElement, x: number, y: number): void => {
+    tip.innerHTML = liveNodeTipHtml(node.dataset);
+    tip.hidden = false;
+    place(x, y);
+  };
+
+  dag.addEventListener("pointerover", (ev) => {
+    if (ev.pointerType === "touch") return;
+    const node = nodeFrom(ev);
+    if (node) show(node, ev.clientX, ev.clientY);
+  });
+  dag.addEventListener("pointermove", (ev) => {
+    if (tip.hidden || ev.pointerType === "touch") return;
+    const node = nodeFrom(ev);
+    if (node) place(ev.clientX, ev.clientY);
+  });
+  dag.addEventListener("pointerout", (ev) => {
+    const node = nodeFrom(ev);
+    if (!node) return;
+    const to = ev.relatedTarget as Node | null;
+    if (to && node.contains(to)) return;
+    hide();
+  });
+  dag.addEventListener("focusin", (ev) => {
+    const node = nodeFrom(ev);
+    if (!node) return;
+    const r = node.getBoundingClientRect();
+    show(node, r.left + r.width / 2, r.bottom);
+  });
+  dag.addEventListener("focusout", hide);
+}
 
 export function initLiveDashboard(): void {
   const stats = document.getElementById("live-stats");
@@ -25,6 +86,10 @@ export function initLiveDashboard(): void {
   // Whether the DAG has already been rendered once, so the initial paint stays
   // still and only later updates animate.
   let dagPainted = false;
+  let hideTip: () => void = () => {};
+
+  const dagEl = document.getElementById("live-dag");
+  if (dagEl) initNodeTip(dagEl, (fn) => { hideTip = fn; });
 
   function set(id: string, html: string): void {
     const el = document.getElementById(id);
@@ -36,6 +101,7 @@ export function initLiveDashboard(): void {
   function renderDag(d: LiveData): void {
     const el = document.getElementById("live-dag");
     if (!el) return;
+    hideTip();
     const before = new Map<number, DOMRect>();
     if (dagPainted && !reduceMotion) {
       el.querySelectorAll<HTMLElement>(".live-node[data-topo]").forEach((node) => {
