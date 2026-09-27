@@ -179,28 +179,26 @@ network.get("/network", async (c) => {
       </div>
     </div>
 
-    <div class="panel">
-      <div class="panel-head"><h2>Peer concentration <span style="color:var(--text-dim)">${fmtInt(mappedTotal)} geolocated peers · ${esc(date)}</span></h2></div>
-      <div class="grid-2">
-        <div>
-          <h3 class="sub-h">Country choropleth</h3>
-          <div id="world-map" class="world-map" role="img" aria-label="World map of peers by country">
-            <noscript><p style="color:var(--text-dim)">Enable JavaScript to see the map, or use the table below.</p></noscript>
-          </div>
-          <div class="map-legend" id="map-legend"></div>
+    <div class="grid-2" style="align-items:start">
+      <div class="panel">
+        <div class="panel-head"><h2>Peer concentration <span style="color:var(--text-dim)">${fmtInt(mappedTotal)} geolocated peers · ${esc(date)}</span></h2></div>
+        <h3 class="sub-h">Country choropleth</h3>
+        <div id="world-map" class="world-map" role="img" aria-label="World map of peers by country">
+          <noscript><p style="color:var(--text-dim)">Enable JavaScript to see the map, or use the table below.</p></noscript>
         </div>
-        <div>
-          <h3 class="sub-h">Node locations <span class="map-sub">${locLabel}</span></h3>
-          <div id="world-map-clusters" class="world-map world-map-clusters" role="img" aria-label="World map of peer locations clustered by country">
-            <noscript><p style="color:var(--text-dim)">Enable JavaScript to see the map, or use the table below.</p></noscript>
-          </div>
-          <div class="map-legend" id="cluster-legend"></div>
-        </div>
+        <div class="map-legend" id="map-legend"></div>
+        <div class="tablewrap scroll-y" style="margin-top:1rem"><table>
+          <thead><tr><th class="num">#</th><th>Country</th><th class="num">Peers</th><th class="num">Share</th></tr></thead>
+          <tbody>${countryRows}</tbody>
+        </table></div>
       </div>
-      <div class="tablewrap scroll-y" style="margin-top:1rem"><table>
-        <thead><tr><th class="num">#</th><th>Country</th><th class="num">Peers</th><th class="num">Share</th></tr></thead>
-        <tbody>${countryRows}</tbody>
-      </table></div>
+      <div class="panel">
+        <div class="panel-head"><h2>Node locations <span class="map-sub">${locLabel}</span></h2></div>
+        <div id="world-map-clusters" class="world-map world-map-clusters" role="img" aria-label="World map of peer locations clustered by country">
+          <noscript><p style="color:var(--text-dim)">Enable JavaScript to see the map.</p></noscript>
+        </div>
+        <div class="map-legend" id="cluster-legend"></div>
+      </div>
     </div>
 
     <script type="application/json" id="net-map-data">${mapJson}</script>`;
