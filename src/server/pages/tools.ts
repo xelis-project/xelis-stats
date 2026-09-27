@@ -107,10 +107,7 @@ tools.get("/tools/hashrate", (c) => {
           <select id="hp-unit" aria-label="Hashrate unit">
             <option value="1">H/s</option>
             <option value="1e3">kH/s</option>
-            <option value="1e6">MH/s</option>
-            <option value="1e9">GH/s</option>
-            <option value="1e12" selected>TH/s</option>
-            <option value="1e15">PH/s</option>
+            <option value="1e6" selected>MH/s</option>
           </select>
         </div>
       </div>
