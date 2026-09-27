@@ -46,6 +46,7 @@ tools.get("/tools/fee-estimator", (c) => {
       <button class="btn ghost calc-refresh" type="button" data-calc-refresh>Refresh</button>
     </div>
     <p class="calc-note">Fees are paid in XEL and combine a dynamic per-KiB storage fee with static per-output, per-new-address and per-signature fees. See the <a href="https://docs.xelis.io/features/transaction-fees" target="_blank" rel="noopener noreferrer">fee model</a>.</p>
+    <div class="calc-split">
     <div class="calc-form">
       <div class="calc-field">
         <label for="fee-size">Transaction size (bytes)</label>
@@ -70,6 +71,7 @@ tools.get("/tools/fee-estimator", (c) => {
     </div>
     <div class="calc-results" id="fee-results" aria-live="polite">
       <p class="calc-status">Loading live fee rates…</p>
+    </div>
     </div>
   </div>`;
 
