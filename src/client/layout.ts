@@ -22,6 +22,7 @@ export function layout(title: string, content: string, active: string, bodyClass
     ["/contracts", "Contracts"],
     ["/market", "Market"],
     ["/miners", "Miners"],
+    ["/network", "Network"],
     ["/charts", "Charts"],
   ]
     .map(([href, name]) => `<a href="${href}" class="${active === href ? "active" : ""}">${name}</a>`)

@@ -1736,3 +1736,53 @@ html.dag-fullscreen .dag-viewport { border: none; border-radius: 0; }
 @media (max-width: 620px) {
   .calc-total-value { font-size: 2.4rem; }
 }
+
+/* ---------- Network page (/network) ---------- */
+.world-map { position: relative; width: 100%; max-width: 1010px; margin: 0 auto; }
+.world-map svg { display: block; width: 100%; height: auto; }
+.world-map path {
+  fill: hsla(0, 0%, 100%, 0.05);
+  stroke: var(--bg);
+  stroke-width: 0.35;
+  transition: fill 0.15s, filter 0.15s;
+}
+.world-map path[data-peers] { cursor: pointer; }
+.world-map path[data-peers]:hover,
+.world-map path[data-peers]:focus-visible {
+  filter: brightness(1.45);
+  outline: none;
+  stroke: #fff;
+  stroke-width: 0.7;
+}
+.world-map path.map-l1, .map-swatch.map-l1 { fill: rgba(2, 255, 207, 0.18); background: rgba(2, 255, 207, 0.18); }
+.world-map path.map-l2, .map-swatch.map-l2 { fill: rgba(2, 255, 207, 0.34); background: rgba(2, 255, 207, 0.34); }
+.world-map path.map-l3, .map-swatch.map-l3 { fill: rgba(2, 255, 207, 0.58); background: rgba(2, 255, 207, 0.58); }
+.world-map path.map-l4, .map-swatch.map-l4 { fill: rgba(245, 217, 95, 0.7); background: rgba(245, 217, 95, 0.7); }
+.world-map path.map-l5, .map-swatch.map-l5 { fill: rgba(245, 217, 95, 0.95); background: rgba(245, 217, 95, 0.95); }
+.world-map path.map-unobserved, .map-swatch.map-unobserved { fill: hsla(0, 0%, 100%, 0.05); background: hsla(0, 0%, 100%, 0.05); }
+.map-tip {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - 10px));
+  background: rgba(8, 14, 17, 0.96);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.45rem 0.7rem;
+  font-size: 1.15rem;
+  color: var(--text);
+  white-space: nowrap;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.map-legend {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.8rem;
+  font-size: 1.15rem;
+  color: var(--text-dim);
+}
+.map-legend-title { text-transform: uppercase; letter-spacing: 0.08em; font-size: 1rem; }
+.map-swatch { width: 1.4rem; height: 1.4rem; border-radius: 0.25rem; border: 1px solid var(--border); display: inline-block; }
+.map-legend-note { margin-left: 0.4rem; }
