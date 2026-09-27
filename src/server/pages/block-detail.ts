@@ -223,6 +223,25 @@ blockDetail.get("/block/:id", async (c) => {
     } catch { /* db unavailable */ }
   }
 
+  // Some legacy blocks were imported without txs_hashes and were never
+  // tx-enriched (enrichment is forward-only), so neither the hashes nor the
+  // rows exist locally. The node keeps full history, so fetch the hashes there
+  // and persist them best-effort to avoid a round-trip on later views.
+  if (txEntries.length === 0 && txCount > 0) {
+    try {
+      const b = await rpc<Record<string, unknown>>("get_block_at_topoheight", { topoheight: view.topo }, c.env.XELIS_NODE);
+      const hashes = arr(b?.txs_hashes);
+      if (hashes.length) {
+        txEntries = hashes;
+        try {
+          const sql = "UPDATE blocks SET txs_hashes = ? WHERE topoheight = ?";
+          if (blockTarget && blockTarget.kind === "shard") await runOn(c.env, blockTarget, sql, [JSON.stringify(hashes), view.topo]);
+          else await db.prepare(sql).bind(JSON.stringify(hashes), view.topo).run();
+        } catch { /* best-effort persistence */ }
+      }
+    } catch { /* node unreachable */ }
+  }
+
   // contract executions scheduled to run at this topoheight (live from node)
   type Sched = { hash: string; contract: string; chunk_id: number; max_gas: number; kind: Record<string, unknown> };
   let scheduled: Sched[] = [];

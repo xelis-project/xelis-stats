@@ -415,7 +415,7 @@ for (const [file, table, cols, sql] of AGG_JOBS) {
 console.log("Exporting chain data (D1): all blocks, all txs, tx↔asset and tx↔contract links…");
 if (wanted("blocks")) {
   const nBlocks = dumpKeyset("blocks", "topoheight",
-    ["topoheight", "height", "hash", "ts", "version", "nonce", "difficulty", "size", "tx_count", "block_type", "miner_address", "miner_reward", "dev_reward", "burned", "fee_total", "cum_difficulty", "tips"],
+    ["topoheight", "height", "hash", "ts", "version", "nonce", "difficulty", "size", "tx_count", "block_type", "miner_address", "miner_reward", "dev_reward", "burned", "fee_total", "cum_difficulty", "tips", "txs_hashes"],
     { outFile: join(OUT_DIR, "blocks.sql"), desc: true });
   const parts = resolveOutFiles("blocks");
   console.log(`  blocks: ${nBlocks.toLocaleString()} rows${parts.length ? ` (${totalMB(parts)} MB${parts.length > 1 ? `, ${parts.length} parts` : ""})` : " (empty)"}`);
