@@ -114,6 +114,15 @@ export function initDag(): void {
   const vpEl = viewport;
   const cvEl = canvas;
   const inpEl = input;
+  const appEl = app;
+
+  // CSS presentation fullscreen, not the Fullscreen API, so several browser
+  // windows can each view the DAG fullscreen at the same time. State is kept in
+  // sessionStorage so it is per browser tab and survives reloads.
+  const FS_KEY = "xelis:dag-fullscreen";
+  try {
+    if (sessionStorage.getItem(FS_KEY) === "1") document.documentElement.classList.add("dag-fullscreen");
+  } catch { /* storage blocked */ }
 
   let W = 1;
   let H = 1;
@@ -146,6 +155,25 @@ export function initDag(): void {
     const top = vpEl.getBoundingClientRect().top;
     const h = Math.round(window.innerHeight - top - 12);
     vpEl.style.height = `${Math.max(300, h)}px`;
+  }
+
+  function isDagFullscreen(): boolean {
+    return document.documentElement.classList.contains("dag-fullscreen");
+  }
+
+  function setDagFullscreen(on: boolean): void {
+    if (on === isDagFullscreen()) return;
+    document.documentElement.classList.toggle("dag-fullscreen", on);
+    appEl.classList.toggle("is-fs", on);
+    document.getElementById("dag-fs")?.setAttribute("aria-pressed", on ? "true" : "false");
+    try { sessionStorage.setItem(FS_KEY, on ? "1" : "0"); } catch { /* storage blocked */ }
+    // Hiding the site chrome moves the viewport to the top of the page, so
+    // recompute the canvas size for the new layout.
+    requestAnimationFrame(() => { fitViewportHeight(); resize(); });
+  }
+
+  function toggleDagFullscreen(): void {
+    setDagFullscreen(!isDagFullscreen());
   }
 
   function resize(): void {
@@ -765,20 +793,17 @@ export function initDag(): void {
     }
   });
   fitBtn.addEventListener("click", fitView);
-  fsBtn.addEventListener("click", () => {
-    if (document.fullscreenElement) {
-      void document.exitFullscreen().catch(() => { /* ignore */ });
-    } else {
-      try {
-        const p = vpEl.requestFullscreen();
-        if (p) void p.catch(() => { /* unsupported */ });
-      } catch { /* unsupported */ }
+  fsBtn.addEventListener("click", toggleDagFullscreen);
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && isDagFullscreen()) {
+      setDagFullscreen(false);
+      return;
     }
-  });
-  document.addEventListener("fullscreenchange", () => {
-    app.classList.toggle("is-fs", document.fullscreenElement !== null);
-    fitViewportHeight();
-    resize();
+    if (e.key.toLowerCase() !== "f" || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+    const t = e.target as HTMLElement | null;
+    if (t && (t.isContentEditable || t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+    e.preventDefault();
+    toggleDagFullscreen();
   });
   window.addEventListener("resize", () => {
     fitViewportHeight();
@@ -794,6 +819,8 @@ export function initDag(): void {
 
   // ---------- boot ----------
 
+  appEl.classList.toggle("is-fs", isDagFullscreen());
+  document.getElementById("dag-fs")?.setAttribute("aria-pressed", isDagFullscreen() ? "true" : "false");
   fitViewportHeight();
   resize();
   const startTopo = Number(app.dataset.topo ?? 0);

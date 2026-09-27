@@ -67,7 +67,7 @@ dag.get("/dag", async (c) => {
           </button>
           <span class="dag-sep" aria-hidden="true"></span>
           <button class="btn ghost icon-btn" id="dag-fit" type="button" title="Fit all blocks" aria-label="Fit all blocks">${icons.reset}</button>
-          <button class="btn ghost icon-btn" id="dag-fs" type="button" title="Fullscreen" aria-label="Toggle fullscreen"><span class="dag-fs-enter">${icons.maximize}</span><span class="dag-fs-exit">${icons.minimize}</span></button>
+          <button class="btn ghost icon-btn" id="dag-fs" type="button" title="Fullscreen (F)" aria-label="Toggle fullscreen" aria-pressed="false"><span class="dag-fs-enter">${icons.maximize}</span><span class="dag-fs-exit">${icons.minimize}</span></button>
         </div>
         <span class="dag-status" id="dag-status"></span>
       </div>
