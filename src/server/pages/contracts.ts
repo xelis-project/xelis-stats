@@ -242,8 +242,7 @@ contracts.get("/contracts/:id", async (c) => {
     <div class="stg-toolbar">
       <input class="stg-search" id="stg-search" type="search" autocomplete="off" placeholder="Filter by key, value or type…" aria-label="Filter storage entries" />
       <select class="stg-sel" id="stg-type" aria-label="Filter by value type"><option value="">all value types</option></select>
-      <button class="btn ghost stg-act" type="button" id="stg-expand">Expand all</button>
-      <button class="btn ghost stg-act" type="button" id="stg-collapse">Collapse all</button>
+      <button class="btn ghost stg-act" type="button" id="stg-toggle" aria-pressed="false">Expand all</button>
     </div>
     <div class="stg-head stg-head-cols" aria-hidden="true">
       <span>Key</span><span>Key type</span><span>Value</span><span>Value type</span><span></span>

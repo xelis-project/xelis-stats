@@ -57,8 +57,7 @@ export function initStorage(): void {
   const countEl = document.getElementById("stg-count");
   const moreRow = document.getElementById("stg-more-row");
   const moreBtn = document.getElementById("stg-more") as HTMLButtonElement | null;
-  const expandBtn = document.getElementById("stg-expand");
-  const collapseBtn = document.getElementById("stg-collapse");
+  const toggleBtn = document.getElementById("stg-toggle") as HTMLButtonElement | null;
 
   const recs: Rec[] = [];
   let hasMore = moreRow ? !moreRow.hidden : false;
@@ -176,8 +175,14 @@ export function initStorage(): void {
   search?.addEventListener("input", apply);
   typeSel?.addEventListener("change", apply);
   moreBtn?.addEventListener("click", () => void loadMore());
-  expandBtn?.addEventListener("click", () => setAll(true));
-  collapseBtn?.addEventListener("click", () => setAll(false));
+  let allOpen = false;
+
+  toggleBtn?.addEventListener("click", () => {
+    allOpen = !allOpen;
+    setAll(allOpen);
+    toggleBtn.textContent = allOpen ? "Collapse all" : "Expand all";
+    toggleBtn.setAttribute("aria-pressed", String(allOpen));
+  });
 
   index(list);
   typeOptions();
