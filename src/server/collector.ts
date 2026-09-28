@@ -167,6 +167,12 @@ export class StatsCollector {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "get_blocks_range_by_topoheight", params: { start_topoheight: from, end_topoheight: to } }),
         });
+        // A non-JSON body (e.g. a Cloudflare 521 HTML page when the node is
+        // down) must not surface as a JSON parse error or advance the cursor.
+        if (!res.ok) {
+          console.error(`indexNewBlock: RPC HTTP ${res.status} for ${from}..${to}; checkpoint left at ${cursor}`);
+          break;
+        }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const json = await (res as Response).json() as { result?: any[]; error?: { message?: string } };
         if (json.error) {
@@ -408,6 +414,7 @@ export class StatsCollector {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, ...(params !== undefined ? { params } : {}) }),
     });
+    if (!res.ok) throw new Error(`RPC ${method}: HTTP ${res.status}`);
     const json = (await res.json()) as { result?: T; error?: { message: string } };
     if (json.error) throw new Error(json.error.message);
     return json.result as T;
@@ -420,6 +427,7 @@ export class StatsCollector {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "get_info" }),
       });
+      if (!res.ok) return;
       const json = (await res.json()) as {
         result?: { topoheight: number; height: number; stable_topoheight: number; mempool_size: number };
       };
