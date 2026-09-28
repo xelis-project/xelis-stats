@@ -189,7 +189,7 @@ async function splitSqlFile(file: string, dir: string): Promise<string[]> {
 /** Apply one dump file, re-splitting first when it is too large to read. */
 async function applyFile(file: string): Promise<void> {
   if (statSync(file).size <= MAX_FILE_BYTES) {
-    run(["d1", "execute", DB_NAME, "--file", file, TARGET]);
+    run(["d1", "execute", DB_NAME, "--file", file, TARGET, "--yes"]);
     return;
   }
   const mb = (statSync(file).size / 1e6).toFixed(0);
@@ -198,7 +198,7 @@ async function applyFile(file: string): Promise<void> {
     const parts = await splitSqlFile(file, dir);
     console.log(`    ${basename(file)} is ${mb} MB; split into ${parts.length} parts`);
     if (DRY) { console.log(`  [dry-run] would import ${parts.length} temporary parts from ${dir}`); return; }
-    for (const p of parts) run(["d1", "execute", DB_NAME, "--file", p, TARGET]);
+    for (const p of parts) run(["d1", "execute", DB_NAME, "--file", p, TARGET, "--yes"]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -281,7 +281,7 @@ if (!NO_SEED) {
     writeFileSync(seedFile, sql);
     try {
       console.log(`  seeding 'live_blocks'/'live_txs' cursor = ${cursor}`);
-      run(["d1", "execute", DB_NAME, "--file", seedFile, TARGET]);
+      run(["d1", "execute", DB_NAME, "--file", seedFile, TARGET, "--yes"]);
     } finally {
       unlinkSync(seedFile);
     }

@@ -159,7 +159,7 @@ function applyShardSchema(name: string): void {
   const file = join(tmpdir(), `shard-schema-${Date.now().toString(36)}.sql`);
   writeFileSync(file, SHARD_SCHEMA.join(";\n") + ";\n");
   try {
-    run(["d1", "execute", name, "--file", file, TARGET]);
+    run(["d1", "execute", name, "--file", file, TARGET, "--yes"]);
   } finally {
     try { unlinkSync(file); } catch { /* best-effort */ }
   }
@@ -171,7 +171,7 @@ function execSql(name: string, sql: string): void {
   const file = join(tmpdir(), `shard-exec-${Date.now().toString(36)}.sql`);
   writeFileSync(file, sql);
   try {
-    run(["d1", "execute", name, "--file", file, TARGET]);
+    run(["d1", "execute", name, "--file", file, TARGET, "--yes"]);
   } finally {
     try { unlinkSync(file); } catch { /* best-effort */ }
   }
