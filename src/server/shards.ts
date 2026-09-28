@@ -196,6 +196,15 @@ async function dbFileBytes(env: Env, dbId: string): Promise<number | null> {
 
 /** Hot DB file size; uses the binding pragma, falls back to REST metadata. */
 async function hotFileBytes(env: Env): Promise<number | null> {
+  // Prefer used pages: pruned rows go to the freelist and are reused, but the
+  // file never shrinks, so raw page_count would stay above SHARD_MAX_BYTES
+  // after a rotation and cut a new tiny shard every hourly run.
+  try {
+    const row = await env.DB.prepare(
+      "SELECT ((SELECT page_count FROM pragma_page_count) - (SELECT freelist_count FROM pragma_freelist_count)) * (SELECT page_size FROM pragma_page_size) AS bytes"
+    ).first<{ bytes: number }>();
+    if (row?.bytes) return Number(row.bytes);
+  } catch { /* freelist pragma unavailable: fall back to page_count */ }
   try {
     const row = await env.DB.prepare(
       "SELECT (SELECT page_count FROM pragma_page_count) * (SELECT page_size FROM pragma_page_size) AS bytes"
@@ -405,14 +414,15 @@ export async function pagedRaw(
   let cursor = opts.before > 0 ? opts.before : Number.MAX_SAFE_INTEGER;
   for (const seg of segments) {
     if (out.length >= opts.limit) break;
-    // `< cursor` semantics: a segment is skippable only if even its top row
-    // falls at or above the exclusive cursor boundary
-    if (seg.hi < cursor - 1) continue;
-    const upper = Math.min(cursor, seg.hi);
+    // `< cursor` semantics: skip a segment only when all of it sits at or above
+    // the exclusive cursor
+    if (seg.lo >= cursor) continue;
+    // exclusive upper bound; seg.hi + 1 keeps the segment's top row reachable
+    const upper = seg.hi >= Number.MAX_SAFE_INTEGER ? cursor : Math.min(cursor, seg.hi + 1);
     const conds: string[] = [];
     const binds: (string | number)[] = [];
     conds.push(`${opts.cursorCol} < ?`);
-    binds.push(upper === Number.MAX_SAFE_INTEGER ? Number.MAX_SAFE_INTEGER : upper);
+    binds.push(upper);
     // hot keeps rows below the floor only until migration deletes them;
     // bound hot reads to the window to avoid double-serving copied rows
     if (seg.t.kind === "hot" && floor >= 0) {
@@ -420,22 +430,17 @@ export async function pagedRaw(
       binds.push(seg.lo);
     }
     if (opts.extra) { conds.push(`(${opts.extra.sql})`); binds.push(...opts.extra.binds); }
+    const want = opts.limit - out.length;
     const rows = await runOn(
       env, seg.t,
       `SELECT ${opts.select} FROM ${opts.table} WHERE ${conds.join(" AND ")} ORDER BY ${opts.cursorCol} DESC LIMIT ?`,
-      [...binds, opts.limit - out.length],
+      [...binds, want],
     );
-    if (!rows.length) {
-      // An empty hot segment must not raise the cursor to its floor: a caller
-      // whose `before` already sits inside the shard range would then be
-      // served rows above it again by the next (lower) segment.
-      cursor = seg.t.kind === "hot" ? Math.min(cursor, seg.lo) : seg.lo;
-      continue;
-    }
     out.push(...rows);
-    const last = Number((rows[rows.length - 1] as Record<string, unknown>)[opts.cursorCol]);
-    if (!Number.isFinite(last) || last <= seg.lo) { cursor = seg.lo - 1; continue; }
-    cursor = last;
+    // A short read means this segment is exhausted below the cursor, so the
+    // walk continues strictly below it. Never raise the cursor: a `before`
+    // inside a lower segment must not re-serve rows above it.
+    if (rows.length < want) cursor = Math.min(cursor, seg.lo);
   }
   return out;
 }
@@ -1079,7 +1084,9 @@ export async function rotateShards(env: Env, budgetMs = 25_000): Promise<string>
     const minTopo = Math.max(Number(b?.mn ?? 0), hotFloor(shards) + 1);
     const cut = maxTopo - KEEP_HOT_BLOCKS;
     if (!maxTopo || cut <= minTopo) return joinStatus(pruned, "ok (nothing to cut yet)");
-    const name = `xelis-explorer-shard-${shards.length + 1}`;
+    // unique suffix: a crash between create and registry insert leaves an
+    // orphan DB, and a reused name would make every later create fail
+    const name = `xelis-explorer-shard-${shards.length + 1}-${Date.now().toString(36)}`;
     const dbId = await createShardDatabase(env, name);
     if (!dbId) throw new Error("shard create: no uuid returned");
     await initShardSchema(env, dbId);
