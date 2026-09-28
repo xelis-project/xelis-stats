@@ -32,7 +32,7 @@ export function layout(title: string, content: string, active: string, bodyClass
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>${escHtml(title)} · Xelis Stats</title>
+  <title>${escHtml(title)} · Xelis Explorer</title>
   <meta name="description" content="Xelis blockchain statistics, market data and explorer" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <script>try{var s=localStorage,d=document.documentElement;if(s.getItem("xelis:reveal-flags")==="1")d.classList.add("reveal-flags");if(s.getItem("xelis:density")==="compact")d.classList.add("density-compact");if(s.getItem("xelis:reduce-motion")==="1")d.classList.add("reduce-motion");if(location.pathname==="/dashboard"&&sessionStorage.getItem("xelis:dash-fullscreen")==="1")d.classList.add("dash-fullscreen");if(location.pathname==="/dag"&&sessionStorage.getItem("xelis:dag-fullscreen")==="1")d.classList.add("dag-fullscreen");}catch(e){}</script>
@@ -63,7 +63,7 @@ export function layout(title: string, content: string, active: string, bodyClass
         <a href="/status">Status</a>
         <a href="/settings">Settings</a>
       </nav>
-      <div class="footer-copy">© ${new Date().getFullYear()} Xelis Stats · v${escHtml(appVersion)} · Data from the Xelis network</div>
+      <div class="footer-copy">© ${new Date().getFullYear()} Xelis Explorer · v${escHtml(appVersion)} · Data from the Xelis network</div>
     </footer>
     <div class="search-overlay" id="search-overlay" hidden>
       <div class="search-pop" role="dialog" aria-modal="true">

@@ -1,4 +1,4 @@
--- Xelis Stats — D1 schema (Cloudflare live side)
+-- Xelis Explorer — D1 schema (Cloudflare live side)
 -- Consolidated init schema (merges former migrations: base schema, shards,
 -- chain size, exchanges, miner block types, asset details, side_count rename,
 -- accounts transfer_count, cron monitoring).
