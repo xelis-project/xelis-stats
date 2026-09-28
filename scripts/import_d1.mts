@@ -88,6 +88,9 @@ function filesFor(name: string): string[] {
 // in the same order export.mts prints it
 const FILES = [
   "exchanges", "market_snapshots", "chain_size_snapshots",
+  "mempool_snapshots", "peer_snapshots", "asset_supply_snapshots",
+  "node_versions", "daily_peer_tags", "daily_peer_prefixes",
+  "daily_peer_countries", "daily_peer_cities",
   "daily_stats", "daily_miners", "daily_block_types", "daily_address_stats",
   "daily_assets", "accounts", "assets", "contracts", "daily_contracts",
   "blocks", "tx", "tx_assets", "tx_contracts",

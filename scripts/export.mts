@@ -255,9 +255,11 @@ function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit
 
 /** Keyset-paginated dump by the implicit rowid. Used for tables whose primary
  *  key is composite (market_snapshots: ts+exchange+market) so there is no single
- *  integer key to paginate on. INSERT OR REPLACE is safe against the PK. */
+ *  integer key to paginate on. The conflict clause is selectable because the
+ *  live cron owns the same rows: REPLACE for append-only timestamped series,
+ *  IGNORE for per-day rollups the deployed cron may already have refreshed. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function dumpRowid(table: string, cols: string[], outFile: string): number {
+function dumpRowid(table: string, cols: string[], outFile: string, verb: "REPLACE" | "IGNORE" = "REPLACE"): number {
   const out = new SqlChunks(outFile);
   const buffer: string[] = [];
   let last = -1;
@@ -273,7 +275,7 @@ function dumpRowid(table: string, cols: string[], outFile: string): number {
       count++;
     }
     for (let i = 0; i < buffer.length; i += 100) {
-      out.write(`INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${buffer.slice(i, i + 100).join(",\n")};\n`);
+      out.write(`INSERT OR ${verb} INTO ${table} (${cols.join(",")}) VALUES\n${buffer.slice(i, i + 100).join(",\n")};\n`);
     }
     buffer.length = 0;
     last = Number(rows[rows.length - 1]._rowid);
@@ -487,24 +489,34 @@ for (const [file, table, cols, sql] of AGG_JOBS) {
 
 // ---------- market / chain-size history (D1) ----------
 
-// exchanges, market_snapshots and chain_size_snapshots are written both by the
-// live cron and by the legacy Postgres rebuild (scripts/legacy/import_history.mts).
-// Exporting them from the local D1 lets `import:d1 --remote` carry the full
-// history to the deployed database instead of leaving only post-deploy cron
+// exchanges, market_snapshots and the live telemetry series (peer/mempool/
+// chain-size/asset-supply snapshots, peer concentration rollups) are written by
+// the cron into the local D1. Exporting them lets `import:d1 --remote` carry the
+// full history to the deployed database instead of leaving only post-deploy
 // rows. Like the aggregates these belong only in the hot DB, so a shard export
 // (--no-aggregates) omits them.
 if (NO_AGG) {
   console.log("Market/chain-size history skipped (--no-aggregates): hot-DB-only tables.");
 } else {
-  const HISTORY_JOBS: Array<[string, string, string[]]> = [
+  // [file, table, columns, conflict verb]: per-day rollups use IGNORE so a stale
+  // local row never clobbers the deployed cron's newer same-day values.
+  const HISTORY_JOBS: Array<[string, string, string[], ("REPLACE" | "IGNORE")?]> = [
     ["exchanges", "exchanges", ["name", "status", "url", "added_ts", "retired_ts", "notes"]],
     ["market_snapshots", "market_snapshots", ["ts", "exchange", "market", "last", "bid", "ask", "high", "low", "change_pct", "base_volume", "quote_volume", "source_ts"]],
     ["chain_size_snapshots", "chain_size_snapshots", ["ts", "size_bytes"]],
+    ["mempool_snapshots", "mempool_snapshots", ["ts", "size"]],
+    ["peer_snapshots", "peer_snapshots", ["ts", "total", "hidden", "pruned", "lagging", "stale", "divergent", "avg_lag", "avg_peer_view", "avg_conn_age", "new_conns", "bytes_recv", "bytes_sent"]],
+    ["asset_supply_snapshots", "asset_supply_snapshots", ["ts", "asset_id", "supply"]],
+    ["node_versions", "node_versions", ["date", "version", "peer_count", "pruned_count"], "IGNORE"],
+    ["daily_peer_tags", "daily_peer_tags", ["date", "tag", "peers"], "IGNORE"],
+    ["daily_peer_prefixes", "daily_peer_prefixes", ["date", "prefix", "peers"], "IGNORE"],
+    ["daily_peer_countries", "daily_peer_countries", ["date", "country", "country_code", "peers"], "IGNORE"],
+    ["daily_peer_cities", "daily_peer_cities", ["date", "country", "country_code", "city", "latitude", "longitude", "peers"], "IGNORE"],
   ];
-  console.log("Exporting market/chain-size history (D1)…");
-  for (const [file, table, cols] of HISTORY_JOBS) {
+  console.log("Exporting market/chain-size/peer history (D1)…");
+  for (const [file, table, cols, verb] of HISTORY_JOBS) {
     if (!wanted(file)) { console.log(`  ${table}: skipped (--only)`); continue; }
-    const n = dumpRowid(table, cols, join(OUT_DIR, `${file}.sql`));
+    const n = dumpRowid(table, cols, join(OUT_DIR, `${file}.sql`), verb ?? "REPLACE");
     const parts = resolveOutFiles(file);
     console.log(`  ${table}: ${n.toLocaleString()} rows${parts.length ? ` (${totalMB(parts)} MB${parts.length > 1 ? `, ${parts.length} parts` : ""})` : " (empty — file not written)"}`);
   }
@@ -578,6 +590,9 @@ if (FULL) {
 
 const IMPORT_FILES = [
   "exchanges", "market_snapshots", "chain_size_snapshots",
+  "mempool_snapshots", "peer_snapshots", "asset_supply_snapshots",
+  "node_versions", "daily_peer_tags", "daily_peer_prefixes",
+  "daily_peer_countries", "daily_peer_cities",
   "daily_stats", "daily_miners", "daily_block_types", "daily_address_stats",
   "daily_assets", "accounts", "assets", "contracts", "daily_contracts",
   "blocks", "tx", "tx_assets", "tx_contracts",
