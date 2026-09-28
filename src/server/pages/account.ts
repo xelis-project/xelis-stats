@@ -197,7 +197,6 @@ account.get("/account/:address", async (c) => {
   const deployedPanel = contractTotal > 0 ? `<div class="panel">
     <div class="panel-head">
       <h2>Contracts Deployed <span style="color:var(--text-dim)">${fmtInt(contractTotal)}</span>${contractRows.length < contractTotal ? ` <span style="color:var(--text-dim)">· top ${fmtInt(contractRows.length)}</span>` : ""}</h2>
-      <a class="btn ghost" href="/contracts" title="All indexed contracts">Contracts ${icons.chevronRight}</a>
     </div>
     <div class="tablewrap"><table>
       <thead><tr><th>Contract</th><th class="num">Deployed (topo)</th><th>Age</th><th class="num">Invokes</th><th class="num">Gas (XEL)</th></tr></thead>
