@@ -181,6 +181,10 @@ network.get("/network", async (c) => {
   const statusPanel = `<div class="panel">
     <div class="panel-head"><h2>Chain status</h2></div>
     ${statusCards}
+  </div>`;
+
+  const forkPanel = `<div class="panel">
+    <div class="panel-head"><h2>Hard forks &amp; dev fees</h2></div>
     <div class="grid-2">
       <div>
         <h3 class="sub-h">Hard forks</h3>
@@ -309,6 +313,8 @@ network.get("/network", async (c) => {
         </table></div>
       </div>
     </div>
+
+    ${forkPanel}
 
     <script type="application/json" id="net-map-data">${mapJson}</script>`;
 
