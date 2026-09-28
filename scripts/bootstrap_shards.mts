@@ -251,9 +251,11 @@ for (let i = 0; i < ranges.length; i++) {
   console.log(`  exporting range → ${dir}`);
   runNode("export.mts", [`--lo=${range.lo}`, `--hi=${range.hi}`, `--no-aggregates`, `--out=${dir}`]);
   console.log(`  importing into ${name}`);
+  // No --only: a range can legitimately have no rows in one of the raw tables
+  // (e.g. tx_contracts), and export writes no file for an empty table. Without
+  // --only, import_d1 skips absent files instead of failing on them.
   runNode("import_d1.mts", [
     `--db=${name}`, `--out=${dir}`,
-    "--only=blocks,tx,tx_assets,tx_contracts",
     "--no-migrate", "--no-seed",
     REMOTE ? "--remote" : "--local",
   ]);
