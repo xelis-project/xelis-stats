@@ -98,8 +98,12 @@ function sleepSync(ms: number): void {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+// Invoke wrangler's bin through node rather than `npx` + shell, so file paths
+// with spaces are passed verbatim.
+const WRANGLER_BIN = join("node_modules", "wrangler", "bin", "wrangler.js");
+
 function run(args: string[]): void {
-  if (DRY) { console.log(`  [dry-run] npx wrangler ${args.join(" ")}`); return; }
+  if (DRY) { console.log(`  [dry-run] wrangler ${args.join(" ")}`); return; }
   // `d1 execute --file` uses D1's import path, which can return a transient
   // D1_RESET_DO while it resets the backing Durable Object (the CLI says the
   // operation is safe to retry). Imports are INSERT OR REPLACE / OR IGNORE, so
@@ -107,9 +111,8 @@ function run(args: string[]): void {
   const attempts = args[0] === "d1" && args[1] === "execute" ? 3 : 1;
   let last = "";
   for (let i = 0; i < attempts; i++) {
-    const res = spawnSync("npx", ["wrangler", ...args], {
+    const res = spawnSync(process.execPath, [WRANGLER_BIN, ...args], {
       stdio: ["ignore", "pipe", "pipe"],
-      shell: process.platform === "win32",
       encoding: "utf8",
     });
     if (res.error) throw res.error;
@@ -126,7 +129,7 @@ function run(args: string[]): void {
     }
     break;
   }
-  throw new Error(`npx wrangler ${args.join(" ")} failed\n${last.trim()}`);
+  throw new Error(`wrangler ${args.join(" ")} failed\n${last.trim()}`);
 }
 
 /** Split a large `.sql` dump into temp parts under MAX_FILE_BYTES so wrangler

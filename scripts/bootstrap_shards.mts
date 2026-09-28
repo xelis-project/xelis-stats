@@ -78,10 +78,14 @@ function sleepSync(ms: number): void {
 }
 
 const EXEC_RETRIES = 3;
+// Invoke wrangler's bin through node instead of `npx` + shell: SQL passed via
+// --command contains parentheses/commas that cmd.exe would mangle, and file
+// paths may contain spaces.
+const WRANGLER_BIN = join("node_modules", "wrangler", "bin", "wrangler.js");
 
 function run(args: string[], capture = false): string {
   if (DRY && args[0] === "d1" && (args[1] === "create" || args[1] === "execute")) {
-    console.log(`  [dry-run] npx wrangler ${args.join(" ")}`);
+    console.log(`  [dry-run] wrangler ${args.join(" ")}`);
     return "";
   }
   // `d1 execute --file` goes through D1's import path, which can return a
@@ -91,9 +95,8 @@ function run(args: string[], capture = false): string {
   const attempts = args[0] === "d1" && args[1] === "execute" ? EXEC_RETRIES : 1;
   let last = "";
   for (let i = 0; i < attempts; i++) {
-    const res = spawnSync("npx", ["wrangler", ...args], {
-      stdio: capture ? ["ignore", "pipe", "inherit"] : ["ignore", "pipe", "pipe"],
-      shell: process.platform === "win32",
+    const res = spawnSync(process.execPath, [WRANGLER_BIN, ...args], {
+      stdio: ["ignore", "pipe", "pipe"],
       encoding: "utf8",
     });
     if (res.error) throw res.error;
@@ -109,7 +112,7 @@ function run(args: string[], capture = false): string {
     }
     break;
   }
-  throw new Error(`npx wrangler ${args.join(" ")} failed\n${last.trim()}`);
+  throw new Error(`wrangler ${args.join(" ")} failed\n${last.trim()}`);
 }
 
 /** Run a child node script (export/import) in this repo, pinned to the hot DB. */
@@ -227,6 +230,25 @@ function localTopTimes(lo: number, hi: number): { first: number | null; last: nu
   } catch { return { first: null, last: null }; }
 }
 
+/** [min,max] topoheight already present in a shard DB, or nulls when the shard
+ *  has no blocks table yet / is unreachable. Index-backed, so it is cheap even
+ *  on a multi-GB shard. */
+function remoteBlockBounds(name: string): { mn: number | null; mx: number | null } {
+  try {
+    const out = run(["d1", "execute", name, "--command",
+      "SELECT MIN(topoheight) AS mn, MAX(topoheight) AS mx FROM blocks",
+      TARGET, "--yes", "--json"], true);
+    const start = out.indexOf("[");
+    const end = out.lastIndexOf("]");
+    if (start < 0 || end < start) return { mn: null, mx: null };
+    const arr = JSON.parse(out.slice(start, end + 1)) as Array<{ results?: Array<{ mn: number | null; mx: number | null }> }>;
+    const row = arr[0]?.results?.[0];
+    return { mn: row?.mn ?? null, mx: row?.mx ?? null };
+  } catch {
+    return { mn: null, mx: null };
+  }
+}
+
 // ---------- plan ----------
 
 const rangesArg = arg("ranges") ?? "";
@@ -273,17 +295,25 @@ for (let i = 0; i < ranges.length; i++) {
   applyShardSchema(name);
 
   const dir = join(OUT_BASE, `shard-${id}`);
-  console.log(`  exporting range → ${dir}`);
-  runNode("export.mts", [`--lo=${range.lo}`, `--hi=${range.hi}`, `--no-aggregates`, `--out=${dir}`]);
-  console.log(`  importing into ${name}`);
-  // No --only: a range can legitimately have no rows in one of the raw tables
-  // (e.g. tx_contracts), and export writes no file for an empty table. Without
-  // --only, import_d1 skips absent files instead of failing on them.
-  runNode("import_d1.mts", [
-    `--db=${name}`, `--out=${dir}`,
-    "--no-migrate", "--no-seed",
-    REMOTE ? "--remote" : "--local",
-  ]);
+  // resumable: if this shard already holds its whole range, don't export/import
+  // it again (re-processing multi-GB dumps is slow and idempotent-but-costly)
+  const bounds = DRY ? { mn: null, mx: null } : remoteBlockBounds(name);
+  const loaded = bounds.mn != null && bounds.mx != null && bounds.mn <= range.lo && bounds.mx >= range.hi;
+  if (loaded) {
+    console.log(`  already loaded (blocks ${bounds.mn}..${bounds.mx}), skipping export/import`);
+  } else {
+    console.log(`  exporting range → ${dir}`);
+    runNode("export.mts", [`--lo=${range.lo}`, `--hi=${range.hi}`, `--no-aggregates`, `--out=${dir}`]);
+    console.log(`  importing into ${name}`);
+    // No --only: a range can legitimately have no rows in one of the raw tables
+    // (e.g. tx_contracts), and export writes no file for an empty table. Without
+    // --only, import_d1 skips absent files instead of failing on them.
+    runNode("import_d1.mts", [
+      `--db=${name}`, `--out=${dir}`,
+      "--no-migrate", "--no-seed",
+      REMOTE ? "--remote" : "--local",
+    ]);
+  }
 
   const times = DRY ? { first: null, last: null } : localTopTimes(range.lo, range.hi);
   shardRows.push({ ...range, id, name, uuid: db.uuid, first_ts: times.first, last_ts: times.last });
