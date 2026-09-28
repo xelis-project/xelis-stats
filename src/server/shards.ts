@@ -681,10 +681,45 @@ function hotFloorBound(floorCol: string, floor: number): string {
 // still duplicated between seal and prune; shard targets read unmodified.
 function boundHotTarget(sql: string, floorCol: string, floor: number): string {
   const cond = hotFloorBound(floorCol, floor);
-  const m = /\s+(GROUP\s+BY|ORDER\s+BY|LIMIT|HAVING)\s/i.exec(sql);
-  const head = m ? sql.slice(0, m.index) : sql;
-  const tail = m ? sql.slice(m.index) : "";
-  return /\bWHERE\b/i.test(head) ? `${head} AND ${cond}${tail}` : `${head} WHERE ${cond}${tail}`;
+  // only a top-level clause keyword splits the statement; keywords inside a
+  // parenthesised subquery (e.g. `(SELECT ... ORDER BY ...)`) are skipped
+  const re = /\s(GROUP\s+BY|ORDER\s+BY|LIMIT|HAVING)\s/gi;
+  let cut = -1;
+  for (let m = re.exec(sql); m; m = re.exec(sql)) {
+    let depth = 0;
+    for (let i = 0; i < m.index; i++) {
+      if (sql[i] === "(") depth++;
+      else if (sql[i] === ")") depth--;
+    }
+    if (depth === 0) { cut = m.index; break; }
+  }
+  const head = cut >= 0 ? sql.slice(0, cut) : sql;
+  const tail = cut >= 0 ? sql.slice(cut) : "";
+  // same depth rule for WHERE: a subquery's WHERE is not the outer one
+  let topWhere = false;
+  let depth = 0;
+  const wre = /\bWHERE\b|\(|\)/gi;
+  for (let m = wre.exec(head); m; m = wre.exec(head)) {
+    if (m[0] === "(") depth++;
+    else if (m[0] === ")") depth--;
+    else if (depth === 0) { topWhere = true; break; }
+  }
+  return topWhere ? `${head} AND ${cond}${tail}` : `${head} WHERE ${cond}${tail}`;
+}
+
+/**
+ * Run one query on each sealed shard, tolerating unreachable shards: a failed
+ * shard contributes nothing and `ok` is false so the partial result is served
+ * but never cached as the immutable sealed contribution.
+ */
+async function runSealed(env: Env, targets: RawTarget[], sql: string, binds: unknown[]): Promise<{ rows: Row[][]; ok: boolean }> {
+  let ok = true;
+  const rows = await Promise.all(targets.map((t) => runOn(env, t, sql, binds).catch((err) => {
+    ok = false;
+    console.error("shard read failed:", t.dbId, err instanceof Error ? err.message : err);
+    return [] as Row[];
+  })));
+  return { rows, ok };
 }
 
 const countCache = new Map<string, { at: number; n: number }>();
@@ -714,9 +749,9 @@ export async function countRaw(
     if (cached != null) {
       sealedN = cached;
     } else {
-      const parts = await Promise.all(sealed.map((t) => runOn(env, t, sql, binds)));
+      const { rows: parts, ok } = await runSealed(env, sealed, sql, binds);
       sealedN = parts.reduce((a, rows) => a + Number(rows[0]?.n ?? 0), 0);
-      await writeAggCache(env, ck, sealedN);
+      if (ok) await writeAggCache(env, ck, sealedN);
     }
   }
 
@@ -784,7 +819,9 @@ export async function topNRaw(
     // beyond the addressable window the global offset cannot be resolved
     if (skip >= MAX_MERGE_FETCH) return [] as Row[];
     const w = t.kind === "hot" ? hotWhere : where;
-    return runOn(env, t, `SELECT ${opts.select} FROM ${opts.table} ${w} ORDER BY ${opts.order} LIMIT ${fetch}`, binds);
+    const q = `SELECT ${opts.select} FROM ${opts.table} ${w} ORDER BY ${opts.order} LIMIT ${fetch}`;
+    if (t.kind === "hot") return runOn(env, t, q, binds);
+    return (await runSealed(env, [t], q, binds)).rows[0];
   }));
   const merged = per.flat();
   merged.sort(cmpBy(opts.order));
@@ -841,11 +878,17 @@ export async function mergeAgg(
   env: Env,
   sql: string,
   binds: unknown[],
-  opts: { sum: string[]; min?: string | string[]; max?: string | string[]; floorCol?: string },
+  opts: { sum: string[]; min?: string | string[]; max?: string | string[]; floorCol?: string; minTs?: number },
 ): Promise<Record<string, number>> {
   const shards = await getShards(env);
   const floor = hotFloor(shards);
-  const sealed = sealedTargets(shards);
+  // `minTs`: the query only matches rows with ts > minTs, so shards that end
+  // at or before it cannot contribute. Skipping them keeps rolling windows
+  // (e.g. "last 24h", whose binds change every request) off the shards and
+  // out of the KV cache, which such keys could never hit anyway.
+  const sealed = opts.minTs == null
+    ? sealedTargets(shards)
+    : sealedTargets(shards.filter((s) => s.last_ts == null || s.last_ts > opts.minTs!));
   const mins = normalizeCols(opts.min);
   const maxs = normalizeCols(opts.max);
 
@@ -855,9 +898,9 @@ export async function mergeAgg(
     const ck = await aggCacheKey(scope, floor, sql, binds);
     sealedAgg = await readAggCache<Record<string, number>>(env, ck);
     if (!sealedAgg) {
-      const rows = await Promise.all(sealed.map((t) => runOn(env, t, sql, binds)));
+      const { rows, ok } = await runSealed(env, sealed, sql, binds);
       sealedAgg = foldAgg(rows, opts.sum, mins, maxs, null);
-      await writeAggCache(env, ck, sealedAgg);
+      if (ok) await writeAggCache(env, ck, sealedAgg);
     }
   }
 
@@ -949,9 +992,9 @@ export async function mergeGroups(
       byKey = new Map();
       for (const r of cached) byKey.set(String(r[keyCol] ?? ""), r);
     } else {
-      const rowsets = await Promise.all(sealed.map((t) => runOn(env, t, sql, binds)));
+      const { rows: rowsets, ok } = await runSealed(env, sealed, sql, binds);
       byKey = foldGroups(rowsets, keyCol, sumCols, maxs, mins);
-      await writeAggCache(env, ck, [...byKey.values()]);
+      if (ok) await writeAggCache(env, ck, [...byKey.values()]);
     }
   } else {
     byKey = new Map();

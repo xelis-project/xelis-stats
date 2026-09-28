@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "./app";
 import { parseSort, BLOCK_COLS, TX_COLS, ACCT_COLS } from "./sort";
 import { knownEntity } from "./entities";
-import { fetchBlock, fetchTx, pagedRaw, rangeRaw, topNRaw } from "./shards";
+import { fetchBlock, fetchTx, pagedCompositeRaw, pagedRaw, rangeRaw, topNRaw } from "./shards";
 import { clampInt } from "./pages/shared";
 import { getLive } from "./live";
 import { getStatsCached, getFeeRatesCached } from "./cache";
@@ -188,15 +188,26 @@ api.get("/api/transactions", async (c) => {
       });
       return c.json({ transactions: rows.map((r) => tagAddress(r, "sender")) });
     }
-    const rows = await pagedRaw(c.env, {
+    // (block_topo, hash) keyset: block_topo alone is not unique, so a page that
+    // ended mid-block used to skip that block's remaining txs. `cursor` is
+    // "<topo>:<hash>"; legacy `before=<topo>` maps to [before, ""], which
+    // keeps its old "strictly below this block" meaning.
+    const cur = /^(\d+):([0-9a-fA-F]*)$/.exec(c.req.query("cursor") ?? "");
+    const cursor: [number, string] | null = cur
+      ? [Number(cur[1]), cur[2]]
+      : before > 0 ? [before, ""] : null;
+    const rows = await pagedCompositeRaw(c.env, {
       table: "tx_index",
-      cursorCol: "block_topo",
       select: "hash, block_topo, ts, fee, size, tx_type, sender, transfer_count, executed",
-      before,
+      cols: [{ col: "block_topo", dir: "DESC" }, { col: "hash", dir: "DESC" }],
+      cursor,
       limit,
+      direction: "older",
       extra: type ? { sql: "tx_type = ?", binds: [type] } : undefined,
     });
-    return c.json({ transactions: rows.map((r) => tagAddress(r, "sender")) });
+    const last = rows[rows.length - 1];
+    const next_cursor = rows.length >= limit && last ? `${last.block_topo}:${last.hash}` : null;
+    return c.json({ transactions: rows.map((r) => tagAddress(r, "sender")), next_cursor });
   } catch (err) {
     logErr("api/transactions", err);
     return c.json({ transactions: [] }, 503);

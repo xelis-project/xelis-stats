@@ -83,7 +83,7 @@ minerDetail.get("/miner/:address", async (c) => {
     // SUM(difficulty) instead of AVG: merged in JS as sd/c
     hash24 = await mergeAgg(c.env,
       "SELECT SUM(difficulty) sd, COUNT(*) c FROM blocks WHERE miner_address = ? AND ts > ?",
-      [address, now - DAY], { sum: ["sd", "c"], floorCol: "topoheight" });
+      [address, now - DAY], { sum: ["sd", "c"], floorCol: "topoheight", minTs: now - DAY });
     lastBlock = (await topNRaw(c.env, {
       table: "blocks",
       select: "topoheight, ts",
