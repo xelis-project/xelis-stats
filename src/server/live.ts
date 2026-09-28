@@ -35,20 +35,71 @@ const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-// get_blocks_range_by_topoheight caps a single call at RPC_SPAN topoheights, so
-// fetch wider windows in chunks and concatenate them in ascending order.
+// get_blocks_range_by_topoheight caps a single call at RPC_SPAN topoheights and
+// rejects any range that reaches past the node's live tip. Fetch the window in
+// chunks keyed by topoheight and, for any topoheight a chunk leaves out, fall
+// back to a direct get_block_at_topoheight lookup. A single dropped chunk used
+// to silently punch a hole in the window (missing unstable and even stable
+// blocks), so a failed chunk is clamped/retried and every gap is repaired
+// before the result is returned.
+const REPAIR_BUDGET = 200; // direct lookups allowed for one window build
+
 async function rangeBlocks(env: Env, start: number, end: number): Promise<Array<Record<string, unknown>>> {
-  const out: Array<Record<string, unknown>> = [];
-  for (let s = start; s <= end; s += RPC_SPAN) {
-    const e = Math.min(end, s + RPC_SPAN - 1);
-    const chunk = await rpc<Array<Record<string, unknown>>>(
-      "get_blocks_range_by_topoheight",
-      { start_topoheight: s, end_topoheight: e },
-      env.XELIS_NODE,
-    ).catch(() => [] as Array<Record<string, unknown>>);
-    if (Array.isArray(chunk)) out.push(...chunk);
+  const out = new Map<number, Record<string, unknown>>();
+  // The tip can roll back on a reorg after get_info() captured it, which makes
+  // the node reject the tail of the range; clamp to the fresh tip and retry.
+  let limit = end;
+  let s = start;
+  let guard = 0;
+  let repairs = 0;
+
+  const fill = async (from: number, to: number): Promise<void> => {
+    for (let t = from; t <= to; t++) {
+      if (out.has(t) || repairs >= REPAIR_BUDGET) continue;
+      repairs++;
+      const b = await rpc<Record<string, unknown>>(
+        "get_block_at_topoheight",
+        { topoheight: t },
+        env.XELIS_NODE,
+      ).catch(() => null);
+      if (b && typeof b === "object") out.set(t, b);
+    }
+  };
+
+  while (s <= limit && guard++ < 10_000) {
+    const e = Math.min(limit, s + RPC_SPAN - 1);
+    let chunk: Array<Record<string, unknown>> | null = null;
+    try {
+      const res = await rpc<Array<Record<string, unknown>>>(
+        "get_blocks_range_by_topoheight",
+        { start_topoheight: s, end_topoheight: e },
+        env.XELIS_NODE,
+      );
+      if (Array.isArray(res)) chunk = res;
+    } catch {
+      const fresh = await getInfo(env.XELIS_NODE).catch(() => null);
+      // If the tip rolled back below this chunk's end, shrink the window and
+      // retry the same start. If the node is reachable but only the range call
+      // failed, repair the span one block at a time. If the node is fully down,
+      // skip repairs so one outage cannot trigger a storm of lookups.
+      if (fresh && fresh.topoheight < e) {
+        limit = fresh.topoheight;
+        continue;
+      }
+      if (fresh) await fill(s, e);
+      s = e + 1;
+      continue;
+    }
+    for (const b of chunk ?? []) {
+      const t = num(b.topoheight);
+      if (t >= s && t <= e) out.set(t, b);
+    }
+    // Repair any topoheight the range call left out (the node can return a
+    // short slice under load) with a direct lookup so the window stays whole.
+    await fill(s, e);
+    s = e + 1;
   }
-  return out;
+  return [...out.entries()].sort((a, b) => a[0] - b[0]).map(([, b]) => b);
 }
 
 function toBlock(b: Record<string, unknown>, stable: number): LiveBlock {
