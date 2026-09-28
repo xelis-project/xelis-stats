@@ -72,19 +72,44 @@ function parseRanges(raw: string): Range[] {
   return out;
 }
 
+/** Synchronous sleep (Node has no blocking sleep). */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+const EXEC_RETRIES = 3;
+
 function run(args: string[], capture = false): string {
   if (DRY && args[0] === "d1" && (args[1] === "create" || args[1] === "execute")) {
     console.log(`  [dry-run] npx wrangler ${args.join(" ")}`);
     return "";
   }
-  const res = spawnSync("npx", ["wrangler", ...args], {
-    stdio: capture ? ["ignore", "pipe", "inherit"] : "inherit",
-    shell: process.platform === "win32",
-    encoding: "utf8",
-  });
-  if (res.error) throw res.error;
-  if (res.status !== 0) throw new Error(`npx wrangler ${args.join(" ")} failed (exit ${res.status})`);
-  return typeof res.stdout === "string" ? res.stdout : "";
+  // `d1 execute --file` goes through D1's import path, which can return a
+  // transient D1_RESET_DO while it resets the backing Durable Object (the CLI
+  // itself says the operation is safe to retry). The statements here are
+  // idempotent (IF NOT EXISTS / INSERT OR REPLACE), so retry with backoff.
+  const attempts = args[0] === "d1" && args[1] === "execute" ? EXEC_RETRIES : 1;
+  let last = "";
+  for (let i = 0; i < attempts; i++) {
+    const res = spawnSync("npx", ["wrangler", ...args], {
+      stdio: capture ? ["ignore", "pipe", "inherit"] : ["ignore", "pipe", "pipe"],
+      shell: process.platform === "win32",
+      encoding: "utf8",
+    });
+    if (res.error) throw res.error;
+    const out = typeof res.stdout === "string" ? res.stdout : "";
+    const err = typeof res.stderr === "string" ? res.stderr : "";
+    if (!capture) { if (out) process.stdout.write(out); if (err) process.stderr.write(err); }
+    if (res.status === 0) return out;
+    last = `${out}\n${err}`;
+    if (i < attempts - 1 && /D1_RESET_DO|D1 reset before execute/.test(last)) {
+      console.log(`  transient D1 error; retrying (${i + 2}/${attempts})…`);
+      sleepSync(5_000 * (i + 1));
+      continue;
+    }
+    break;
+  }
+  throw new Error(`npx wrangler ${args.join(" ")} failed\n${last.trim()}`);
 }
 
 /** Run a child node script (export/import) in this repo, pinned to the hot DB. */

@@ -93,14 +93,40 @@ const FILES = [
   "blocks", "tx", "tx_assets", "tx_contracts",
 ];
 
+/** Synchronous sleep (Node has no blocking sleep). */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 function run(args: string[]): void {
   if (DRY) { console.log(`  [dry-run] npx wrangler ${args.join(" ")}`); return; }
-  const res = spawnSync("npx", ["wrangler", ...args], {
-    stdio: "inherit",
-    shell: process.platform === "win32",
-  });
-  if (res.error) throw res.error;
-  if (res.status !== 0) throw new Error(`npx wrangler ${args.join(" ")} failed (exit ${res.status})`);
+  // `d1 execute --file` uses D1's import path, which can return a transient
+  // D1_RESET_DO while it resets the backing Durable Object (the CLI says the
+  // operation is safe to retry). Imports are INSERT OR REPLACE / OR IGNORE, so
+  // retry with backoff.
+  const attempts = args[0] === "d1" && args[1] === "execute" ? 3 : 1;
+  let last = "";
+  for (let i = 0; i < attempts; i++) {
+    const res = spawnSync("npx", ["wrangler", ...args], {
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: process.platform === "win32",
+      encoding: "utf8",
+    });
+    if (res.error) throw res.error;
+    const out = typeof res.stdout === "string" ? res.stdout : "";
+    const err = typeof res.stderr === "string" ? res.stderr : "";
+    if (out) process.stdout.write(out);
+    if (err) process.stderr.write(err);
+    if (res.status === 0) return;
+    last = `${out}\n${err}`;
+    if (i < attempts - 1 && /D1_RESET_DO|D1 reset before execute/.test(last)) {
+      console.log(`    transient D1 error; retrying (${i + 2}/${attempts})…`);
+      sleepSync(5_000 * (i + 1));
+      continue;
+    }
+    break;
+  }
+  throw new Error(`npx wrangler ${args.join(" ")} failed\n${last.trim()}`);
 }
 
 /** Split a large `.sql` dump into temp parts under MAX_FILE_BYTES so wrangler
