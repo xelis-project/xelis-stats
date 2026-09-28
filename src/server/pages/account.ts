@@ -16,6 +16,74 @@ const XEL_ASSET_ID = "0".repeat(64);
 // The daemon caps `get_account_assets` at 64 assets per call.
 const ACCOUNT_ASSETS_MAX = 64;
 
+interface MempoolCache {
+  min?: number;
+  max?: number;
+  txs?: string[];
+  balances?: Record<string, unknown>;
+}
+
+interface AccountNodeInfo {
+  registered: boolean;
+  registrationTopo: number | null;
+  nonce: number | null;
+  nonceTopo: number | null;
+  multisig: { participants: string[]; threshold: number; topoheight: number | null } | null;
+  mempool: { pending: number; minNonce: number | null; maxNonce: number | null; txs: string[]; assets: string[] } | null;
+}
+
+// Live on-chain account facts straight from the node. Every call is
+// best-effort: an unregistered account (or an unreachable node) yields an
+// empty/zeroed result instead of failing the indexed page.
+async function fetchAccountNodeInfo(address: string, node: string): Promise<AccountNodeInfo> {
+  const [registered, registrationTopo, nonceRes, hasMs, mempoolRes] = await Promise.all([
+    rpc<boolean>("is_account_registered", { address, in_stable_height: true }, node).catch(() => false),
+    rpc<number>("get_account_registration_topoheight", { address }, node).catch(() => null),
+    rpc<{ nonce?: number; topoheight?: number }>("get_nonce", { address }, node).catch(() => null),
+    rpc<boolean>("has_multisig", { address }, node).catch(() => false),
+    rpc<MempoolCache>("get_mempool_cache", { address }, node).catch(() => null),
+  ]);
+
+  let multisig: AccountNodeInfo["multisig"] = null;
+  if (hasMs) {
+    try {
+      const ms = await rpc<{ state?: unknown; topoheight?: number }>("get_multisig", { address }, node);
+      // MultisigState is externally tagged: "deleted" or { active: { participants, threshold } }.
+      const state = ms.state && typeof ms.state === "object" ? (ms.state as Record<string, unknown>) : null;
+      const active = state?.active && typeof state.active === "object" ? (state.active as Record<string, unknown>) : null;
+      if (active) {
+        multisig = {
+          participants: Array.isArray(active.participants) ? active.participants.map(String) : [],
+          threshold: num(active.threshold),
+          topoheight: num(ms.topoheight) || null,
+        };
+      }
+    } catch { /* multisig vanished between calls */ }
+  }
+
+  let mempool: AccountNodeInfo["mempool"] = null;
+  if (mempoolRes) {
+    const txs = Array.isArray(mempoolRes.txs) ? mempoolRes.txs.map(String) : [];
+    const assets = mempoolRes.balances && typeof mempoolRes.balances === "object" ? Object.keys(mempoolRes.balances) : [];
+    mempool = {
+      pending: txs.length,
+      minNonce: mempoolRes.min != null ? num(mempoolRes.min) : null,
+      maxNonce: mempoolRes.max != null ? num(mempoolRes.max) : null,
+      txs,
+      assets,
+    };
+  }
+
+  return {
+    registered,
+    registrationTopo: registrationTopo != null ? num(registrationTopo) : null,
+    nonce: nonceRes && nonceRes.nonce != null ? num(nonceRes.nonce) : null,
+    nonceTopo: nonceRes && nonceRes.topoheight != null ? num(nonceRes.topoheight) : null,
+    multisig,
+    mempool,
+  };
+}
+
 account.get("/account/:address", async (c) => {
   const address = c.req.param("address");
   const db = c.env.DB;
@@ -45,6 +113,7 @@ account.get("/account/:address", async (c) => {
   let maxTopo: number | null = null;
   let contractRows: Record<string, unknown>[] = [];
   let accountAssets: string[] = [];
+  let acctInfo: AccountNodeInfo | null = null;
   try {
     const conds: string[] = ["sender = ?"];
     const binds: unknown[] = [address];
@@ -53,7 +122,7 @@ account.get("/account/:address", async (c) => {
     if (executed === "0") { conds.push("executed = 0"); }
     const histExtra = { sql: conds.join(" AND "), binds };
     // The per-address fact queries are independent, so run them concurrently.
-    const [acctRow, histTotalN, txRows, aggRow, typeRows, minedAllRow, maxTopoRow, contractResult, assetResult] = await Promise.all([
+    const [acctRow, histTotalN, txRows, aggRow, typeRows, minedAllRow, maxTopoRow, contractResult, assetResult, nodeInfo] = await Promise.all([
       db.prepare("SELECT * FROM accounts WHERE address = ?").bind(address).first<Record<string, unknown>>(),
       // SUM(fee) instead of AVG(fee): averages are merged across shards in JS
       countRaw(c.env, { table: "tx_index", extra: histExtra, floorCol: "block_topo" }),
@@ -88,6 +157,7 @@ account.get("/account/:address", async (c) => {
       // RPC is best-effort, so a failure must not drop the indexed results
       rpc<string[]>("get_account_assets", { address, skip: 0, maximum: ACCOUNT_ASSETS_MAX }, c.env.XELIS_NODE)
         .catch(() => [] as string[]),
+      fetchAccountNodeInfo(address, c.env.XELIS_NODE),
     ]);
     acct = acctRow ?? undefined;
     histTotal = histTotalN;
@@ -100,6 +170,7 @@ account.get("/account/:address", async (c) => {
     maxTopo = maxTopoRow?.m ?? null;
     contractRows = contractResult;
     accountAssets = Array.isArray(assetResult) ? assetResult : [];
+    acctInfo = nodeInfo;
   } catch (err) { logErr("page/account", err); }
   const histPages = Math.max(1, Math.ceil(histTotal / PAGE_SIZE));
 
@@ -124,12 +195,22 @@ account.get("/account/:address", async (c) => {
     ? `${esc(ent.label)} <span class="badge entity ${esc(ent.kind)}">${esc(ent.kind)}</span>${ent.link ? ` · <a href="${esc(ent.link)}" target="_blank" rel="noopener noreferrer">website</a>` : ""}`
     : dbLabel || '<span style="color:var(--text-dim)">—</span>';
 
+  const ms = acctInfo?.multisig ?? null;
+  const mempool = acctInfo?.mempool ?? null;
+  const registered = !!acctInfo?.registered;
+  const registrationTopo = acctInfo?.registrationTopo ?? null;
+  const nonce = acctInfo?.nonce ?? null;
+  const nonceTopo = acctInfo?.nonceTopo ?? null;
+
   const hero = `<div class="panel blk-hero">
     <div class="blk-head">
       <div class="blk-id">
         <h2 class="blk-title">Account <span class="mint mono" style="font-size:0.72em">${esc(shortHash(address, 10))}</span></h2>
         <div class="blk-meta">
           ${entityBadge}
+          ${registered ? '<span class="badge ok">registered</span>' : '<span class="badge">unregistered</span>'}
+          ${ms ? `<span class="badge">multisig ${fmtInt(ms.threshold)}/${fmtInt(ms.participants.length)}</span>` : ""}
+          ${mempool && mempool.pending > 0 ? `<span class="badge">${fmtInt(mempool.pending)} pending</span>` : ""}
           ${txCount > 0 ? `<span class="badge">${fmtInt(txCount)} sent tx${txCount === 1 ? "" : "s"}</span>` : '<span class="badge">no observed activity</span>'}
           ${minedTotal > 0 ? `<span class="badge ok">miner</span>` : ""}
           <span class="blk-when">${lastActive ? `last active ${ago(lastActive)}` : "never observed"}</span>
@@ -159,6 +240,15 @@ account.get("/account/:address", async (c) => {
     <tr><td>First seen</td><td>${firstSeen ? fmtTime(firstSeen) : "—"}</td></tr>
     <tr><td>Last active</td><td>${lastActive ? `${fmtTime(lastActive)} (${ago(lastActive)})` : "—"}</td></tr>
     <tr><td>Observed sent txs</td><td>${txCount > 0 ? fmtInt(txCount) : "—"}</td></tr>
+    <tr><td>On-chain registration</td><td>${registered
+      ? `registered${registrationTopo ? ` at <a href="/block/${registrationTopo}"><span class="mint">#${fmtInt(registrationTopo)}</span></a>` : ""}`
+      : '<span style="color:var(--text-dim)">not registered on-chain</span>'}</td></tr>
+    <tr><td>Nonce</td><td>${nonce != null
+      ? `${fmtInt(nonce)}${nonceTopo ? ` <span style="color:var(--text-dim)">at <a href="/block/${nonceTopo}">#${fmtInt(nonceTopo)}</a></span>` : ""}`
+      : "—"}</td></tr>
+    <tr><td>Multisig</td><td>${ms
+      ? `${fmtInt(ms.threshold)}-of-${fmtInt(ms.participants.length)}${ms.topoheight ? ` <span style="color:var(--text-dim)">set at <a href="/block/${ms.topoheight}">#${fmtInt(ms.topoheight)}</a></span>` : ""}`
+      : '<span style="color:var(--text-dim)">none</span>'}</td></tr>
   </table></div>`;
 
   const typeRows = types.length
@@ -258,6 +348,39 @@ account.get("/account/:address", async (c) => {
     <p style="color:var(--text-dim);font-size:1.1rem;margin-top:0.8rem">Assets the account has a registered balance for. Balances are encrypted, so amounts are not shown.</p>
   </div>`;
 
+  const multisigPanel = ms ? `<div class="panel">
+    <div class="panel-head">
+      <h2>Multisig <span style="color:var(--text-dim)">${fmtInt(ms.threshold)}-of-${fmtInt(ms.participants.length)}</span></h2>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr><th class="num">#</th><th>Participant</th></tr></thead>
+      <tbody>${ms.participants.map((p, i) => `<tr>
+        <td class="num">${i + 1}</td>
+        <td><a class="mono" href="/account/${esc(p)}">${esc(shortHash(p, 12))}</a> <button class="copybtn" type="button" onclick="blkCopy('${jsq(p)}', this)">copy</button></td>
+      </tr>`).join("")}</tbody>
+    </table></div>
+    <p style="color:var(--text-dim);font-size:1.1rem;margin-top:0.8rem">A transaction from this account needs ${fmtInt(ms.threshold)} of ${fmtInt(ms.participants.length)} participant signatures.</p>
+  </div>` : "";
+
+  const mempoolPanel = mempool && mempool.pending > 0 ? `<div class="panel">
+    <div class="panel-head">
+      <h2>Pending <span style="color:var(--text-dim)">${fmtInt(mempool.pending)} in mempool</span></h2>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Hash</th><th class="num">Nonce</th></tr></thead>
+      <tbody>${mempool.txs.map((h, i) => `<tr>
+        <td><a class="mono" href="/tx/${esc(h)}">${esc(shortHash(h, 12))}</a></td>
+        <td class="num">${mempool.minNonce != null ? fmtInt(mempool.minNonce + i) : "—"}</td>
+      </tr>`).join("")}</tbody>
+    </table></div>
+    ${mempool.assets.length ? `<p style="color:var(--text-dim);font-size:1.1rem;margin-top:0.8rem">Assets touched: ${mempool.assets.map((a) => {
+      const meta = a === XEL_ASSET_ID ? { symbol: "XEL" } : assetMeta.get(a);
+      const label = meta?.symbol ? flaggedText(meta.symbol) : esc(shortHash(a, 6));
+      return `<a class="mono" href="/asset/${esc(a)}">${label}</a>`;
+    }).join(", ")}</p>` : ""}
+    <p style="color:var(--text-dim);font-size:1.1rem;margin-top:0.4rem">Unconfirmed transactions currently in the node's mempool for this account.</p>
+  </div>` : "";
+
   const txRows = txs.length
     ? txs.map((t) => {
         const hash = String(t.hash ?? "");
@@ -297,7 +420,9 @@ account.get("/account/:address", async (c) => {
 
   const content = `${hero}
     <div class="grid-2">${overview}${activity}</div>
+    ${mempoolPanel}
     ${assetsPanel}
+    ${multisigPanel}
     ${history}
     ${deployedPanel}
     <div class="tx-note">

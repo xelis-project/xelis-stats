@@ -96,6 +96,7 @@ interface Summary {
   height?: number;
   topoheight?: number;
   stable_topoheight?: number;
+  pruned_topoheight?: number | null;
   difficulty?: number;
   block_time_s?: number;
   block_time_target_s?: number;
@@ -105,7 +106,7 @@ interface Summary {
   chain_size_formatted?: string | null;
   peers?: number;
   hashprice?: number | null;
-  counts?: { transactions?: number; accounts?: number; assets?: number };
+  counts?: { transactions?: number; accounts?: number; assets?: number; contracts?: number };
   supply?: { circulating?: number; emitted?: number; burned?: number; max?: number };
   market?: { price?: number; change_pct_24h?: number | null; quote_volume_24h?: number; exchanges?: number } | null;
 }
@@ -129,6 +130,8 @@ const CATALOG: CatalogItem[] = [
   { key: "stat-transactions", kind: "stat", field: "transactions", label: "Transactions", desc: "Total chain transaction count", w: 3, h: 2 },
   { key: "stat-accounts", kind: "stat", field: "accounts", label: "Accounts", desc: "Total registered accounts", w: 3, h: 2 },
   { key: "stat-assets", kind: "stat", field: "assets", label: "Assets", desc: "Registered assets", w: 3, h: 2 },
+  { key: "stat-contracts", kind: "stat", field: "contracts", label: "Contracts", desc: "Deployed smart contracts", w: 3, h: 2 },
+  { key: "stat-pruned", kind: "stat", field: "pruned", label: "Pruned to", desc: "Node pruning boundary", w: 3, h: 2 },
   { key: "stat-node", kind: "stat", field: "node", label: "Node", desc: "Node version and network", w: 3, h: 2 },
   { key: "stat-height", kind: "stat", field: "height", label: "Block height", desc: "Linear chain height", w: 3, h: 2 },
   { key: "stat-quote-vol", kind: "stat", field: "quotevol", label: "24h volume", desc: "USDT quote volume, all exchanges", w: 3, h: 2 },
@@ -201,6 +204,8 @@ const EXPLAIN: Record<string, string> = {
   "stat-marketcap": "Circulating XEL supply multiplied by the latest price. Only shown once a price is available.",
   "stat-mempool": "Number of transactions currently waiting in the mempool, taken from the latest snapshot.",
   "stat-chainsize": "Total on-disk size of the node's chain database, from the node's get_size_on_disk RPC. This is the blockchain size as stored by a full node.",
+  "stat-contracts": "Number of smart contracts deployed on the chain, from the node's count_contracts RPC.",
+  "stat-pruned": "The topoheight below which the node has pruned old block data. A value of none means the node keeps the full chain history.",
   "stat-burned": "Total XEL provably burned through public burn addresses and transactions.",
   "stat-blocktime": "Recent average interval between blocks compared with the protocol target, so you can see whether the network is running fast or slow.",
   "stat-reward": "Total reward paid per block, split between the miner reward and the developer reward.",
@@ -277,6 +282,7 @@ const DEFAULT_TABS: Array<{ name: string; widgets: Array<[string, number, number
       ["chart-gini", 6, 17, 6, 5],
       ["chart-chainsize", 0, 22, 6, 5],
       ["stat-chainsize", 6, 22, 6, 2],
+      ["stat-contracts", 6, 24, 6, 2],
       ["chart-active-contracts", 0, 27, 6, 5],
       ["compare-contract-invokes-deploys", 6, 27, 6, 5],
     ],
@@ -311,6 +317,7 @@ const DEFAULT_TABS: Array<{ name: string; widgets: Array<[string, number, number
     widgets: [
       ["stat-peers", 0, 0, 3, 2],
       ["stat-node", 3, 0, 3, 2],
+      ["stat-pruned", 6, 0, 3, 2],
       ["chart-peers", 0, 2, 6, 5],
       ["list-peers", 0, 7, 6, 5],
       ["list-peer-tags", 6, 7, 6, 5],
@@ -583,6 +590,8 @@ function statValue(field: string | undefined, s: Summary): { value: string; sub:
     case "transactions": return { value: fmtInt(s.counts?.transactions ?? NaN), sub: "chain total" };
     case "accounts": return { value: fmtInt(s.counts?.accounts ?? NaN), sub: "registered accounts" };
     case "assets": return { value: fmtInt(s.counts?.assets ?? NaN), sub: "registered assets" };
+    case "contracts": return { value: fmtInt(s.counts?.contracts ?? NaN), sub: "deployed contracts" };
+    case "pruned": return { value: s.pruned_topoheight != null ? fmtInt(s.pruned_topoheight) : "none", sub: "pruned topoheight" };
     case "node": return { value: s.node_version ?? "—", sub: s.network ?? "network unknown" };
     case "height": return { value: fmtInt(s.height ?? NaN), sub: `topoheight ${fmtInt(s.topoheight ?? NaN)}` };
     case "quotevol": return { value: s.market?.quote_volume_24h ? `$${fmt(s.market.quote_volume_24h)}` : "—", sub: "USDT quoted, all exchanges" };

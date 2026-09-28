@@ -159,6 +159,7 @@ app.get("/api/summary", async (c) => {
     height: s.info.height,
     topoheight: s.info.topoheight,
     stable_topoheight: s.info.stable_topoheight,
+    pruned_topoheight: s.info.pruned_topoheight,
     difficulty: +s.info.difficulty,
     block_time_s: s.info.average_block_time / 1000,
     block_time_target_s: s.info.block_time_target / 1000,
@@ -170,7 +171,7 @@ app.get("/api/summary", async (c) => {
     chain_size_formatted: s.chainSize?.size_formatted ?? null,
     peers: s.peers,
     hashprice,
-    counts: { transactions: s.txCount, accounts: s.accounts, assets: s.assets },
+    counts: { transactions: s.txCount, accounts: s.accounts, assets: s.assets, contracts: s.contracts },
     supply: {
       circulating: s.info.circulating_supply,
       emitted: s.info.emitted_supply,

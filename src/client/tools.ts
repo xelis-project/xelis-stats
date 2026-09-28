@@ -216,6 +216,130 @@ function restoreInputs(): void {
   } catch { /* ignore */ }
 }
 
+// ---------- address tools ----------
+
+interface AddrSplit {
+  address: string;
+  integrated_data: unknown;
+  size: number;
+}
+
+interface AddrResult {
+  ok: boolean;
+  op?: string;
+  error?: string;
+  valid?: boolean;
+  isIntegrated?: boolean;
+  split?: AddrSplit | null;
+  key?: string | null;
+  integrated?: string | null;
+  address?: string;
+}
+
+const escHtml = (v: unknown): string =>
+  String(v ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] as string));
+
+function addrRow(label: string, value: string, copy = false): string {
+  const copyBtn = copy ? ` <button class="copybtn" type="button" data-copy="${escHtml(value)}">copy</button>` : "";
+  return `<div class="calc-row"><span class="k">${label}</span><span class="v mono" style="white-space:normal;overflow-wrap:anywhere;text-align:left">${escHtml(value)}${copyBtn}</span></div>`;
+}
+
+async function addrRequest(params: Record<string, string>): Promise<AddrResult | null> {
+  try {
+    const res = await fetch(`/api/address?${new URLSearchParams(params).toString()}`);
+    return (await res.json()) as AddrResult;
+  } catch {
+    return null;
+  }
+}
+
+function renderAddress(r: AddrResult | null, op: string): void {
+  const box = $("addr-results");
+  if (!box) return;
+  if (!r) { box.innerHTML = '<p class="calc-status err">Request failed — the node could not be reached.</p>'; return; }
+  if (!r.ok) { box.innerHTML = `<p class="calc-status err">${escHtml(r.error ?? "Request failed.")}</p>`; return; }
+
+  if (op === "key") {
+    box.innerHTML = `<div class="calc-rows">
+      ${addrRow("Address", r.address ?? "—", true)}
+    </div>
+    <p class="calc-status">Address derived from the supplied public key.</p>`;
+    return;
+  }
+
+  if (op === "integrate") {
+    box.innerHTML = `<div class="calc-rows">
+      ${addrRow("Integrated address", r.address ?? "—", true)}
+    </div>
+    <p class="calc-status">Integrated address encodes the supplied data.</p>`;
+    return;
+  }
+
+  // resolve
+  if (!r.valid) {
+    box.innerHTML = `<p class="calc-status err">Not a valid ${r.isIntegrated ? "integrated " : ""}address for this network.</p>`;
+    return;
+  }
+  const rows: string[] = [];
+  rows.push(addrRow("Type", r.isIntegrated ? "integrated address" : "normal address"));
+  if (r.key) rows.push(addrRow("Public key", r.key, true));
+  if (r.split) {
+    rows.push(addrRow("Base address", r.split.address, true));
+    const data = r.split.integrated_data;
+    rows.push(addrRow("Integrated data", typeof data === "string" ? data : JSON.stringify(data)));
+    rows.push(addrRow("Data size", `${fmtInt(r.split.size)} bytes`));
+  }
+  if (r.integrated) rows.push(addrRow("Built integrated address", r.integrated, true));
+  box.innerHTML = `<div class="calc-rows">${rows.join("")}</div>
+    <p class="calc-status">Resolved by the node's ${r.isIntegrated ? "split_address" : "validate_address + extract_key_from_address"} RPC.</p>`;
+}
+
+function readAddrInput(): string {
+  return $<HTMLInputElement>("addr-input")?.value.trim() ?? "";
+}
+
+async function runAddress(op: string): Promise<void> {
+  const box = $("addr-results");
+  if (box) box.innerHTML = '<p class="calc-status">Resolving…</p>';
+  const input = readAddrInput();
+  const data = $<HTMLInputElement>("addr-data")?.value.trim() ?? "";
+  if (!input) { renderAddress({ ok: false, error: "Enter an address or public key." }, op); return; }
+  const params: Record<string, string> = { op, input };
+  if (data) params.data = data;
+  renderAddress(await addrRequest(params), op);
+}
+
+function initAddressTools(): void {
+  const panel = $("calc-address");
+  if (!panel) return;
+  $("addr-resolve")?.addEventListener("click", () => void runAddress("resolve"));
+  $("addr-from-key")?.addEventListener("click", () => void runAddress("key"));
+  $("addr-integrate")?.addEventListener("click", () => void runAddress("integrate"));
+  const input = $<HTMLInputElement>("addr-input");
+  input?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") void runAddress("resolve"); });
+  $<HTMLInputElement>("addr-data")?.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") void runAddress("resolve"); });
+  panel.addEventListener("click", (e) => {
+    const btn = (e.target as HTMLElement)?.closest<HTMLButtonElement>("[data-copy]");
+    if (!btn) return;
+    const text = btn.dataset.copy ?? "";
+    void navigator.clipboard?.writeText(text).then(() => {
+      const prev = btn.textContent;
+      btn.textContent = "copied";
+      setTimeout(() => { btn.textContent = prev; }, 1200);
+    }).catch(() => { /* clipboard unavailable */ });
+  });
+  for (const el of document.querySelectorAll("[data-addr-clear]")) {
+    el.addEventListener("click", () => {
+      const i = $<HTMLInputElement>("addr-input");
+      const d = $<HTMLInputElement>("addr-data");
+      if (i) i.value = "";
+      if (d) d.value = "";
+      const box = $("addr-results");
+      if (box) box.innerHTML = '<p class="calc-status">Enter an address to begin.</p>';
+    });
+  }
+}
+
 // ---------- boot ----------
 
 async function load(): Promise<void> {
@@ -236,6 +360,10 @@ async function load(): Promise<void> {
 export function initTools(): void {
   const feePanel = $("calc-fee");
   const hpPanel = $("calc-hashrate");
+  const addrPanel = $("calc-address");
+  if (!feePanel && !hpPanel && !addrPanel) return;
+
+  if (addrPanel) initAddressTools();
   if (!feePanel && !hpPanel) return;
 
   restoreInputs();

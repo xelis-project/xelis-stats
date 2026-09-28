@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout } from "../../client/layout";
 import { icons } from "../../client/icons";
+import { rpc } from "../xelis";
+import { logErr } from "./shared";
 
 export const tools = new Hono<{ Bindings: Env }>();
 
@@ -17,6 +19,11 @@ const TOOLS = [
     href: "/tools/hashrate",
     title: "Mining hashrate / profitability",
     desc: "Estimate daily and monthly XEL mining rewards and net profit from your hashrate, power draw, electricity price and pool fee.",
+  },
+  {
+    href: "/tools/address",
+    title: "Address tools",
+    desc: "Validate addresses, split integrated addresses, extract a public key from an address, convert a key back to an address, and build integrated addresses.",
   },
 ];
 
@@ -119,4 +126,89 @@ tools.get("/tools/hashrate", (c) => {
   </div>`;
 
   return c.html(layout("Mining hashrate / profitability", content, "/tools/hashrate"));
+});
+
+// Address utilities backed by the node's address RPC methods. The browser
+// cannot call the node directly (CORS), so this thin proxy normalises the
+// responses that the client island (src/client/tools.ts) renders.
+tools.get("/api/address", async (c) => {
+  const node = c.env.XELIS_NODE;
+  const op = (c.req.query("op") ?? "resolve").toLowerCase();
+  const input = (c.req.query("input") ?? "").trim();
+  const data = c.req.query("data") ?? "";
+  try {
+    if (op === "key") {
+      if (!/^[0-9a-f]{64}$/i.test(input)) {
+        return c.json({ ok: false, op, error: "Public key must be 64 hexadecimal characters." }, 400);
+      }
+      const address = await rpc<string>("key_to_address", { hex: input }, node);
+      return c.json({ ok: true, op, address });
+    }
+    if (!input) return c.json({ ok: false, op, error: "Enter an address." }, 400);
+    if (op === "integrate") {
+      if (!data) return c.json({ ok: false, op, error: "Enter integrated data to encode." }, 400);
+      const address = await rpc<string>("make_integrated_address", { address: input, integrated_data: data }, node);
+      return c.json({ ok: true, op, address });
+    }
+    const valid = await rpc<{ is_valid: boolean; is_integrated: boolean }>(
+      "validate_address", { address: input, allow_integrated: true }, node
+    );
+    if (!valid.is_valid) return c.json({ ok: true, op: "resolve", valid: false, isIntegrated: valid.is_integrated });
+
+    let split: { address: string; integrated_data: unknown; size: number } | null = null;
+    let key: string | null = null;
+    if (valid.is_integrated) {
+      split = await rpc<{ address: string; integrated_data: unknown; size: number }>(
+        "split_address", { address: input }, node
+      ).catch(() => null);
+    } else {
+      const k = await rpc<{ hex?: string }>("extract_key_from_address", { address: input, as_hex: true }, node).catch(() => null);
+      key = k?.hex ?? null;
+    }
+    let integrated: string | null = null;
+    if (data && !valid.is_integrated) {
+      integrated = await rpc<string>("make_integrated_address", { address: input, integrated_data: data }, node).catch(() => null);
+    }
+    return c.json({ ok: true, op: "resolve", valid: true, isIntegrated: valid.is_integrated, split, key, integrated });
+  } catch (err) {
+    logErr("api/address", err);
+    const msg = err instanceof Error ? err.message : "address tool failed";
+    return c.json({ ok: false, op, error: msg.replace(/^RPC [a-z_]+: /, "") }, 400);
+  }
+});
+
+// Static shell for the address tools; the client island fills the result pane.
+tools.get("/tools/address", (c) => {
+  const content = `<p class="tool-back"><a href="/tools">${icons.arrowLeft} All tools</a></p>
+  <div class="panel calc-panel" id="calc-address">
+    <div class="panel-head">
+      <h2>Address tools</h2>
+      <button class="btn ghost calc-refresh" type="button" data-addr-clear>Clear</button>
+    </div>
+    <p class="calc-note">Validate a Xelis address, split an integrated address into its base address and data, extract the public key from an address, convert a public key back to an address, or build an integrated address. Everything is resolved live through the node's address RPC methods.</p>
+    <div class="calc-split">
+    <div class="calc-form">
+      <div class="calc-field">
+        <label for="addr-input">Address or public key</label>
+        <input type="text" id="addr-input" placeholder="xel:… or 64-char hex key" autocomplete="off" spellcheck="false" />
+        <span class="hint">Normal or integrated address, or a 64-character hexadecimal public key.</span>
+      </div>
+      <div class="calc-field">
+        <label for="addr-data">Integrated data (optional)</label>
+        <input type="text" id="addr-data" placeholder="e.g. order-1234" autocomplete="off" />
+        <span class="hint">When set, a normal address is also encoded into an integrated address.</span>
+      </div>
+      <div class="calc-inline">
+        <button class="btn" type="button" id="addr-resolve">Resolve</button>
+        <button class="btn ghost" type="button" id="addr-from-key">Key → address</button>
+        <button class="btn ghost" type="button" id="addr-integrate">Build integrated</button>
+      </div>
+    </div>
+    <div class="calc-results" id="addr-results" aria-live="polite">
+      <p class="calc-status">Enter an address to begin.</p>
+    </div>
+    </div>
+  </div>`;
+
+  return c.html(layout("Address tools", content, "/tools/address"));
 });
