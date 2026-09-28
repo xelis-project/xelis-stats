@@ -707,7 +707,7 @@ tbody tr.tx-self td { background: rgba(2, 255, 207, 0.05); }
 
 /* Pagination */
 .pager { display: flex; gap: 0.8rem; align-items: center; justify-content: flex-end; margin-top: 1.2rem; font-size: 1.25rem; color: var(--text-dim); }
-.pager .btn { min-width: 3.2rem; text-align: center; padding: 0.4rem 0.8rem; }
+.pager .btn { min-width: 3.2rem; justify-content: center; text-align: center; padding: 0.4rem 0.8rem; }
 .pager .btn.disabled { opacity: 0.4; pointer-events: none; }
 .pager .btn.mint { color: #041414; background: var(--mint-grad); border: 1px solid transparent; box-shadow: 0 0 16px var(--mint-glow); font-weight: 700; }
 .pager-dots { color: var(--text-dim); }
