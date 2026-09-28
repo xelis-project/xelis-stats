@@ -133,9 +133,12 @@ export function ago(ts: number | string | null | undefined, seconds = false): st
   const future = ms > Date.now();
   const s = Math.floor(Math.abs(Date.now() - ms) / 1000);
   const stamp = (n: number, u: string): string => (future ? `in ${n}${u}` : `${n}${u} ago`);
-  if (seconds && s < 60) return stamp(s, "s");
-  if (s < 45) return future ? "in a moment" : "just now";
-  if (s < 90) return stamp(s, "s");
+  if (seconds) {
+    if (s < 60) return stamp(s, "s");
+  } else {
+    if (s < 45) return future ? "in a moment" : "just now";
+    if (s < 90) return stamp(s, "s");
+  }
   if (s < 3600) return stamp(Math.round(s / 60), "m");
   if (s < 86400) return stamp(Math.round(s / 3600), "h");
   if (s < 604800) return stamp(Math.round(s / 86400), "d");
