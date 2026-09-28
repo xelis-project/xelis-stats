@@ -4,6 +4,7 @@
  * D1:
  *   - daily_stats, daily_miners, daily_block_types (aggregates, full history)
  *   - accounts (full)
+ *   - exchanges, market_snapshots, chain_size_snapshots (history)
  *   - blocks: full history (keyset-paginated browsing)
  *   - tx_index: full history
  * R2 (full raw history):
@@ -252,6 +253,35 @@ function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit
   return count;
 }
 
+/** Keyset-paginated dump by the implicit rowid. Used for tables whose primary
+ *  key is composite (market_snapshots: ts+exchange+market) so there is no single
+ *  integer key to paginate on. INSERT OR REPLACE is safe against the PK. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function dumpRowid(table: string, cols: string[], outFile: string): number {
+  const out = new SqlChunks(outFile);
+  const buffer: string[] = [];
+  let last = -1;
+  let count = 0;
+  for (;;) {
+    const stmt = db.prepare(`SELECT rowid AS _rowid, ${cols.join(", ")} FROM ${table} WHERE rowid > ? ORDER BY rowid LIMIT ?`);
+    stmt.setReadBigInts(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows: any[] = stmt.all(last, 100_000);
+    if (!rows.length) break;
+    for (const row of rows) {
+      buffer.push(`(${cols.map((c) => esc(row[c])).join(",")})`);
+      count++;
+    }
+    for (let i = 0; i < buffer.length; i += 100) {
+      out.write(`INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES\n${buffer.slice(i, i + 100).join(",\n")};\n`);
+    }
+    buffer.length = 0;
+    last = Number(rows[rows.length - 1]._rowid);
+  }
+  out.close();
+  return count;
+}
+
 /** Keyset-paginated dump by a TEXT key column (e.g. hashes). Optionally uses a
  *  second column to break ties, since the value columns of join tables do not
  *  carry a numeric cursor. */
@@ -455,6 +485,31 @@ for (const [file, table, cols, sql] of AGG_JOBS) {
 }
 }
 
+// ---------- market / chain-size history (D1) ----------
+
+// exchanges, market_snapshots and chain_size_snapshots are written both by the
+// live cron and by the legacy Postgres rebuild (scripts/legacy/import_history.mts).
+// Exporting them from the local D1 lets `import:d1 --remote` carry the full
+// history to the deployed database instead of leaving only post-deploy cron
+// rows. Like the aggregates these belong only in the hot DB, so a shard export
+// (--no-aggregates) omits them.
+if (NO_AGG) {
+  console.log("Market/chain-size history skipped (--no-aggregates): hot-DB-only tables.");
+} else {
+  const HISTORY_JOBS: Array<[string, string, string[]]> = [
+    ["exchanges", "exchanges", ["name", "status", "url", "added_ts", "retired_ts", "notes"]],
+    ["market_snapshots", "market_snapshots", ["ts", "exchange", "market", "last", "bid", "ask", "high", "low", "change_pct", "base_volume", "quote_volume", "source_ts"]],
+    ["chain_size_snapshots", "chain_size_snapshots", ["ts", "size_bytes"]],
+  ];
+  console.log("Exporting market/chain-size history (D1)…");
+  for (const [file, table, cols] of HISTORY_JOBS) {
+    if (!wanted(file)) { console.log(`  ${table}: skipped (--only)`); continue; }
+    const n = dumpRowid(table, cols, join(OUT_DIR, `${file}.sql`));
+    const parts = resolveOutFiles(file);
+    console.log(`  ${table}: ${n.toLocaleString()} rows${parts.length ? ` (${totalMB(parts)} MB${parts.length > 1 ? `, ${parts.length} parts` : ""})` : " (empty — file not written)"}`);
+  }
+}
+
 // ---------- chain data (D1) ----------
 
 console.log("Exporting chain data (D1): all blocks, all txs, tx↔asset and tx↔contract links…");
@@ -522,6 +577,7 @@ if (FULL) {
 }
 
 const IMPORT_FILES = [
+  "exchanges", "market_snapshots", "chain_size_snapshots",
   "daily_stats", "daily_miners", "daily_block_types", "daily_address_stats",
   "daily_assets", "accounts", "assets", "contracts", "daily_contracts",
   "blocks", "tx", "tx_assets", "tx_contracts",
