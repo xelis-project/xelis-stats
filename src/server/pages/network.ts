@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout, statCard } from "../../client/layout";
-import { fmtBytes, fmtInt } from "../../client/format";
+import { fmt, fmtBytes, fmtInt } from "../../client/format";
 import { esc, flaggedText, logErr, num } from "./shared";
 
 export const network = new Hono<{ Bindings: Env }>();
@@ -119,7 +119,7 @@ network.get("/network", async (c) => {
   const cards = `<div class="cards">
     ${statCard("Peers", fmtInt(s?.total), s ? `${fmtInt(s.hidden)} hidden · ${fmtInt(s.pruned)} pruned` : "", false, "net-peers")}
     ${statCard("Lagging", fmtInt(s?.lagging), s ? `${fmtInt(s.stale)} stale · ${fmtInt(s.divergent)} divergent` : "", false)}
-    ${statCard("Avg latency", s ? `${nic.format(num(s.avg_lag))} ms` : "—", s ? `${num(s.avg_peer_view).toFixed(1)} avg peer view` : "")}
+    ${statCard("Avg lag", s ? `${fmt(num(s.avg_lag), 1)} blocks` : "—", s ? `${num(s.avg_peer_view).toFixed(1)} avg peer view` : "")}
     ${statCard("New conns (1h)", fmtInt(s?.new_conns), s ? `${nic.format(num(s.avg_conn_age))}s avg conn age` : "")}
     ${statCard("Traffic", fmtBytes(s?.bytes_recv), s ? `${fmtBytes(s.bytes_sent)} out` : "")}
     ${statCard("GeoIP coverage", total ? `${((mappedTotal / total) * 100).toFixed(1)}%` : "—", `${mapped.length} countries · ${unknown} unresolved`)}
