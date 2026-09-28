@@ -57,6 +57,13 @@ deploys need no Rust toolchain. Rebuild them with `npm run decompiler:wasm`
    npx wrangler secret put CLOUDFLARE_API_TOKEN
    ```
 
+   Rotation seeds `tx_route`/`block_route` for the range it copies (and
+   backfills shards sealed before that) so hash lookups resolve to one database
+   instead of fanning out. Cross-shard aggregate pages cache the immutable
+   sealed-shard contribution in KV (`shardagg:*`, 30-day TTL), so each request
+   scans only the hot window; the cache is keyed by `hotFloor`, so sealing a new
+   shard starts fresh keys.
+
 4. Deploy and verify:
 
    ```sh

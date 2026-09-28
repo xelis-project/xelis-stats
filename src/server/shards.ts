@@ -631,6 +631,38 @@ function allTargets(shards: ShardRow[]): RawTarget[] {
   return ts;
 }
 
+function sealedTargets(shards: ShardRow[]): RawTarget[] {
+  return shards.filter((s) => s.sealed).map((s) => ({ kind: "shard", dbId: s.db_id }));
+}
+
+// Sealed shards are immutable, so their contribution to any query is fixed for
+// a given hotFloor. The additive helpers below split the targets into sealed
+// shards (computed once and cached in KV) and the hot window (computed live),
+// so a request scans only the recent window plus a single cache read instead of
+// all history. Keys include the floor, so sealing a new shard starts a fresh
+// key; the TTL reclaims the old ones without any enumeration.
+const AGG_CACHE_TTL = 30 * 86400;
+
+async function aggCacheKey(scope: string, floor: number, sql: string, binds: unknown[]): Promise<string> {
+  const raw = `${scope}|${floor}|${sql}|${JSON.stringify(binds)}`;
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(raw));
+  return "shardagg:" + [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function readAggCache<T>(env: Env, key: string): Promise<T | null> {
+  try {
+    return (await env.KV.get(key, "json")) as T | null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeAggCache(env: Env, key: string, value: unknown): Promise<void> {
+  try {
+    await env.KV.put(key, JSON.stringify(value), { expirationTtl: AGG_CACHE_TTL });
+  } catch { /* cache is best-effort: a miss just recomputes */ }
+}
+
 // bound hot reads to the retained window so rows mid-migration (present in
 // hot and shard) are never served twice; NULL cursors never migrate, keep them
 function hotFloorBound(floorCol: string, floor: number): string {
@@ -652,7 +684,10 @@ function boundHotTarget(sql: string, floorCol: string, floor: number): string {
 
 const countCache = new Map<string, { at: number; n: number }>();
 
-/** COUNT(*) over hot + all sealed shards (60s cache). */
+/**
+ * COUNT(*) over hot + all sealed shards (60s in-process cache; the sealed-shard
+ * contribution is cached in KV so only the hot window is counted per request).
+ */
 export async function countRaw(
   env: Env,
   opts: { table: string; extra?: { sql: string; binds: unknown[] }; floorCol?: string },
@@ -660,19 +695,35 @@ export async function countRaw(
   const shards = await getShards(env);
   const floor = hotFloor(shards);
   const where = opts.extra ? `WHERE ${opts.extra.sql}` : "";
-  const key = `${opts.table}|${where}|${(opts.extra?.binds ?? []).join(",")}|${floor}`;
+  const binds = [...(opts.extra?.binds ?? [])];
+  const key = `${opts.table}|${where}|${binds.join(",")}|${floor}`;
   const hit = countCache.get(key);
   if (hit && Date.now() - hit.at < CACHE_MS) return hit.n;
-  const results = await Promise.all(allTargets(shards).map(async (t) => {
-    let w = where;
-    const binds = [...(opts.extra?.binds ?? [])];
-    if (t.kind === "hot" && floor >= 0 && opts.floorCol) {
-      w = where ? `${where} AND ${hotFloorBound(opts.floorCol, floor)}` : `WHERE ${hotFloorBound(opts.floorCol, floor)}`;
+
+  const sql = `SELECT COUNT(*) AS n FROM ${opts.table} ${where}`;
+  const sealed = sealedTargets(shards);
+  let sealedN = 0;
+  if (sealed.length) {
+    const ck = await aggCacheKey("count", floor, sql, binds);
+    const cached = await readAggCache<number>(env, ck);
+    if (cached != null) {
+      sealedN = cached;
+    } else {
+      const parts = await Promise.all(sealed.map((t) => runOn(env, t, sql, binds)));
+      sealedN = parts.reduce((a, rows) => a + Number(rows[0]?.n ?? 0), 0);
+      await writeAggCache(env, ck, sealedN);
     }
-    const rows = await runOn(env, t, `SELECT COUNT(*) AS n FROM ${opts.table} ${w}`, binds);
-    return Number(rows[0]?.n ?? 0);
-  }));
-  const n = results.reduce((a, b) => a + b, 0);
+  }
+
+  // the hot target is bounded to the retained window only when a floor column
+  // is supplied (same contract as before: callers without one count all of hot)
+  let hotWhere = where;
+  if (floor >= 0 && opts.floorCol) {
+    const cond = hotFloorBound(opts.floorCol, floor);
+    hotWhere = where ? `${where} AND ${cond}` : `WHERE ${cond}`;
+  }
+  const hot = await runOn(env, { kind: "hot" }, `SELECT COUNT(*) AS n FROM ${opts.table} ${hotWhere}`, binds);
+  const n = sealedN + Number(hot[0]?.n ?? 0);
   countCache.set(key, { at: Date.now(), n });
   return n;
 }
@@ -735,34 +786,28 @@ export async function topNRaw(
   return merged.slice(skip, need);
 }
 
+function normalizeCols(c: string | string[] | undefined): string[] {
+  return c == null ? [] : typeof c === "string" ? [c] : c;
+}
+
 /**
- * Run an additive aggregate (SUMs/COUNTs + optional MIN/MAX cols) on every
- * target and merge the results. Use SUM instead of AVG in the SQL; averages
- * are computed by the caller from sum/count pairs. When `floorCol` is set the
- * hot target is bounded to the retained window (see {@link boundHotTarget}).
+ * Fold one or more single-row aggregate row sets into an accumulator. Sum
+ * columns add, min/max columns combine by min/max; `accIn` seeds the fold (the
+ * cached sealed-shard result) so only the hot row set needs merging per request.
  */
-export async function mergeAgg(
-  env: Env,
-  sql: string,
-  binds: unknown[],
-  opts: { sum: string[]; min?: string | string[]; max?: string | string[]; floorCol?: string },
-): Promise<Record<string, number>> {
-  const shards = await getShards(env);
-  const floor = hotFloor(shards);
-  const rows = await Promise.all(allTargets(shards).map((t) => runOn(
-    env, t,
-    t.kind === "hot" && floor >= 0 && opts.floorCol ? boundHotTarget(sql, opts.floorCol, floor) : sql,
-    binds,
-  )));
-  const out: Record<string, number> = {};
-  for (const col of opts.sum) out[col] = 0;
-  const one = (c: string | string[] | undefined): string[] => (c == null ? [] : typeof c === "string" ? [c] : c);
-  const mins = one(opts.min);
-  const maxs = one(opts.max);
-  for (const rowsOne of rows) {
+function foldAgg(
+  rowsets: Row[][],
+  sumCols: string[],
+  mins: string[],
+  maxs: string[],
+  accIn: Record<string, number> | null,
+): Record<string, number> {
+  const out: Record<string, number> = accIn ? { ...accIn } : {};
+  for (const col of sumCols) out[col] = out[col] ?? 0;
+  for (const rowsOne of rowsets) {
     const r = rowsOne[0];
     if (!r) continue;
-    for (const col of opts.sum) {
+    for (const col of sumCols) {
       const v = r[col];
       if (v != null) out[col] = (out[col] ?? 0) + Number(v);
     }
@@ -780,38 +825,66 @@ export async function mergeAgg(
 }
 
 /**
- * GROUP BY over hot + sealed shards with additive value columns, merged by key
- * in JS. Returns unmerged-order rows: [{ [keyCol]: key, ...sums }]. `maxCols`
- * and `minCols` merge by max/min (monotonic or boundary columns); `floorCol`
- * bounds the hot target to the retained window, like {@link boundHotTarget}.
+ * Run an additive aggregate (SUMs/COUNTs + optional MIN/MAX cols) over the hot
+ * window and merge it with the sealed-shard result. Use SUM instead of AVG in
+ * the SQL; averages are computed by the caller from sum/count pairs. When
+ * `floorCol` is set the hot target is bounded to the retained window (see
+ * {@link boundHotTarget}). The sealed-shard contribution is immutable for a
+ * given floor and cached in KV.
  */
-export async function mergeGroups(
+export async function mergeAgg(
   env: Env,
   sql: string,
   binds: unknown[],
-  keyCol: string,
-  sumCols: string[],
-  opts: { maxCols?: string[]; minCols?: string[]; floorCol?: string } = {},
-): Promise<Row[]> {
+  opts: { sum: string[]; min?: string | string[]; max?: string | string[]; floorCol?: string },
+): Promise<Record<string, number>> {
   const shards = await getShards(env);
   const floor = hotFloor(shards);
-  const rows = await Promise.all(allTargets(shards).map((t) => runOn(
-    env, t,
-    t.kind === "hot" && floor >= 0 && opts.floorCol ? boundHotTarget(sql, opts.floorCol, floor) : sql,
+  const sealed = sealedTargets(shards);
+  const mins = normalizeCols(opts.min);
+  const maxs = normalizeCols(opts.max);
+
+  let sealedAgg: Record<string, number> | null = null;
+  if (sealed.length) {
+    const scope = `agg|${opts.sum.join(",")}|${mins.join(",")}|${maxs.join(",")}`;
+    const ck = await aggCacheKey(scope, floor, sql, binds);
+    sealedAgg = await readAggCache<Record<string, number>>(env, ck);
+    if (!sealedAgg) {
+      const rows = await Promise.all(sealed.map((t) => runOn(env, t, sql, binds)));
+      sealedAgg = foldAgg(rows, opts.sum, mins, maxs, null);
+      await writeAggCache(env, ck, sealedAgg);
+    }
+  }
+
+  const hot = await runOn(
+    env, { kind: "hot" },
+    floor >= 0 && opts.floorCol ? boundHotTarget(sql, opts.floorCol, floor) : sql,
     binds,
-  )));
-  const byKey = new Map<string, Row>();
-  const maxs = opts.maxCols ?? [];
-  const mins = opts.minCols ?? [];
-  for (const rs of rows) {
+  );
+  return foldAgg([hot], opts.sum, mins, maxs, sealedAgg);
+}
+
+/**
+ * Merge GROUP BY rows into a key-indexed accumulator. Sum columns add; max/min
+ * columns combine by max/min (monotonic or boundary columns, e.g. cumulative
+ * chain difficulty). `into` seeds the map with the cached sealed-shard groups.
+ */
+function foldGroups(
+  rowsets: Row[][],
+  keyCol: string,
+  sumCols: string[],
+  maxs: string[],
+  mins: string[],
+  into?: Map<string, Row>,
+): Map<string, Row> {
+  const byKey = into ?? new Map<string, Row>();
+  for (const rs of rowsets) {
     for (const r of rs) {
       const key = String(r[keyCol] ?? "");
       const acc = byKey.get(key);
       if (!acc) {
         const fresh: Row = { [keyCol]: r[keyCol] };
         for (const c of sumCols) fresh[c] = Number(r[c] ?? 0);
-        // cumulative-style columns (e.g. chain cumulative difficulty) are
-        // monotonic, so merging across shards takes the max, never the sum
         for (const c of maxs) {
           const v = r[c];
           fresh[c] = v == null ? null : Number(v);
@@ -838,6 +911,53 @@ export async function mergeGroups(
       }
     }
   }
+  return byKey;
+}
+
+/**
+ * GROUP BY over hot + sealed shards with additive value columns, merged by key
+ * in JS. Returns unmerged-order rows: [{ [keyCol]: key, ...sums }]. `maxCols`
+ * and `minCols` merge by max/min (monotonic or boundary columns); `floorCol`
+ * bounds the hot target to the retained window, like {@link boundHotTarget}.
+ * The sealed-shard groups are immutable for a given floor and cached in KV.
+ */
+export async function mergeGroups(
+  env: Env,
+  sql: string,
+  binds: unknown[],
+  keyCol: string,
+  sumCols: string[],
+  opts: { maxCols?: string[]; minCols?: string[]; floorCol?: string } = {},
+): Promise<Row[]> {
+  const shards = await getShards(env);
+  const floor = hotFloor(shards);
+  const sealed = sealedTargets(shards);
+  const maxs = opts.maxCols ?? [];
+  const mins = opts.minCols ?? [];
+
+  let byKey: Map<string, Row>;
+  if (sealed.length) {
+    const scope = `groups|${keyCol}|${sumCols.join(",")}|${maxs.join(",")}|${mins.join(",")}`;
+    const ck = await aggCacheKey(scope, floor, sql, binds);
+    const cached = await readAggCache<Row[]>(env, ck);
+    if (cached) {
+      byKey = new Map();
+      for (const r of cached) byKey.set(String(r[keyCol] ?? ""), r);
+    } else {
+      const rowsets = await Promise.all(sealed.map((t) => runOn(env, t, sql, binds)));
+      byKey = foldGroups(rowsets, keyCol, sumCols, maxs, mins);
+      await writeAggCache(env, ck, [...byKey.values()]);
+    }
+  } else {
+    byKey = new Map();
+  }
+
+  const hot = await runOn(
+    env, { kind: "hot" },
+    floor >= 0 && opts.floorCol ? boundHotTarget(sql, opts.floorCol, floor) : sql,
+    binds,
+  );
+  foldGroups([hot], keyCol, sumCols, maxs, mins, byKey);
   return [...byKey.values()];
 }
 
@@ -917,6 +1037,10 @@ const PRUNE_MIN = 100;
 const ASSET_CHUNK = 90;
 // topoheight span of one legacy asset-sweep boundary
 const ASSET_SWEEP_BLOCKS = 500;
+// topoheight span of one route-backfill boundary
+const ROUTE_SWEEP_BLOCKS = 500;
+// route rows per multi-row insert (2 bound params each, D1 caps at 100)
+const ROUTE_INSERT_ROWS = 50;
 
 /**
  * Size-triggered rotation, run hourly. Prunes hot rows already owned by sealed
@@ -937,6 +1061,12 @@ export async function rotateShards(env: Env, budgetMs = 25_000): Promise<string>
 
   let shards = await getShards(env, true);
   await ensureShardIndexes(env, shards);
+  // One-time backfill for shards sealed before the copy loop seeded routes:
+  // their hot rows are pruned, so routes must be enumerated from the shard.
+  // Best-effort and resumable; a failed slice is retried on the next run.
+  try {
+    await seedRoutesFromShards(env, shards, started + Math.min(Math.floor(budgetMs / 2), 15_000));
+  } catch { /* retried on the next hourly run */ }
   let open = shards.find((s) => !s.sealed && s.last_topo != null);
 
   if (!open) {
@@ -1006,8 +1136,18 @@ export async function rotateShards(env: Env, budgetMs = 25_000): Promise<string>
         }
       }
       // 3) the copied slice stays in hot: serving is bounded to topo >
-      // hotFloor, so duplicates are invisible until pruneShards removes them
-      await env.DB.prepare("UPDATE shards SET copied_topo = ? WHERE id = ?").bind(cursor, open.id).run();
+      // hotFloor, so duplicates are invisible until pruneShards removes them.
+      // Seed the point-lookup routes from hot before any prune can delete the
+      // rows, so hash lookups resolve to this shard without a fan-out.
+      await env.DB.batch([
+        env.DB.prepare("UPDATE shards SET copied_topo = ? WHERE id = ?").bind(cursor, open.id),
+        env.DB.prepare(
+          "INSERT OR IGNORE INTO block_route (hash, topoheight) SELECT hash, topoheight FROM blocks WHERE topoheight > ? AND topoheight <= ? AND hash IS NOT NULL"
+        ).bind(prev, cursor),
+        env.DB.prepare(
+          "INSERT OR IGNORE INTO tx_route (hash, block_topo) SELECT hash, block_topo FROM tx_index WHERE block_topo > ? AND block_topo <= ? AND hash IS NOT NULL"
+        ).bind(prev, cursor),
+      ]);
     }
   }
 
@@ -1142,4 +1282,59 @@ async function sweepShardAssets(env: Env, s: ShardRow, deadline: number): Promis
     await setCursor(env, stage, cursor);
   }
   return { done: cursor >= last, deleted };
+}
+
+/** Bulk-insert (hash, topo) route rows into hot, chunked under D1's param cap. */
+async function insertRouteRows(env: Env, table: string, col: string, rows: Row[]): Promise<void> {
+  for (let i = 0; i < rows.length; i += ROUTE_INSERT_ROWS) {
+    const chunk = rows.slice(i, i + ROUTE_INSERT_ROWS);
+    const marks = chunk.map(() => "(?, ?)").join(",");
+    const binds = chunk.flatMap((r) => [String(r.hash), Number(r[col])]);
+    await env.DB.prepare(`INSERT OR IGNORE INTO ${table} (hash, ${col}) VALUES ${marks}`).bind(...binds).run();
+  }
+}
+
+/**
+ * Populate block_route/tx_route for shards that were sealed before the copy
+ * loop seeded routes itself. The hot rows are gone by then, so the keys are
+ * enumerated from the shard (bounded topo windows, keyset tx paging) and
+ * written into the hot route tables. Resumable per shard via `shard_routes_<id>`;
+ * this is a one-time cost that makes cold hash lookups O(1) instead of a
+ * fan-out over every sealed shard.
+ */
+async function seedRoutesFromShards(env: Env, shards: ShardRow[], deadline: number): Promise<void> {
+  for (const s of shards) {
+    if (!s.sealed || s.last_topo == null) continue;
+    const stage = `shard_routes_${s.id}`;
+    let cursor = await cursorOf(env, stage, s.first_topo - 1);
+    while (cursor < s.last_topo && Date.now() < deadline) {
+      const hi = Math.min(s.last_topo, cursor + ROUTE_SWEEP_BLOCKS);
+      const blocks = await restQuery(
+        env, s.db_id,
+        "SELECT hash, topoheight FROM blocks WHERE topoheight > ? AND topoheight <= ? AND hash IS NOT NULL ORDER BY topoheight LIMIT ?",
+        [cursor, hi, ROUTE_SWEEP_BLOCKS],
+      );
+      await insertRouteRows(env, "block_route", "topoheight", blocks);
+      let kTopo: number | null = null;
+      let kHash = "";
+      for (;;) {
+        const keyset = kTopo == null ? "" : " AND (block_topo > ? OR (block_topo = ? AND hash > ?))";
+        const binds = kTopo == null ? [cursor, hi, ASSET_CHUNK] : [cursor, hi, kTopo, kTopo, kHash, ASSET_CHUNK];
+        const txs = await restQuery(
+          env, s.db_id,
+          `SELECT hash, block_topo FROM tx_index WHERE block_topo > ? AND block_topo <= ? AND hash IS NOT NULL${keyset} ORDER BY block_topo, hash LIMIT ?`,
+          binds,
+        );
+        if (!txs.length) break;
+        await insertRouteRows(env, "tx_route", "block_topo", txs);
+        const last = txs[txs.length - 1];
+        kTopo = Number(last.block_topo);
+        kHash = String(last.hash);
+        if (txs.length < ASSET_CHUNK) break;
+        if (Date.now() >= deadline) { await setCursor(env, stage, cursor); return; }
+      }
+      cursor = hi;
+      await setCursor(env, stage, cursor);
+    }
+  }
 }
