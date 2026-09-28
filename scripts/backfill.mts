@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS contracts (
   contract_id TEXT PRIMARY KEY, deployer TEXT, deploy_topo INTEGER,
   invoke_count INTEGER, gas_total INTEGER, events_count INTEGER
 );
+CREATE INDEX IF NOT EXISTS idx_contracts_deployer ON contracts(deployer);
 `);
 
 // NOTE: daily_stats (tx counts, fees, transfer counts, unique miners, hashrate, etc.)
@@ -138,6 +139,7 @@ function migrate(): void {
   if (!mcols.includes("side_count")) db.exec("ALTER TABLE daily_miners ADD COLUMN side_count INTEGER NOT NULL DEFAULT 0");
   if (!mcols.includes("sync_count")) db.exec("ALTER TABLE daily_miners ADD COLUMN sync_count INTEGER NOT NULL DEFAULT 0");
   try { db.exec("CREATE TABLE IF NOT EXISTS contracts (contract_id TEXT PRIMARY KEY, deployer TEXT, deploy_topo INTEGER, invoke_count INTEGER, gas_total INTEGER, events_count INTEGER);"); } catch { /* exists */ }
+  try { db.exec("CREATE INDEX IF NOT EXISTS idx_contracts_deployer ON contracts(deployer);"); } catch { /* exists */ }
   // contract ids are the TXIDs of their deploy transactions; repair deploys
   // indexed before that was known, and register them
   db.exec(`UPDATE tx_index SET contract_id = hash WHERE tx_type = 'deploy_contract' AND (contract_id IS NULL OR contract_id = '')`);

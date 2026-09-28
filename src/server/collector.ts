@@ -314,7 +314,13 @@ export class StatsCollector {
     }
     // contracts: deploys register the contract; invokes bump stats
     if (txType === "deploy_contract" && contractId) {
-      stmts.push(this.env.DB.prepare("INSERT OR IGNORE INTO contracts (contract_id, deployer, deploy_topo, invoke_count, gas_total, events_count) VALUES (?, ?, ?, 0, 0, 0)")
+      // an earlier invoke can create the row with an empty deployer / zero topo
+      // (invoke_count-only insert below), so backfill identity on conflict
+      stmts.push(this.env.DB.prepare(
+        `INSERT INTO contracts (contract_id, deployer, deploy_topo, invoke_count, gas_total, events_count) VALUES (?, ?, ?, 0, 0, 0)
+         ON CONFLICT(contract_id) DO UPDATE SET
+           deployer = CASE WHEN excluded.deployer != '' THEN excluded.deployer ELSE contracts.deployer END,
+           deploy_topo = CASE WHEN contracts.deploy_topo IS NULL OR contracts.deploy_topo = 0 THEN excluded.deploy_topo ELSE contracts.deploy_topo END`)
         .bind(contractId, String(t.source ?? ""), blockTopo));
       stmts.push(this.env.DB.prepare(
         `INSERT INTO daily_contracts (date, contract_id, invoke_count, gas_burned, deploys) VALUES (?, ?, 0, 0, 1)

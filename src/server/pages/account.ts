@@ -2,12 +2,12 @@ import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout, statCard } from "../../client/layout";
 import { icons } from "../../client/icons";
-import { fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/format";
+import { fmtInt, shortHash, fmtTime, ago, atomic, timeCell } from "../../client/format";
 import { knownEntity } from "../entities";
 import { srvSort, TX_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
 import { PAGE_SIZE, pager, esc, jsq, clampInt, logErr, blkCopyScript, num } from "./shared";
-import { topNRaw, countRaw, mergeAgg, mergeGroups } from "../shards";
+import { topNRaw, countRaw, mergeAgg, mergeGroups, fetchBlockTimes } from "../shards";
 
 export const account = new Hono<{ Bindings: Env }>();
 
@@ -38,6 +38,7 @@ account.get("/account/:address", async (c) => {
   let types: Record<string, unknown>[] = [];
   let minedAll = 0;
   let maxTopo: number | null = null;
+  let contractRows: Record<string, unknown>[] = [];
   try {
     const conds: string[] = ["sender = ?"];
     const binds: unknown[] = [address];
@@ -46,7 +47,7 @@ account.get("/account/:address", async (c) => {
     if (executed === "0") { conds.push("executed = 0"); }
     const histExtra = { sql: conds.join(" AND "), binds };
     // The per-address fact queries are independent, so run them concurrently.
-    const [acctRow, histTotalN, txRows, aggRow, typeRows, minedAllRow, maxTopoRow] = await Promise.all([
+    const [acctRow, histTotalN, txRows, aggRow, typeRows, minedAllRow, maxTopoRow, contractResult] = await Promise.all([
       db.prepare("SELECT * FROM accounts WHERE address = ?").bind(address).first<Record<string, unknown>>(),
       // SUM(fee) instead of AVG(fee): averages are merged across shards in JS
       countRaw(c.env, { table: "tx_index", extra: histExtra, floorCol: "block_topo" }),
@@ -72,6 +73,11 @@ account.get("/account/:address", async (c) => {
       db.prepare("SELECT SUM(blocks_found) AS c FROM daily_miners WHERE address = ?").bind(address)
         .first<{ c: number | null }>(),
       db.prepare("SELECT MAX(topoheight) AS m FROM blocks").first<{ m: number | null }>(),
+      // contracts this address deployed (hot-only table, indexed by deployer)
+      db.prepare(
+        `SELECT contract_id, deploy_topo, invoke_count, gas_total, COUNT(*) OVER() AS total
+         FROM contracts WHERE deployer = ? ORDER BY invoke_count DESC, deploy_topo DESC LIMIT 100`
+      ).bind(address).all<Record<string, unknown>>().then((r) => r.results ?? []),
     ]);
     acct = acctRow ?? undefined;
     histTotal = histTotalN;
@@ -82,6 +88,7 @@ account.get("/account/:address", async (c) => {
     types.sort((a, b) => num(b.c) - num(a.c));
     minedAll = Number(minedAllRow?.c) || 0;
     maxTopo = maxTopoRow?.m ?? null;
+    contractRows = contractResult;
   } catch (err) { logErr("page/account", err); }
   const histPages = Math.max(1, Math.ceil(histTotal / PAGE_SIZE));
 
@@ -168,6 +175,36 @@ account.get("/account/:address", async (c) => {
     </table>
   </div>`;
 
+  const contractTotal = num(contractRows[0]?.total);
+  let deployTimes = new Map<number, number>();
+  if (contractRows.length) {
+    try { deployTimes = await fetchBlockTimes(c.env, contractRows.map((ct) => num(ct.deploy_topo))); } catch { /* unresolved */ }
+  }
+  const deployedRows = contractRows.map((ct) => {
+    const cid = String(ct.contract_id ?? "");
+    const topo = num(ct.deploy_topo);
+    const ts = deployTimes.get(topo);
+    const invokes = num(ct.invoke_count);
+    const gas = num(ct.gas_total);
+    return `<tr>
+      <td><a class="mono" href="/contracts/${esc(cid)}">${esc(shortHash(cid, 10))}</a></td>
+      <td class="num">${topo > 0 ? `<a href="/block/${topo}"><span class="mint">${fmtInt(topo)}</span></a>` : "—"}</td>
+      <td>${ts ? timeCell(ts) : "—"}</td>
+      <td class="num">${fmtInt(invokes)}</td>
+      <td class="num">${gas > 0 ? `${atomic(gas)} XEL` : "—"}</td>
+    </tr>`;
+  }).join("");
+  const deployedPanel = contractTotal > 0 ? `<div class="panel">
+    <div class="panel-head">
+      <h2>Contracts Deployed <span style="color:var(--text-dim)">${fmtInt(contractTotal)}</span>${contractRows.length < contractTotal ? ` <span style="color:var(--text-dim)">· top ${fmtInt(contractRows.length)}</span>` : ""}</h2>
+      <a class="btn ghost" href="/contracts" title="All indexed contracts">Contracts ${icons.chevronRight}</a>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Contract</th><th class="num">Deployed (topo)</th><th>Age</th><th class="num">Invokes</th><th class="num">Gas (XEL)</th></tr></thead>
+      <tbody>${deployedRows}</tbody>
+    </table></div>
+  </div>` : "";
+
   const txRows = txs.length
     ? txs.map((t) => {
         const hash = String(t.hash ?? "");
@@ -207,6 +244,7 @@ account.get("/account/:address", async (c) => {
 
   const content = `${hero}
     <div class="grid-2">${overview}${activity}</div>
+    ${deployedPanel}
     ${history}
     <div class="tx-note">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>

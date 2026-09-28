@@ -193,6 +193,8 @@ CREATE INDEX IF NOT EXISTS idx_asset_supply_asset_ts ON asset_supply_snapshots(a
 CREATE TABLE IF NOT EXISTS contracts (
   contract_id TEXT PRIMARY KEY, deployer TEXT, deploy_topo INTEGER, invoke_count INTEGER, gas_total INTEGER, events_count INTEGER
 );
+-- per-deployer lookup for the account page "Contracts Deployed" panel
+CREATE INDEX IF NOT EXISTS idx_contracts_deployer ON contracts(deployer);
 
 -- market
 CREATE TABLE IF NOT EXISTS market_snapshots (
