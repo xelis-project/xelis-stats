@@ -4,12 +4,17 @@ import { layout, statCard } from "../../client/layout";
 import { icons } from "../../client/icons";
 import { fmtInt, shortHash, fmtTime, ago, atomic, timeCell } from "../../client/format";
 import { knownEntity } from "../entities";
+import { rpc } from "../xelis";
 import { srvSort, TX_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
-import { PAGE_SIZE, pager, esc, jsq, clampInt, logErr, blkCopyScript, num } from "./shared";
+import { PAGE_SIZE, pager, esc, jsq, clampInt, logErr, blkCopyScript, flaggedText, num } from "./shared";
 import { topNRaw, countRaw, mergeAgg, mergeGroups, fetchBlockTimes } from "../shards";
 
 export const account = new Hono<{ Bindings: Env }>();
+
+const XEL_ASSET_ID = "0".repeat(64);
+// The daemon caps `get_account_assets` at 64 assets per call.
+const ACCOUNT_ASSETS_MAX = 64;
 
 account.get("/account/:address", async (c) => {
   const address = c.req.param("address");
@@ -39,6 +44,7 @@ account.get("/account/:address", async (c) => {
   let minedAll = 0;
   let maxTopo: number | null = null;
   let contractRows: Record<string, unknown>[] = [];
+  let accountAssets: string[] = [];
   try {
     const conds: string[] = ["sender = ?"];
     const binds: unknown[] = [address];
@@ -47,7 +53,7 @@ account.get("/account/:address", async (c) => {
     if (executed === "0") { conds.push("executed = 0"); }
     const histExtra = { sql: conds.join(" AND "), binds };
     // The per-address fact queries are independent, so run them concurrently.
-    const [acctRow, histTotalN, txRows, aggRow, typeRows, minedAllRow, maxTopoRow, contractResult] = await Promise.all([
+    const [acctRow, histTotalN, txRows, aggRow, typeRows, minedAllRow, maxTopoRow, contractResult, assetResult] = await Promise.all([
       db.prepare("SELECT * FROM accounts WHERE address = ?").bind(address).first<Record<string, unknown>>(),
       // SUM(fee) instead of AVG(fee): averages are merged across shards in JS
       countRaw(c.env, { table: "tx_index", extra: histExtra, floorCol: "block_topo" }),
@@ -78,6 +84,10 @@ account.get("/account/:address", async (c) => {
         `SELECT contract_id, deploy_topo, invoke_count, gas_total, COUNT(*) OVER() AS total
          FROM contracts WHERE deployer = ? ORDER BY invoke_count DESC, deploy_topo DESC LIMIT 100`
       ).bind(address).all<Record<string, unknown>>().then((r) => r.results ?? []),
+      // assets with a registered (encrypted) balance for this account; the node
+      // RPC is best-effort, so a failure must not drop the indexed results
+      rpc<string[]>("get_account_assets", { address, skip: 0, maximum: ACCOUNT_ASSETS_MAX }, c.env.XELIS_NODE)
+        .catch(() => [] as string[]),
     ]);
     acct = acctRow ?? undefined;
     histTotal = histTotalN;
@@ -89,6 +99,7 @@ account.get("/account/:address", async (c) => {
     minedAll = Number(minedAllRow?.c) || 0;
     maxTopo = maxTopoRow?.m ?? null;
     contractRows = contractResult;
+    accountAssets = Array.isArray(assetResult) ? assetResult : [];
   } catch (err) { logErr("page/account", err); }
   const histPages = Math.max(1, Math.ceil(histTotal / PAGE_SIZE));
 
@@ -204,6 +215,49 @@ account.get("/account/:address", async (c) => {
     </table></div>
   </div>` : "";
 
+  // local metadata for the assets the node reports for this account
+  const assetMeta = new Map<string, { name: string | null; symbol: string | null; decimals: number | null }>();
+  const nonXelIds = accountAssets.filter((a) => a && a !== XEL_ASSET_ID);
+  try {
+    if (nonXelIds.length) {
+      const rows = await db.prepare(
+        `SELECT asset_id, name, symbol, decimals FROM assets WHERE asset_id IN (${nonXelIds.map(() => "?").join(",")})`
+      ).bind(...nonXelIds).all<{ asset_id: string; name: string | null; symbol: string | null; decimals: number | null }>();
+      for (const r of rows.results ?? []) assetMeta.set(r.asset_id, { name: r.name, symbol: r.symbol, decimals: r.decimals });
+    }
+  } catch (err) { logErr("page/account", err); }
+
+  const orderedAssets = [...accountAssets].sort((a, b) => {
+    if (a === XEL_ASSET_ID) return -1;
+    if (b === XEL_ASSET_ID) return 1;
+    return 0;
+  });
+  const assetRows = orderedAssets.length
+    ? orderedAssets.map((aid) => {
+        const isXel = aid === XEL_ASSET_ID;
+        const meta = isXel
+          ? { name: "Xelis", symbol: "XEL", decimals: 8 }
+          : assetMeta.get(aid) ?? { name: null, symbol: null, decimals: null };
+        const label = meta.symbol ? flaggedText(meta.symbol) : esc(shortHash(aid, 8));
+        return `<tr>
+          <td><a class="mono" href="/asset/${esc(aid)}">${label}</a></td>
+          <td>${meta.name ? flaggedText(meta.name) : "—"}</td>
+          <td class="num">${meta.decimals != null ? fmtInt(meta.decimals) : "—"}</td>
+          <td>${isXel ? '<span class="badge">native</span>' : ""}</td>
+        </tr>`;
+      }).join("")
+    : `<tr><td colspan="4" style="color:var(--text-dim)">No registered assets returned by the node for this address.</td></tr>`;
+  const assetsPanel = `<div class="panel">
+    <div class="panel-head">
+      <h2>Assets <span style="color:var(--text-dim)">${orderedAssets.length > 0 ? `${fmtInt(orderedAssets.length)} registered` : "none observed"}</span></h2>
+    </div>
+    <div class="tablewrap"><table>
+      <thead><tr><th>Asset</th><th>Name</th><th class="num">Decimals</th><th></th></tr></thead>
+      <tbody>${assetRows}</tbody>
+    </table></div>
+    <p style="color:var(--text-dim);font-size:1.1rem;margin-top:0.8rem">Assets the account has a registered balance for, reported by the node's <span class="mono">get_account_assets</span> RPC. Balances are encrypted, so amounts are not shown.</p>
+  </div>`;
+
   const txRows = txs.length
     ? txs.map((t) => {
         const hash = String(t.hash ?? "");
@@ -243,6 +297,7 @@ account.get("/account/:address", async (c) => {
 
   const content = `${hero}
     <div class="grid-2">${overview}${activity}</div>
+    ${assetsPanel}
     ${history}
     ${deployedPanel}
     <div class="tx-note">
