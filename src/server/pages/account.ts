@@ -2,9 +2,9 @@ import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout, statCard } from "../../client/layout";
 import { icons } from "../../client/icons";
-import { fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/format";
+import { fmt, fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/format";
 import { knownEntity } from "../entities";
-import { srvSort, TX_COLS } from "../sort";
+import { srvSort, TX_COLS, BLOCK_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
 import { PAGE_SIZE, pager, esc, jsq, clampInt, logErr, blkCopyScript, num } from "./shared";
 import { topNRaw, countRaw, mergeAgg, mergeGroups } from "../shards";
@@ -30,6 +30,32 @@ account.get("/account/:address", async (c) => {
     return q ? `/account/${esc(address)}?${q}` : `/account/${esc(address)}`;
   });
 
+  // mined-blocks section: separate params (bpage/btype/bmin/bsort/bdir) so the
+  // block table does not collide with the sent-tx history params above.
+  const bPage = clampInt(c.req.query("bpage"), 1, 100_000);
+  const BT_TYPES = ["normal", "side", "sync"];
+  const bTypeRaw = (c.req.query("btype") ?? "").toLowerCase();
+  const bType = BT_TYPES.includes(bTypeRaw) ? bTypeRaw[0].toUpperCase() + bTypeRaw.slice(1) : "";
+  const bMinRaw = Number(c.req.query("bmin") ?? "");
+  const bMin = Number.isFinite(bMinRaw) && bMinRaw > 0 ? Math.floor(bMinRaw) : 0;
+  const bBase = `/account/${esc(address)}`;
+  const bsrt = srvSort(
+    (nm) => (nm === "sort" ? c.req.query("bsort") : nm === "dir" ? c.req.query("bdir") : undefined),
+    BLOCK_COLS, "topo", "topoheight",
+    (s) => {
+      const p = new URLSearchParams();
+      if (bType) p.set("btype", bType);
+      if (bMin) p.set("bmin", String(bMin));
+      if (s) {
+        const sp = new URLSearchParams(s);
+        if (sp.get("sort")) p.set("bsort", sp.get("sort")!);
+        if (sp.get("dir")) p.set("bdir", sp.get("dir")!);
+      }
+      const q = p.toString();
+      return q ? `${bBase}?${q}` : bBase;
+    },
+  );
+
   let acct: Record<string, unknown> | undefined;
   let txs: Record<string, unknown>[] = [];
   let histTotal = 0;
@@ -38,6 +64,8 @@ account.get("/account/:address", async (c) => {
   let types: Record<string, unknown>[] = [];
   let minedAll = 0;
   let maxTopo: number | null = null;
+  let blockRowsRaw: Record<string, unknown>[] = [];
+  let blockFilteredTotal: number | null = null;
   try {
     const conds: string[] = ["sender = ?"];
     const binds: unknown[] = [address];
@@ -84,6 +112,31 @@ account.get("/account/:address", async (c) => {
     maxTopo = maxTopoRow?.m ?? null;
   } catch (err) { logErr("page/account", err); }
   const histPages = Math.max(1, Math.ceil(histTotal / PAGE_SIZE));
+
+  // row-level mined blocks come from `blocks` (daily rollups carry no hashes);
+  // only fetched for addresses that are known miners, mirroring the miner page.
+  if (minedAll > 0) {
+    try {
+      const bconds = ["miner_address = ?"];
+      const cbinds: unknown[] = [address];
+      if (bType) { bconds.push("UPPER(block_type) = UPPER(?)"); cbinds.push(bType); }
+      if (bMin) { bconds.push("tx_count >= ?"); cbinds.push(bMin); }
+      const bextra = { sql: bconds.join(" AND "), binds: cbinds };
+      // unfiltered total reuses the all-time rollup count
+      blockFilteredTotal = bconds.length === 1
+        ? minedAll
+        : await countRaw(c.env, { table: "blocks", extra: bextra, floorCol: "topoheight" });
+      blockRowsRaw = await topNRaw(c.env, {
+        table: "blocks",
+        select: "topoheight, hash, ts, tx_count, difficulty, miner_reward, block_type",
+        order: bsrt.order,
+        limit: PAGE_SIZE,
+        skip: (bPage - 1) * PAGE_SIZE,
+        extra: bextra,
+        floorCol: "topoheight",
+      });
+    } catch (err) { logErr("page/account/blocks", err); }
+  }
 
   const txCount = num(acct?.tx_count) || num(agg?.c);
   const fees = num(agg?.fees);
@@ -205,9 +258,56 @@ account.get("/account/:address", async (c) => {
     ${pager(srt.link(srt.key, srt.dir), page, histPages)}
   </div>`;
 
+  const bTotal = blockFilteredTotal ?? 0;
+  const blockPages = Math.max(1, Math.ceil(bTotal / PAGE_SIZE));
+  const blockRows = blockRowsRaw.length
+    ? blockRowsRaw.map((b) => {
+        const topo = num(b.topoheight);
+        const bt = esc(b.block_type ?? "normal");
+        const hash = String(b.hash ?? "");
+        return `<tr>
+          <td><a href="/block/${topo}"><span class="mint">${fmtInt(topo)}</span></a></td>
+          <td><a class="mono" href="/block/${esc(hash)}">${esc(shortHash(hash, 10))}</a></td>
+          <td>${fmtTime(num(b.ts))}</td>
+          <td class="num">${fmtInt(num(b.tx_count))}</td>
+          <td class="num">${fmt(num(b.difficulty))}</td>
+          <td class="num">${atomic(num(b.miner_reward))}</td>
+          <td><span class="badge ${bt.toLowerCase()}">${bt}</span></td>
+        </tr>`;
+      }).join("")
+    : `<tr><td colspan="7" style="color:var(--text-dim)">${bType || bMin ? "No blocks match the applied filters for this address." : "No blocks mined by this address inside the indexed window."}</td></tr>`;
+
+  const bfActive = !!bType || bMin > 0;
+  const bfFields = `
+    ${filterField("Block type", `<select name="btype">${selectOpts(BT_TYPES.map((t) => t[0].toUpperCase() + t.slice(1)), bType, "all types")}</select>`)}
+    ${filterField("Min transactions", `<input type="number" name="bmin" min="0" step="1" placeholder="e.g. 2" value="${bMin || ""}" />`)}
+  `;
+  const bHidden: Record<string, string> = {};
+  if (bsrt.qs) {
+    const sp = new URLSearchParams(bsrt.qs);
+    if (sp.get("sort")) bHidden.bsort = sp.get("sort")!;
+    if (sp.get("dir")) bHidden.bdir = sp.get("dir")!;
+  }
+  const bfPop = filterPop("f-acct-blocks", bBase, bfFields, { hidden: bHidden, reset: bBase });
+  const blocksPanel = minedTotal > 0
+    ? `<div class="panel">
+    <div class="panel-head">
+      <h2>Blocks Mined <span style="color:var(--text-dim)">${fmtInt(bTotal)} total</span></h2>
+      ${filterButton("f-acct-blocks", bfActive)}
+      ${bfPop}
+    </div>
+    <div class="tablewrap"><table data-srvsort="1">
+      <thead><tr>${bsrt.th("topo", "Block")}${bsrt.th("hash", "Hash")}${bsrt.th("time", "Time")}${bsrt.th("txs", "Txs", true)}${bsrt.th("difficulty", "Difficulty", true)}${bsrt.th("reward", "Reward (XEL)", true)}${bsrt.th("type", "Type")}</tr></thead>
+      <tbody>${blockRows}</tbody>
+    </table></div>
+    ${pager(bsrt.link(bsrt.key, bsrt.dir), bPage, blockPages, "bpage")}
+  </div>`
+    : "";
+
   const content = `${hero}
     <div class="grid-2">${overview}${activity}</div>
     ${history}
+    ${blocksPanel}
     <div class="tx-note">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
       <span>Sender-observation page: shows this address's publicly visible sending activity. Xelis balances and transfer amounts are encrypted; receiver addresses are public and shown on transaction pages.</span>

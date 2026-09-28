@@ -19,9 +19,9 @@ export const logErr = (scope: string, err: unknown): void => {
   console.error(`${scope}:`, err instanceof Error ? err.message : String(err));
 };
 
-export function pager(base: string, page: number, totalPages: number): string {
+export function pager(base: string, page: number, totalPages: number, pageParam = "page"): string {
   if (totalPages <= 1) return "";
-  const href = (p: number) => `${base}${base.includes("?") ? "&" : "?"}page=${p}`;
+  const href = (p: number) => `${base}${base.includes("?") ? "&" : "?"}${pageParam}=${p}`;
   const nums: (number | "…")[] = [];
   for (let p = 1; p <= totalPages; p++) {
     if (p === 1 || p === totalPages || Math.abs(p - page) <= 2) nums.push(p);
