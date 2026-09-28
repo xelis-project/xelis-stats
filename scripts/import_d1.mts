@@ -32,6 +32,7 @@ import { tmpdir } from "node:os";
 import { once } from "node:events";
 import { spawnSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
+import { localD1Path } from "./local_d1.mts";
 
 const has = (name: string): boolean => process.argv.includes(`--${name}`);
 const arg = (name: string): string | undefined =>
@@ -48,18 +49,7 @@ const OUT_DIR = arg("out") ?? process.env.EXPORT_DIR ?? "export";
 // be loaded into its own shard database (see scripts/bootstrap_shards.mts).
 const DB_NAME = arg("db") ?? process.env.D1_NAME ?? "xelis-explorer";
 const STATE_DIR = ".wrangler/state/v3/d1";
-const STATE_D1_DIR = join(STATE_DIR, "miniflare-D1DatabaseObject");
 const TARGET = REMOTE ? "--remote" : "--local";
-
-/** The local Miniflare D1 SQLite file, if the state directory exists. */
-function localD1Path(): string | undefined {
-  try {
-    const f = readdirSync(STATE_D1_DIR).find((n) => n.endsWith(".sqlite") && n !== "metadata.sqlite");
-    return f ? join(STATE_D1_DIR, f) : undefined;
-  } catch {
-    return undefined;
-  }
-}
 
 /** True when `child` is the same as, or nested under, `parent`. */
 function isInside(parent: string, child: string): boolean {

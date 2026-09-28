@@ -148,7 +148,9 @@ writes the `shards` registry rows into the hot DB. The hot window (everything
 above the last range) plus all aggregate tables is then exported and imported
 into the hot DB, and the live cursors are seeded to the source tip. Pick range
 boundaries so each shard stays under `SHARD_MAX_BYTES` (8 GB); at ~9M blocks two
-or three ranges are typical. Pass `--dry-run` first to print the plan.
+or three ranges are typical. `--remote` is required (the Worker reaches shards
+by uuid through the Cloudflare API, so local Miniflare shards are not routable);
+pass `--dry-run` first to print the plan, which works without `--remote`.
 
 The export range flags are also usable directly: `--lo=N --hi=N` slices the
 blocks/tx dumps (and the tx-linked join tables) to an inclusive range,

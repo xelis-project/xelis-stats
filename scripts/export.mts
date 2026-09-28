@@ -31,18 +31,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, writeFileSync, existsSync, statSync, rmSync, unlinkSync, renameSync, readdirSync } from "node:fs";
 import { join, basename } from "node:path";
-
-const STATE_D1_DIR = ".wrangler/state/v3/d1/miniflare-D1DatabaseObject";
-
-/** The local Miniflare D1 SQLite file, if the state directory exists. */
-function localD1Path(): string | undefined {
-  try {
-    const f = readdirSync(STATE_D1_DIR).find((n) => n.endsWith(".sqlite") && n !== "metadata.sqlite");
-    return f ? join(STATE_D1_DIR, f) : undefined;
-  } catch {
-    return undefined;
-  }
-}
+import { localD1Path } from "./local_d1.mts";
 
 // Source of truth is the live local D1; set BACKFILL_DB to export a standalone
 // backfill file instead.

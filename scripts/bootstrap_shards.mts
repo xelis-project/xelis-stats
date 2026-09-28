@@ -25,12 +25,13 @@
  * sealed shard each; the hot window is everything above the last range. Shard
  * databases are created (via `wrangler d1 create`) unless they already exist.
  */
-import { existsSync, readdirSync, writeFileSync, unlinkSync } from "node:fs";
+import { existsSync, writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
 import { SHARD_SCHEMA } from "../src/server/shards.ts";
+import { localD1Path } from "./local_d1.mts";
 
 const has = (name: string): boolean => process.argv.includes(`--${name}`);
 const arg = (name: string): string | undefined =>
@@ -43,20 +44,12 @@ const SKIP_SCHEMA = has("skip-schema");
 const TARGET = REMOTE ? "--remote" : "--local";
 const HOT_NAME = arg("hot") ?? process.env.D1_NAME ?? "xelis-explorer";
 const OUT_BASE = arg("out") ?? process.env.EXPORT_DIR ?? "export";
-const STATE_D1_DIR = join(".wrangler", "state", "v3", "d1", "miniflare-D1DatabaseObject");
 
 /** Ordered sealed-shard topo ranges, inclusive. */
 interface Range { lo: number; hi: number; }
 
-function localD1Path(): string | undefined {
-  try {
-    const f = readdirSync(STATE_D1_DIR).find((n) => n.endsWith(".sqlite") && n !== "metadata.sqlite");
-    return f ? join(STATE_D1_DIR, f) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
+// Resolved before any local shard DB is created, and pinned into child exports
+// via BACKFILL_DB so they always read the hot file.
 const DB_PATH = process.env.BACKFILL_DB ?? localD1Path() ?? "data/backfill.db";
 
 function parseRanges(raw: string): Range[] {
@@ -94,11 +87,16 @@ function run(args: string[], capture = false): string {
   return typeof res.stdout === "string" ? res.stdout : "";
 }
 
-/** Run a child node script (export/import) in this repo. */
+/** Run a child node script (export/import) in this repo, pinned to the hot DB. */
 function runNode(script: string, args: string[]): void {
   const full = join("scripts", script);
   if (DRY) { console.log(`  [dry-run] node --experimental-strip-types ${full} ${args.join(" ")}`); return; }
-  const res = spawnSync(process.execPath, ["--experimental-strip-types", full, ...args], { stdio: "inherit" });
+  const res = spawnSync(process.execPath, ["--experimental-strip-types", full, ...args], {
+    stdio: "inherit",
+    // creating local shard DBs adds more *.sqlite files next to the hot one, so
+    // tell the children exactly which source DB to read
+    env: { ...process.env, BACKFILL_DB: DB_PATH },
+  });
   if (res.error) throw res.error;
   if (res.status !== 0) throw new Error(`${full} failed (exit ${res.status})`);
 }
@@ -208,7 +206,13 @@ function localTopTimes(lo: number, hi: number): { first: number | null; last: nu
 
 const rangesArg = arg("ranges") ?? "";
 if (!rangesArg) {
-  console.error("Usage: bootstrap_shards.mts --ranges=0-2999999,3000000-5999999 [--remote] [--hot=NAME] [--out=DIR] [--cursor=N] [--dry-run]");
+  console.error("Usage: bootstrap_shards.mts --ranges=0-2999999,3000000-5999999 --remote [--hot=NAME] [--out=DIR] [--cursor=N] [--dry-run]");
+  process.exit(1);
+}
+if (!REMOTE && !DRY) {
+  // the app reaches shards by uuid through the Cloudflare REST API, so Miniflare
+  // (local) shard objects cannot be routed; shards must be real remote D1 DBs
+  console.error("bootstrap_shards requires --remote: local Miniflare shards are not reachable by the running Worker.");
   process.exit(1);
 }
 if (!existsSync(DB_PATH)) {
