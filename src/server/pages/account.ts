@@ -255,7 +255,7 @@ account.get("/account/:address", async (c) => {
       <thead><tr><th>Asset</th><th>Name</th><th class="num">Decimals</th><th></th></tr></thead>
       <tbody>${assetRows}</tbody>
     </table></div>
-    <p style="color:var(--text-dim);font-size:1.1rem;margin-top:0.8rem">Assets the account has a registered balance for, reported by the node's <span class="mono">get_account_assets</span> RPC. Balances are encrypted, so amounts are not shown.</p>
+    <p style="color:var(--text-dim);font-size:1.1rem;margin-top:0.8rem">Assets the account has a registered balance for. Balances are encrypted, so amounts are not shown.</p>
   </div>`;
 
   const txRows = txs.length
