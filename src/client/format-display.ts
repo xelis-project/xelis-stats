@@ -99,7 +99,7 @@ function renderTime(el: HTMLElement, tz: Timezone, style: TimeStyle, format: Tim
     el.title = ago(ms);
     return;
   }
-  const rel = ago(ms);
+  const rel = ago(ms, el.dataset.ageSeconds === "1");
   el.textContent = format === "both" ? `${rel} · ${abs}` : rel;
   el.title = abs;
 }

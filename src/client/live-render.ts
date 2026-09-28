@@ -257,7 +257,7 @@ export function liveBlocksRowsHtml(d: LiveData): string {
     return `<tr>
       <td><a href="/block/${b.topoheight}"><span class="mint">${fmtInt(b.topoheight)}</span></a></td>
       <td class="num">${fmtInt(b.height)}</td>
-      <td>${timeCell(b.ts)}</td>
+      <td>${timeCell(b.ts, { seconds: true })}</td>
       <td class="num">${fmtInt(b.txs)}</td>
       <td><span class="badge ${type}">${type}</span></td>
       <td>${status}</td>

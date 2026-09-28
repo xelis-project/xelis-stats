@@ -125,12 +125,15 @@ export function fmtPct(n: number | null | undefined): string {
 
 // Compact relative age ("2m ago", "3mo ago", "in 4h") for scanning tables.
 // sortable.ts parses the same units, so keep the two in sync when adding one.
-export function ago(ts: number | string | null | undefined): string {
+// `seconds` forces the raw second count instead of the rounded "just now"
+// bucket, for the live dashboard's age column.
+export function ago(ts: number | string | null | undefined, seconds = false): string {
   const ms = toMs(ts);
   if (!Number.isFinite(ms)) return "—";
   const future = ms > Date.now();
   const s = Math.floor(Math.abs(Date.now() - ms) / 1000);
   const stamp = (n: number, u: string): string => (future ? `in ${n}${u}` : `${n}${u} ago`);
+  if (seconds) return stamp(s, "s");
   if (s < 45) return future ? "in a moment" : "just now";
   if (s < 90) return stamp(s, "s");
   if (s < 3600) return stamp(Math.round(s / 60), "m");
@@ -143,10 +146,13 @@ export function ago(ts: number | string | null | undefined): string {
 
 // Server-rendered time cell: relative age with the exact timestamp in the
 // tooltip. format-display.ts rewrites it in place when the browser's time
-// format, zone or clock preference differs.
-export function timeCell(ts: number | string | null | undefined): string {
+// format, zone or clock preference differs. `seconds` keeps the live
+// dashboard's age column on the raw second count (marked so the in-place
+// re-render keeps it).
+export function timeCell(ts: number | string | null | undefined, opts?: { seconds?: boolean }): string {
   const ms = toMs(ts);
   if (!Number.isFinite(ms)) return `<span class="time">—</span>`;
   const abs = formatStamp(new Date(ms), getTimezone(), getTimeStyle());
-  return `<span class="time" data-ts="${ms}" title="${abs}">${ago(ms)}</span>`;
+  const secs = opts?.seconds ? ' data-age-seconds="1"' : "";
+  return `<span class="time" data-ts="${ms}"${secs} title="${abs}">${ago(ms, opts?.seconds)}</span>`;
 }
