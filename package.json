@@ -17,7 +17,8 @@
     "backfill": "node --experimental-strip-types scripts/backfill.mts",
     "backfill:monitor": "node --experimental-strip-types scripts/monitor.mts",
     "export": "node --experimental-strip-types scripts/export.mts",
-    "import:d1": "node --experimental-strip-types scripts/import_d1.mts"
+    "import:d1": "node --experimental-strip-types scripts/import_d1.mts",
+    "bootstrap:shards": "node --experimental-strip-types scripts/bootstrap_shards.mts"
   },
   "dependencies": {
     "bad-words": "^4.1.5",

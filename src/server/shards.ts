@@ -32,7 +32,8 @@ const CF_API = "https://api.cloudflare.com/client/v4";
 const CACHE_MS = 60_000;
 
 // Raw chain tables replicated into every shard (subset of 0001_init.sql).
-const SHARD_SCHEMA = [
+// Exported so scripts/bootstrap_shards.mts applies the exact same schema.
+export const SHARD_SCHEMA = [
   `CREATE TABLE IF NOT EXISTS blocks (
     topoheight INTEGER PRIMARY KEY,
     height INTEGER, hash TEXT, ts INTEGER, version INTEGER, nonce INTEGER,

@@ -127,6 +127,34 @@ Large dumps (`blocks`, `tx`) are split by both scripts: `wrangler d1 execute
 Small dumps keep their plain `<name>.sql` name, and `--only=blocks` works with
 either form.
 
+#### Oversized local D1 (shard bootstrap)
+
+Once the local SQLite passes D1's 10 GB per-database hardcap it can never be
+imported as one database, and `rotateShards` cannot rescue it — rotation only
+moves rows already inside the hot DB. Lay the history out across databases from
+the start instead:
+
+```sh
+npm run bootstrap:shards -- \
+  --ranges=0-2999999,3000000-5999999 \
+  --remote
+```
+
+Each `--ranges` entry (ordered, contiguous, inclusive topoheight ranges) becomes
+its own sealed shard database: `bootstrap_shards.mts` creates it
+(`wrangler d1 create`), applies the shard schema, exports that range with
+`export.mts --lo/--hi --no-aggregates`, loads it with `import_d1.mts --db`, then
+writes the `shards` registry rows into the hot DB. The hot window (everything
+above the last range) plus all aggregate tables is then exported and imported
+into the hot DB, and the live cursors are seeded to the source tip. Pick range
+boundaries so each shard stays under `SHARD_MAX_BYTES` (8 GB); at ~9M blocks two
+or three ranges are typical. Pass `--dry-run` first to print the plan.
+
+The export range flags are also usable directly: `--lo=N --hi=N` slices the
+blocks/tx dumps (and the tx-linked join tables) to an inclusive range,
+`--no-aggregates` omits the aggregate tables, and `--include-null` keeps the
+orphaned (NULL `block_topo`) txs that only the hot export should carry.
+
 ### Legacy Postgres history
 
 The pre-Cloudflare stats database is a PostgreSQL 16 data directory (not a

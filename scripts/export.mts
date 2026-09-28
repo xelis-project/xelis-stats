@@ -13,7 +13,13 @@
  * regenerate specific files (comma-separated, e.g. --only tx,daily_stats).
  *
  * Usage: node --experimental-strip-types scripts/export.mts [--full] [--only=a,b] [--remote]
+ *          [--out=DIR] [--lo=N --hi=N] [--no-aggregates] [--include-null]
  * Env:   BACKFILL_DB, EXPORT_DIR
+ *
+ * --lo/--hi slice blocks/tx_index (and the tx-linked join tables) to an
+ * inclusive topoheight range so each dump can be loaded into a different D1
+ * database (see scripts/bootstrap_shards.mts). --no-aggregates omits the
+ * aggregate tables, which belong only in the hot DB.
  *
  * The source is the Miniflare SQLite behind the local D1 that `npm run dev`
  * writes (the dedicated backfill DB was retired). `BACKFILL_DB` still overrides
@@ -41,7 +47,20 @@ function localD1Path(): string | undefined {
 // Source of truth is the live local D1; set BACKFILL_DB to export a standalone
 // backfill file instead.
 const DB_PATH = process.env.BACKFILL_DB ?? localD1Path() ?? "data/backfill.db";
-const OUT_DIR = process.env.EXPORT_DIR ?? "export";
+const arg = (name: string): string | undefined =>
+  process.argv.find((a: string) => a.startsWith(`--${name}=`))?.split("=").slice(1).join("=");
+const OUT_DIR = arg("out") ?? process.env.EXPORT_DIR ?? "export";
+// Raw-table topo range [LO, HI] inclusive. Used to emit one shard's slice (or
+// the hot window) so each dump can be imported into a different D1 database;
+// without a range the whole table is dumped as before.
+const LO = arg("lo") !== undefined ? Number(arg("lo")) : undefined;
+const HI = arg("hi") !== undefined ? Number(arg("hi")) : undefined;
+const RANGE = LO !== undefined || HI !== undefined;
+// Orphaned txs (block_topo NULL) cannot be range-sliced; only the hot export
+// takes them, shards omit them.
+const INCLUDE_NULL = process.argv.includes("--include-null");
+// Shard exports skip the aggregate tables (they live only in the hot DB).
+const NO_AGG = process.argv.includes("--no-aggregates");
 // `wrangler d1 execute --file` reads the whole dump into a JS string, so V8's
 // max string length (0x1fffffe8 ≈ 512 MiB) is the real cap — not D1's 2 GiB
 // file limit. Keep parts comfortably under it; import_d1 re-splits any leftovers.
@@ -174,7 +193,7 @@ function esc(v: any): string {
 
 /** Keyset-paginated dump by integer key column (fast, no OFFSET). desc=true walks from the top. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit?: number; outFile?: string; chunkRows?: number; desc?: boolean; tieCol?: string; includeNull?: boolean }): number {
+function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit?: number; outFile?: string; chunkRows?: number; desc?: boolean; tieCol?: string; includeNull?: boolean; lo?: number; hi?: number }): number {
   const limit = opts.limit ?? Infinity;
   const file = opts.outFile ?? join(OUT_DIR, `${table}.sql`);
   const out = new SqlChunks(file);
@@ -187,19 +206,30 @@ function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit
   const where = opts.tieCol
     ? `(${keyCol} ${op} ? OR (${keyCol} = ? AND ${opts.tieCol} ${op} ?))`
     : `${keyCol} ${op} ?`;
+  // inclusive topo-range bounds, appended as constant predicates; the keyset
+  // cursor below still walks within them
+  const boundSql: string[] = [];
+  const boundParams: number[] = [];
+  if (opts.lo !== undefined) { boundSql.push(`${keyCol} >= ?`); boundParams.push(opts.lo); }
+  if (opts.hi !== undefined) { boundSql.push(`${keyCol} <= ?`); boundParams.push(opts.hi); }
+  const allWhere = boundSql.length ? `${where} AND ${boundSql.join(" AND ")}` : where;
   const order = opts.tieCol ? `${keyCol} ${dir}, ${opts.tieCol} ${dir}` : `${keyCol} ${dir}`;
   let count = 0;
-  let lastKey = desc ? Number.MAX_SAFE_INTEGER : -1;
+  // seed the keyset at the range edge so the first page starts inside [lo, hi]
+  let lastKey = desc
+    ? (opts.hi !== undefined ? opts.hi + 1 : Number.MAX_SAFE_INTEGER)
+    : (opts.lo !== undefined ? opts.lo - 1 : -1);
   let lastTie = desc ? "\uffff" : "";
   let buffer: string[] = [];
 
   for (;;) {
     if (count >= limit) break;
     const pageSize = Math.min(chunkRows, limit - count);
-    const stmt = db.prepare(`SELECT ${cols.join(", ")} FROM ${table} WHERE ${where} ORDER BY ${order} LIMIT ?`);
+    const stmt = db.prepare(`SELECT ${cols.join(", ")} FROM ${table} WHERE ${allWhere} ORDER BY ${order} LIMIT ?`);
     stmt.setReadBigInts(true);
+    const pageParams = opts.tieCol ? [lastKey, lastKey, lastTie] : [lastKey];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows: any[] = opts.tieCol ? stmt.all(lastKey, lastKey, lastTie, pageSize) : stmt.all(lastKey, pageSize);
+    const rows: any[] = stmt.all(...pageParams, ...boundParams, pageSize);
     if (!rows.length) break;
     for (const row of rows) {
       const vals = cols.map((c) => esc(row[c]));
@@ -237,13 +267,16 @@ function dumpKeyset(table: string, keyCol: string, cols: string[], opts: { limit
  *  second column to break ties, since the value columns of join tables do not
  *  carry a numeric cursor. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function dumpKeysetText(table: string, keyCol: string, cols: string[], opts: { outFile: string; chunkRows?: number; tieCol?: string }): number {
+function dumpKeysetText(table: string, keyCol: string, cols: string[], opts: { outFile: string; chunkRows?: number; tieCol?: string; extra?: { sql: string; binds: (string | number)[] } }): number {
   const chunkRows = opts.chunkRows ?? 100_000;
   const tieCol = opts.tieCol;
   const out = new SqlChunks(opts.outFile);
   const where = tieCol
     ? `(${keyCol} > ? OR (${keyCol} = ? AND ${tieCol} > ?))`
     : `${keyCol} > ?`;
+  // extra predicate (e.g. restrict a hash-keyed join table to a topo range via
+  // tx_index); binds follow the keyset params
+  const extraSql = opts.extra ? ` AND (${opts.extra.sql})` : "";
   const order = tieCol ? `${keyCol} ASC, ${tieCol} ASC` : `${keyCol} ASC`;
   let count = 0;
   let lastKey = "";
@@ -251,10 +284,11 @@ function dumpKeysetText(table: string, keyCol: string, cols: string[], opts: { o
   const buffer: string[] = [];
 
   for (;;) {
-    const stmt = db.prepare(`SELECT DISTINCT ${cols.join(", ")} FROM ${table} WHERE ${where} ORDER BY ${order} LIMIT ?`);
+    const stmt = db.prepare(`SELECT DISTINCT ${cols.join(", ")} FROM ${table} WHERE ${where}${extraSql} ORDER BY ${order} LIMIT ?`);
     stmt.setReadBigInts(true);
+    const pageParams = tieCol ? [lastKey, lastKey, lastTie] : [lastKey];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows: any[] = tieCol ? stmt.all(lastKey, lastKey, lastTie, chunkRows) : stmt.all(lastKey, chunkRows);
+    const rows: any[] = stmt.all(...pageParams, ...(opts.extra?.binds ?? []), chunkRows);
     if (!rows.length) break;
     for (const row of rows) {
       buffer.push(`(${cols.map((c) => esc(row[c])).join(",")})`);
@@ -405,6 +439,9 @@ const AGG_IGNORE = new Set([
   "daily_address_stats", "daily_assets", "assets", "contracts", "daily_contracts",
 ]);
 
+if (NO_AGG) {
+  console.log("Aggregates skipped (--no-aggregates): shard exports carry only raw tables.");
+} else {
 for (const [file, table, cols, sql] of AGG_JOBS) {
   if (!wanted(file)) { console.log(`  ${table}: skipped (--only)`); continue; }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -427,6 +464,7 @@ for (const [file, table, cols, sql] of AGG_JOBS) {
   const parts = out.close();
   console.log(`  ${table}: ${rows.length.toLocaleString()} rows${parts.length ? ` (${totalMB(parts)} MB${parts.length > 1 ? `, ${parts.length} parts` : ""})` : " (empty — file not written)"}`);
 }
+}
 
 // ---------- chain data (D1) ----------
 
@@ -434,7 +472,7 @@ console.log("Exporting chain data (D1): all blocks, all txs, tx↔asset and tx�
 if (wanted("blocks")) {
   const nBlocks = dumpKeyset("blocks", "topoheight",
     ["topoheight", "height", "hash", "ts", "version", "nonce", "difficulty", "size", "tx_count", "block_type", "miner_address", "miner_reward", "dev_reward", "burned", "fee_total", "cum_difficulty", "tips", "txs_hashes"],
-    { outFile: join(OUT_DIR, "blocks.sql"), desc: true });
+    { outFile: join(OUT_DIR, "blocks.sql"), desc: true, lo: LO, hi: HI });
   const parts = resolveOutFiles("blocks");
   console.log(`  blocks: ${nBlocks.toLocaleString()} rows${parts.length ? ` (${totalMB(parts)} MB${parts.length > 1 ? `, ${parts.length} parts` : ""})` : " (empty)"}`);
 } else {
@@ -444,18 +482,29 @@ if (wanted("blocks")) {
 if (wanted("tx")) {
   const nTxs = dumpKeyset("tx_index", "block_topo",
     ["hash", "block_topo", "ts", "fee", "size", "tx_type", "sender", "transfer_count", "version", "multisig", "contract_id", "gas", "executed", "encrypted", "burn_amount", "burn_asset"],
-    { outFile: join(OUT_DIR, "tx.sql"), chunkRows: 100_000, tieCol: "hash", includeNull: true });
+    { outFile: join(OUT_DIR, "tx.sql"), chunkRows: 100_000, tieCol: "hash", includeNull: !RANGE || INCLUDE_NULL, lo: LO, hi: HI });
   const parts = resolveOutFiles("tx");
   console.log(`  tx: ${nTxs.toLocaleString()} rows${parts.length > 1 ? ` (${parts.length} parts)` : ""}`);
 } else {
   console.log("  tx: skipped (--only)");
 }
 
+/** Restrict a hash-keyed join table to the current topo range by joining the
+ *  local tx_index; returns undefined when no range is set. */
+function txRangeExtra(table: string): { sql: string; binds: (string | number)[] } | undefined {
+  if (!RANGE) return undefined;
+  const conds: string[] = [];
+  const binds: (string | number)[] = [];
+  if (LO !== undefined) { conds.push("i.block_topo >= ?"); binds.push(LO); }
+  if (HI !== undefined) { conds.push("i.block_topo <= ?"); binds.push(HI); }
+  return { sql: `EXISTS (SELECT 1 FROM tx_index i WHERE i.hash = ${table}.tx_hash AND ${conds.join(" AND ")})`, binds };
+}
+
 // join tables: without these the asset/contract detail pages have no tx links
 // (tx_assets is keyed by hash+asset, tx_contracts by hash)
 if (wanted("tx_assets")) {
   const n = dumpKeysetText("tx_assets", "tx_hash", ["tx_hash", "asset"],
-    { outFile: join(OUT_DIR, "tx_assets.sql"), chunkRows: 100_000, tieCol: "asset" });
+    { outFile: join(OUT_DIR, "tx_assets.sql"), chunkRows: 100_000, tieCol: "asset", extra: txRangeExtra("tx_assets") });
   const parts = resolveOutFiles("tx_assets");
   console.log(`  tx_assets: ${n.toLocaleString()} rows${parts.length > 1 ? ` (${parts.length} parts)` : ""}`);
 } else {
@@ -464,7 +513,7 @@ if (wanted("tx_assets")) {
 
 if (wanted("tx_contracts")) {
   const n = dumpKeysetText("tx_contracts", "tx_hash", ["tx_hash", "contract_id", "max_gas"],
-    { outFile: join(OUT_DIR, "tx_contracts.sql"), chunkRows: 100_000 });
+    { outFile: join(OUT_DIR, "tx_contracts.sql"), chunkRows: 100_000, extra: txRangeExtra("tx_contracts") });
   const parts = resolveOutFiles("tx_contracts");
   console.log(`  tx_contracts: ${n.toLocaleString()} rows${parts.length > 1 ? ` (${parts.length} parts)` : ""}`);
 } else {

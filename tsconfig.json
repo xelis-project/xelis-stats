@@ -9,6 +9,7 @@
     "skipLibCheck": true,
     "noEmit": true,
     "isolatedModules": true,
+    "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "types": ["@cloudflare/workers-types", "vite/client", "node"]
   },

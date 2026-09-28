@@ -3,9 +3,11 @@
  *
  *   scripts/import_d1.mts [--remote] [--reset] [--only=a,b] [--no-migrate]
  *                         [--no-seed] [--cursor=N] [--dry-run] [--out=export]
+ *                         [--db=NAME]
  *
  * Default target is the local Miniflare D1 (`.wrangler/state/v3/d1`); pass
- * --remote for the deployed database.
+ * --remote for the deployed database. --db loads into a named database other
+ * than `xelis-explorer` (e.g. a shard seeded by scripts/bootstrap_shards.mts).
  *
  * --reset wipes the local D1 state first (refused for --remote, and refused when
  * the resolved source is the local D1 itself, since that would delete the data
@@ -42,7 +44,9 @@ const NO_MIGRATE = has("no-migrate");
 const NO_SEED = has("no-seed");
 const ONLY = (arg("only") ?? "").split(",").filter((x) => x.length > 0);
 const OUT_DIR = arg("out") ?? process.env.EXPORT_DIR ?? "export";
-const DB_NAME = process.env.D1_NAME ?? "xelis-explorer";
+// Target database name. --db overrides D1_NAME so a shard export directory can
+// be loaded into its own shard database (see scripts/bootstrap_shards.mts).
+const DB_NAME = arg("db") ?? process.env.D1_NAME ?? "xelis-explorer";
 const STATE_DIR = ".wrangler/state/v3/d1";
 const STATE_D1_DIR = join(STATE_DIR, "miniflare-D1DatabaseObject");
 const TARGET = REMOTE ? "--remote" : "--local";
