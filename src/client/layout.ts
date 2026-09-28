@@ -45,7 +45,7 @@ export function layout(title: string, content: string, active: string, bodyClass
 <body class="${escHtml(bodyClass)}">
   <div id="app">
     <header class="site">
-      <a class="logo" href="/"><svg width="22" height="21" viewBox="0 0 778 743" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M388.909 742.872L777.817 353.964L424.056 0.202599L478.809 132.737L700.036 353.964L388.909 665.091L77.7817 353.964L299.507 129.121L353.964 0L0 353.964L388.909 742.872Z"/><path d="M388.909 665.091L353.964 0L299.507 129.121L388.909 665.091Z"/><path d="M424.056 0.202599L388.909 665.091L478.809 132.737L424.056 0.202599Z"/></svg><span>XELIS&nbsp;<span style="color:var(--mint)">STATS</span></span></a>
+      <a class="logo" href="/"><svg width="22" height="21" viewBox="0 0 778 743" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M388.909 742.872L777.817 353.964L424.056 0.202599L478.809 132.737L700.036 353.964L388.909 665.091L77.7817 353.964L299.507 129.121L353.964 0L0 353.964L388.909 742.872Z"/><path d="M388.909 665.091L353.964 0L299.507 129.121L388.909 665.091Z"/><path d="M424.056 0.202599L388.909 665.091L478.809 132.737L424.056 0.202599Z"/></svg><span>XELIS&nbsp;<span style="color:var(--mint)">EXPLORER</span></span></a>
       <nav id="site-nav"><div class="nav-clip"><div class="nav-grid">${nav}</div><div class="nav-foot"><a href="/tools">Tools</a><a href="/api/docs">API</a><a href="/status">Status</a></div></div></nav>
       <button class="searchbox" type="button" onclick="openSearch()" aria-label="Search">${icons.search}<span>Search</span><kbd>Ctrl K</kbd></button>
       <a class="btn ghost icon-btn" href="/settings" title="Settings" aria-label="Settings">${icons.settings}</a>
@@ -55,7 +55,7 @@ export function layout(title: string, content: string, active: string, bodyClass
     <div class="nav-backdrop" aria-hidden="true" onclick="closeNav()"></div>
     <main id="main">${content}</main>
     <footer class="site">
-      <a class="footer-brand" href="/">${XEL_LOGO}<span>XELIS&nbsp;<span style="color:var(--mint)">STATS</span></span></a>
+      <a class="footer-brand" href="/">${XEL_LOGO}<span>XELIS&nbsp;<span style="color:var(--mint)">EXPLORER</span></span></a>
       <nav class="footer-links">
         <a href="/charts">Charts</a>
         <a href="/tools">Tools</a>
