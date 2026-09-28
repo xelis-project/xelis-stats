@@ -16,15 +16,13 @@
     {
       "binding": "DB",
       "database_name": "xelis-explorer",
-      // `wrangler d1 create xelis-explorer` — see README "Deploy"
-      "database_id": "TODO_CREATE_WITH_WRANGLER"
+      "database_id": "82c1b202-58ed-4252-bda4-5abc2826c3a7"
     }
   ],
   "kv_namespaces": [
     {
       "binding": "KV",
-      // `wrangler kv namespace create KV` — see README "Deploy"
-      "id": "TODO_CREATE_WITH_WRANGLER"
+      "id": "94ec460059b64e6fbe2a3075e0d21087"
     }
   ],
   "durable_objects": {
@@ -61,7 +59,7 @@
   },
   "vars": {
     "XELIS_NODE": "https://node.xelis.io",
-    "XELIS_EXPLORER_DB_ID": "TODO_CREATE_WITH_WRANGLER",
+    "XELIS_EXPLORER_DB_ID": "82c1b202-58ed-4252-bda4-5abc2826c3a7",
     "SHARD_MAX_BYTES": "8589934592"
   }
 }
