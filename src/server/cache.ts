@@ -15,17 +15,27 @@ export async function getStatsCached(env: Env): Promise<StatsValue> {
   const cacheKey = "stats:v2";
   const cached = await env.KV.get<StatsValue>(cacheKey, "json");
   if (cached) return cached;
-  const [info, txCount, accounts, assets, peerRow, chainSize] = await Promise.all([
-    getInfo(env.XELIS_NODE),
-    rpc<number>("count_transactions", undefined, env.XELIS_NODE).catch(() => -1),
-    rpc<number>("count_accounts", undefined, env.XELIS_NODE).catch(() => -1),
-    rpc<number>("count_assets", undefined, env.XELIS_NODE).catch(() => -1),
-    env.DB.prepare("SELECT total FROM peer_snapshots ORDER BY ts DESC LIMIT 1").first<{ total: number }>().catch(() => null),
-    getSizeOnDisk(env.XELIS_NODE).catch(() => null),
-  ]);
-  const value = { info, chainSize, txCount, accounts, assets, peers: peerRow?.total ?? 0 };
-  await env.KV.put(cacheKey, JSON.stringify(value), { expirationTtl: 60 });
-  return value;
+  try {
+    const [info, txCount, accounts, assets, peerRow, chainSize] = await Promise.all([
+      getInfo(env.XELIS_NODE),
+      rpc<number>("count_transactions", undefined, env.XELIS_NODE).catch(() => -1),
+      rpc<number>("count_accounts", undefined, env.XELIS_NODE).catch(() => -1),
+      rpc<number>("count_assets", undefined, env.XELIS_NODE).catch(() => -1),
+      env.DB.prepare("SELECT total FROM peer_snapshots ORDER BY ts DESC LIMIT 1").first<{ total: number }>().catch(() => null),
+      getSizeOnDisk(env.XELIS_NODE).catch(() => null),
+    ]);
+    const value = { info, chainSize, txCount, accounts, assets, peers: peerRow?.total ?? 0 };
+    await env.KV.put(cacheKey, JSON.stringify(value), { expirationTtl: 60 });
+    // Keep a longer-lived copy so a transient node outage (e.g. a Cloudflare
+    // 521 while the node origin restarts) serves the last good snapshot instead
+    // of failing the request.
+    await env.KV.put("stats:last", JSON.stringify(value), { expirationTtl: 7 * 86400 }).catch(() => { /* best effort */ });
+    return value;
+  } catch (err) {
+    const stale = await env.KV.get<StatsValue>("stats:last", "json").catch(() => null);
+    if (stale) return stale;
+    throw err;
+  }
 }
 
 // Protocol fee constants (atomic XEL). Kept in sync with the Xelis docs:
