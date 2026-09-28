@@ -125,15 +125,15 @@ export function fmtPct(n: number | null | undefined): string {
 
 // Compact relative age ("2m ago", "3mo ago", "in 4h") for scanning tables.
 // sortable.ts parses the same units, so keep the two in sync when adding one.
-// `seconds` forces the raw second count instead of the rounded "just now"
-// bucket, for the live dashboard's age column.
+// `seconds` shows the raw second count under a minute instead of the rounded
+// "just now" bucket, for the live dashboard's age column.
 export function ago(ts: number | string | null | undefined, seconds = false): string {
   const ms = toMs(ts);
   if (!Number.isFinite(ms)) return "—";
   const future = ms > Date.now();
   const s = Math.floor(Math.abs(Date.now() - ms) / 1000);
   const stamp = (n: number, u: string): string => (future ? `in ${n}${u}` : `${n}${u} ago`);
-  if (seconds) return stamp(s, "s");
+  if (seconds && s < 60) return stamp(s, "s");
   if (s < 45) return future ? "in a moment" : "just now";
   if (s < 90) return stamp(s, "s");
   if (s < 3600) return stamp(Math.round(s / 60), "m");
