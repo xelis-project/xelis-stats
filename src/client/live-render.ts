@@ -154,8 +154,15 @@ export function liveStatsHtml(d: LiveData): string {
   ].join("");
 }
 
-function dagNode(b: LiveBlock): string {
+// Fill level of a node's tx counter, relative to the busiest block in the
+// window (min 1 so an empty window still yields a deterministic value).
+function maxTxsInWindow(blocks: LiveBlock[]): number {
+  return Math.max(1, ...blocks.map((b) => b.txs));
+}
+
+function dagNode(b: LiveBlock, maxTxs: number): string {
   const cls = `live-node ${esc(b.block_type.toLowerCase())}${b.stable ? "" : " unstable"}`;
+  const fill = Math.max(0, Math.min(100, (b.txs / maxTxs) * 100));
   const detail = `topo ${b.topoheight} · height ${b.height} · ${b.block_type} · ${b.txs} tx · ${shortHash(b.hash, 8)}`;
   const attrs = [
     `data-topo="${b.topoheight}"`,
@@ -171,7 +178,7 @@ function dagNode(b: LiveBlock): string {
     `data-hash="${esc(b.hash)}"`,
     `data-stable="${b.stable ? "1" : "0"}"`,
   ].join(" ");
-  return `<a class="${cls}" href="/block/${b.topoheight}" ${attrs} aria-label="${esc(detail)}"></a>`;
+  return `<a class="${cls}" href="/block/${b.topoheight}" ${attrs} aria-label="${esc(detail)}"><span class="live-node-fill" style="height:${fill.toFixed(1)}%"></span></a>`;
 }
 
 // Hover card for a DAG tip node. Values are read back from the data-* attributes
@@ -220,18 +227,19 @@ export function liveDagHtml(d: LiveData): string {
   }
   const stable = blocks.filter((b) => b.stable);
   const unstable = blocks.filter((b) => !b.stable);
+  const maxTxs = maxTxsInWindow(blocks);
 
   const segs: string[] = [];
   if (unstable.length) {
     segs.push(`<div class="live-dag-seg">
       <div class="live-dag-seg-head"><span class="live-dag-cap unstable">unstable · may reorg</span></div>
-      <div class="live-dag-nodes">${unstable.map(dagNode).join("")}</div>
+      <div class="live-dag-nodes">${unstable.map((b) => dagNode(b, maxTxs)).join("")}</div>
     </div>`);
   }
   if (stable.length) {
     segs.push(`<div class="live-dag-seg">
       <div class="live-dag-seg-head"><span class="live-dag-cap">stable</span></div>
-      <div class="live-dag-nodes">${stable.map(dagNode).join("")}</div>
+      <div class="live-dag-nodes">${stable.map((b) => dagNode(b, maxTxs)).join("")}</div>
     </div>`);
   }
 
@@ -244,6 +252,7 @@ export function liveDagHtml(d: LiveData): string {
     <span class="live-key"><span class="live-key-dot normal"></span>Normal</span>
     <span class="live-key"><span class="live-key-dot side"></span>Side</span>
     <span class="live-key"><span class="live-key-dot sync"></span>Sync</span>
+    <span class="live-key live-key-fill">white fill = transactions, relative to the busiest block in the window</span>
   </div>`;
   return `<div class="live-dag"><div class="live-dag-track">${segs.join("")}</div></div>${note}${legend}`;
 }

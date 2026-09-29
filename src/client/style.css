@@ -1370,9 +1370,18 @@ html.reduce-motion *::after {
 .live-dag-range { font-family: var(--mono); font-size: 1.05rem; color: var(--text-dim2); }
 .live-dag-nodes { display: flex; flex-wrap: wrap; gap: 0.7rem; }
 .live-node {
+  position: relative; overflow: hidden;
   width: 2rem; height: 2rem; border-radius: 0.5rem; display: inline-block;
   border: 1px solid var(--border); background: hsla(0, 0%, 100%, 0.06);
   transition: transform 0.12s, box-shadow 0.12s;
+}
+/* Transaction load inside the block: fills bottom-up relative to the busiest
+   block in the current window. */
+.live-node-fill {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  background: hsla(0, 0%, 100%, 0.28);
+  border-top: 1px solid hsla(0, 0%, 100%, 0.4);
+  pointer-events: none;
 }
 .live-node:hover { transform: translateY(-2px) scale(1.15); }
 .live-node.normal { border-color: rgba(2, 255, 207, 0.5); background: rgba(2, 255, 207, 0.3); }
