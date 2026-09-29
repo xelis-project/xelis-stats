@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout, statCard } from "../../client/layout";
 import { icons } from "../../client/icons";
-import { fmt, fmtInt, shortHash, fmtTime, ago, atomic } from "../../client/format";
+import { fmt, fmtInt, fmtHash, shortHash, fmtTime, ago, atomic } from "../../client/format";
 import { srvSort, BLOCK_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
 import { esc, jsq, entityTag, blkCopyScript, num, PAGE_SIZE, pager, clampInt, logErr } from "./shared";
@@ -228,7 +228,7 @@ minerDetail.get("/miner/:address", async (c) => {
       ${statCard("Blocks Found", fmtInt(totals.blocks), blocksSub)}
       ${statCard("Rewards Earned", `${atomic(totals.rewards)} XEL`, "miner rewards only · dev reward excluded")}
       ${statCard("Network Share", share30 !== null ? `${share30.toFixed(2)}%` : "—", "of all blocks · 30d")}
-      ${statCard("Est. Hashrate", hashRate !== null ? `${fmt(hashRate)} H/s` : "—", "24h · difficulty ÷ time")}
+      ${statCard("Est. Hashrate", hashRate !== null ? fmtHash(hashRate) : "—", "24h · difficulty ÷ time")}
       ${statCard("Last Block", lastTopo !== null ? `<a href="/block/${lastTopo}">#${fmtInt(lastTopo)}</a>` : "—", lastTs ? ago(lastTs) : "not in indexed window")}
     </div>
   </div>`;

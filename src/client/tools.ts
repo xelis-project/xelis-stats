@@ -5,7 +5,7 @@
 // panels are guarded, so the shared module powers either tool. Inputs are
 // persisted per browser so a reload keeps the last scenario.
 
-import { fmt, fmtInt, fmtXel, ago } from "./format";
+import { fmt, fmtInt, fmtXel, fmtHash, ago } from "./format";
 import { getPref, setPref } from "./prefs";
 
 interface FeeRates {
@@ -53,15 +53,6 @@ function row(k: string, v: string, cls = ""): string {
 function fmtUsd(n: number | null | undefined, decimals = 2): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return "—";
   return `$${n.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
-}
-
-function fmtHash(n: number): string {
-  if (!Number.isFinite(n) || n <= 0) return "—";
-  const units: Array<[number, string]> = [
-    [1e15, "PH/s"], [1e12, "TH/s"], [1e9, "GH/s"], [1e6, "MH/s"], [1e3, "kH/s"], [1, "H/s"],
-  ];
-  for (const [d, u] of units) if (n >= d) return `${fmt(n / d, 2)} ${u}`;
-  return `${fmt(n, 2)} H/s`;
 }
 
 // Percent that stays readable for very small shares (a single GPU on a big net).

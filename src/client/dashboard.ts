@@ -1,5 +1,5 @@
 import { renderChart, renderCompare, cumulativePoints, splitByType, ACCENTS, accentHex, type SeriesPoint, type LineWidth } from "./charts";
-import { fmt, fmtInt, fmtPct, fmtBytes, shortHash, atomic, ago, metricFormatter } from "./format";
+import { fmt, fmtInt, fmtPct, fmtBytes, fmtHash, shortHash, atomic, ago, metricFormatter } from "./format";
 import { icons, gripIcon } from "./icons";
 import { containsBadWord } from "./badwords";
 import { refreshSort } from "./sortable";
@@ -565,7 +565,7 @@ function statValue(field: string | undefined, s: Summary): { value: string; sub:
     case "price": return { value: s.market?.price ? `$${fmt(s.market.price, 4)}` : "—", sub: s.market ? `${fmtPct(s.market.change_pct_24h ?? null)} 24h` : "market unavailable" };
     case "hashrate": {
       const hr = s.difficulty && s.block_time_s ? s.difficulty / s.block_time_s : NaN;
-      return { value: Number.isFinite(hr) ? `${fmt(hr)} H/s` : "—", sub: `difficulty ${fmt(s.difficulty ?? NaN)}` };
+      return { value: Number.isFinite(hr) ? fmtHash(hr) : "—", sub: `difficulty ${fmt(s.difficulty ?? NaN)}` };
     }
     case "marketcap": {
       const circ = (s.supply?.circulating ?? 0) / 1e8;

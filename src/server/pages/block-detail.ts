@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../app";
 import { layout, notFound, statCard } from "../../client/layout";
 import { icons } from "../../client/icons";
-import { fmt, fmtInt, fmtPct, shortHash, fmtTime, ago, atomic, atomicPrecise } from "../../client/format";
+import { fmt, fmtInt, fmtPct, fmtHash, shortHash, fmtTime, ago, atomic, atomicPrecise } from "../../client/format";
 import { rpc } from "../xelis";
 import { fetchBlock, fetchBlockTimes, runOn, type RawTarget } from "../shards";
 import { PAGE_SIZE, pager, esc, jsq, entityTag, blkCopyScript, num, logErr } from "./shared";
@@ -127,7 +127,7 @@ blockDetail.get("/block/:id", async (c) => {
     <div class="cards blk-cards">
       ${statCard("Transactions", fmtInt(txCount), avgFee !== null ? `avg ${atomicPrecise(avgFee)} / tx` : "no transactions")}
       ${statCard("Size", `${fmt(view.size / 1024)} KB`, `${fmtInt(view.size)} bytes`)}
-      ${statCard("Difficulty", fmt(view.difficulty), hashrate ? `≈ ${fmt(hashrate)} H/s est. hashrate` : "network difficulty")}
+      ${statCard("Difficulty", fmt(view.difficulty), hashrate ? `≈ ${fmtHash(hashrate)} est. hashrate` : "network difficulty")}
       ${statCard("Block Time", blockTime !== null ? `${fmtInt(blockTime)}s` : "—", "since previous block")}
       ${statCard("DAG Tips", fmtInt(view.tips.length), "parent blocks in the DAG")}
     </div>

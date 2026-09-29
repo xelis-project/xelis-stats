@@ -2,7 +2,7 @@
 // page renders the first paint with these helpers and the client poller reuses
 // them, so the node-sourced values never touch D1.
 
-import { fmt, fmtInt, fmtBytes, atomic, atomicPrecise, shortHash, timeCell, ago } from "./format";
+import { fmt, fmtInt, fmtBytes, fmtHash, atomic, atomicPrecise, shortHash, timeCell, ago } from "./format";
 
 const esc = (v: unknown): string =>
   String(v ?? "").replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] as string));
@@ -130,7 +130,7 @@ export function liveStatsHtml(d: LiveData): string {
   return [
     card("Topoheight", fmtInt(i.topoheight), `height ${fmtInt(i.height)} · ${unstableShown} unstable shown`),
     card("Stable boundary", fmtInt(i.stable_topoheight), `lag ${fmtInt(d.lag)} topoheights`),
-    card("Difficulty", fmt(i.difficulty), d.hashrate ? `~${fmt(d.hashrate)} H/s estimated` : "hashrate unavailable"),
+    card("Difficulty", fmt(i.difficulty), d.hashrate ? `~${fmtHash(d.hashrate)} estimated` : "hashrate unavailable"),
     card("Block time", blockTime ? `${blockTime.toFixed(1)}s` : "—", target ? `target ${target.toFixed(1)}s` : "target unknown"),
     card("Block reward", `${atomic(i.block_reward)} XEL`, `miner ${atomic(i.miner_reward)} + dev ${atomic(i.dev_reward)}`),
     card("Circulating", `${fmt(circ)} XEL`, pctMax),

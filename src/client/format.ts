@@ -57,6 +57,17 @@ export function metricFormatter(metric: string): (n: number) => string {
   return (n) => fmt(n, 2);
 }
 
+// hashrate with the SI prefix attached to the unit, e.g. "25.30 MH/s" rather
+// than fmt's generic "25.3M H/s", which splits the magnitude from the unit.
+export function fmtHash(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n) || n <= 0) return "—";
+  const units: Array<[number, string]> = [
+    [1e15, "PH/s"], [1e12, "TH/s"], [1e9, "GH/s"], [1e6, "MH/s"], [1e3, "kH/s"], [1, "H/s"],
+  ];
+  for (const [d, u] of units) if (n >= d) return `${fmt(n / d, 2)} ${u}`;
+  return `${fmt(n, 2)} H/s`;
+}
+
 // binary byte sizes: 9.6 GiB-style, for on-disk chain size
 export function fmtBytes(n: number | null | undefined): string {
   if (n === null || n === undefined || !Number.isFinite(n)) return "—";
