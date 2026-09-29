@@ -128,11 +128,10 @@ export function liveStatsHtml(d: LiveData): string {
   const circ = i.circulating_supply / 1e8;
   const max = i.maximum_supply / 1e8;
   const pctMax = max > 0 ? `${((circ / max) * 100).toFixed(2)}% of max supply` : "max supply unknown";
-  const unstableShown = dagBlocks(d).filter((b) => !b.stable).length;
   const w = d.window;
   const peers = d.peers;
   return [
-    card("Topoheight", fmtInt(i.topoheight), `height ${fmtInt(i.height)} · ${unstableShown} unstable shown`),
+    card("Topoheight", fmtInt(i.topoheight), `height ${fmtInt(i.height)}`),
     card("Stable boundary", fmtInt(i.stable_topoheight), `lag ${fmtInt(d.lag)} topoheights`),
     card("Difficulty", fmt(i.difficulty), d.hashrate ? `~${fmtHash(d.hashrate)} estimated` : "hashrate unavailable"),
     card("Block time", blockTime ? `${blockTime.toFixed(1)}s` : "—", target ? `target ${target.toFixed(1)}s` : "target unknown"),
