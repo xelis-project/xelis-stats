@@ -47,7 +47,7 @@ livePage.get("/", async (c) => {
         <div id="live-tx-types">${liveTxTypesHtml(live)}</div>
       </div>
       <div class="panel">
-        <div class="panel-head"><h2>Miner distribution</h2><span class="live-hint">blocks won in the window</span></div>
+        <div class="panel-head"><h2>Miner distribution</h2></div>
         <div id="live-miner-pie">${liveMinerPieHtml(live)}</div>
       </div>
       <div class="panel">
