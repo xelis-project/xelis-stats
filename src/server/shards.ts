@@ -7,8 +7,8 @@
  *    with topoheight > hotFloor).
  *  - Shard DBs (created via the Cloudflare REST API, no wrangler bindings):
  *    sealed topoheight ranges of the same raw tables, e.g. [0 .. 500_000].
- *  - shards table (hot DB): the routing registry. tx_route/block_route map
- *    hashes to topoheights so point lookups hit exactly one database.
+ *  - shards table (hot DB): the routing registry mapping topoheight ranges to
+ *    shard databases. Hash lookups fall back to a fan-out over sealed shards.
  *
  * Rotation (rotateShards, called hourly from cron): when the hot DB crosses
  * SHARD_MAX_BYTES, create a shard DB and copy old raw rows topo batch by topo
@@ -263,43 +263,16 @@ export async function runOn(env: Env, t: RawTarget, sql: string, params: unknown
   return restQuery(env, t.dbId!, sql, params);
 }
 
-// ---------- routing / lookups ----------
-
-async function routeTopo(env: Env, table: "tx_route" | "block_route", hash: string): Promise<number | null> {
-  const col = table === "tx_route" ? "block_topo" : "topoheight";
-  const row = await env.DB.prepare(`SELECT ${col} AS t FROM ${table} WHERE hash = ?`).bind(hash).first<{ t: number }>();
-  return row?.t != null ? Number(row.t) : null;
-}
-
-async function cacheRoute(env: Env, table: "tx_route" | "block_route", hash: string, topo: number): Promise<void> {
-  if (!hash || topo <= 0) return;
-  try {
-    const col = table === "tx_route" ? "block_topo" : "topoheight";
-    await env.DB.prepare(`INSERT OR IGNORE INTO ${table} (hash, ${col}) VALUES (?, ?)`).bind(hash, topo).run();
-  } catch { /* best-effort cache */ }
-}
+// ---------- lookups ----------
 
 export async function fetchTx(env: Env, hash: string): Promise<{ row: Row; target: RawTarget } | null> {
   const shards = await getShards(env);
-  const floor = hotFloor(shards);
-  const routed = await routeTopo(env, "tx_route", hash);
-  if (routed != null && routed <= floor) {
-    const rows = await runOn(env, targetForTopo(shards, routed), "SELECT * FROM tx_index WHERE hash = ?", [hash]);
-    if (rows[0]) return { row: rows[0], target: targetForTopo(shards, routed) };
-  }
   const hot = await env.DB.prepare("SELECT * FROM tx_index WHERE hash = ?").bind(hash).first<Row>();
-  if (hot) {
-    const topo = Number(hot.block_topo ?? 0);
-    if (topo > 0) void cacheRoute(env, "tx_route", hash, topo);
-    return { row: hot, target: { kind: "hot" } };
-  }
+  if (hot) return { row: hot, target: { kind: "hot" } };
   // not in hot: fan out sealed shards (bounded by shard count, rare path)
   for (const s of shards.filter((x) => x.sealed)) {
     const rows = await runOn(env, { kind: "shard", dbId: s.db_id }, "SELECT * FROM tx_index WHERE hash = ?", [hash]);
-    if (rows[0]) {
-      void cacheRoute(env, "tx_route", hash, Number(rows[0].block_topo ?? 0));
-      return { row: rows[0], target: { kind: "shard", dbId: s.db_id } };
-    }
+    if (rows[0]) return { row: rows[0], target: { kind: "shard", dbId: s.db_id } };
   }
   return null;
 }
@@ -325,22 +298,11 @@ export async function fetchBlock(env: Env, id: string): Promise<{ row: Row; targ
     const row = await byTopo(topo);
     if (row) return { row, target: targetForTopo(shards, topo) };
   }
-  const routed = await routeTopo(env, "block_route", id);
-  if (routed != null) {
-    const row = await byTopo(routed);
-    if (row) return { row, target: targetForTopo(shards, routed) };
-  }
   const hot = await env.DB.prepare("SELECT * FROM blocks WHERE hash = ?").bind(id).first<Row>();
-  if (hot) {
-    void cacheRoute(env, "block_route", id, Number(hot.topoheight ?? 0));
-    return { row: hot, target: { kind: "hot" } };
-  }
+  if (hot) return { row: hot, target: { kind: "hot" } };
   for (const s of shards.filter((x) => x.sealed)) {
     const rows = await restQuery(env, s.db_id, "SELECT * FROM blocks WHERE hash = ?", [id]);
-    if (rows[0]) {
-      void cacheRoute(env, "block_route", id, Number(rows[0].topoheight ?? 0));
-      return { row: rows[0], target: { kind: "shard", dbId: s.db_id } };
-    }
+    if (rows[0]) return { row: rows[0], target: { kind: "shard", dbId: s.db_id } };
   }
   // numeric ids may also match by height
   if (/^\d+$/.test(id)) {
@@ -1086,10 +1048,6 @@ const PRUNE_MIN = 100;
 const ASSET_CHUNK = 90;
 // topoheight span of one legacy asset-sweep boundary
 const ASSET_SWEEP_BLOCKS = 500;
-// topoheight span of one route-backfill boundary
-const ROUTE_SWEEP_BLOCKS = 500;
-// route rows per multi-row insert (2 bound params each, D1 caps at 100)
-const ROUTE_INSERT_ROWS = 50;
 
 /**
  * Size-triggered rotation, run hourly. Prunes hot rows already owned by sealed
@@ -1110,12 +1068,6 @@ export async function rotateShards(env: Env, budgetMs = 25_000): Promise<string>
 
   let shards = await getShards(env, true);
   await ensureShardIndexes(env, shards);
-  // One-time backfill for shards sealed before the copy loop seeded routes:
-  // their hot rows are pruned, so routes must be enumerated from the shard.
-  // Best-effort and resumable; a failed slice is retried on the next run.
-  try {
-    await seedRoutesFromShards(env, shards, started + Math.min(Math.floor(budgetMs / 2), 15_000));
-  } catch { /* retried on the next hourly run */ }
   let open = shards.find((s) => !s.sealed && s.last_topo != null);
 
   if (!open) {
@@ -1188,17 +1140,7 @@ export async function rotateShards(env: Env, budgetMs = 25_000): Promise<string>
       }
       // 3) the copied slice stays in hot: serving is bounded to topo >
       // hotFloor, so duplicates are invisible until pruneShards removes them.
-      // Seed the point-lookup routes from hot before any prune can delete the
-      // rows, so hash lookups resolve to this shard without a fan-out.
-      await env.DB.batch([
-        env.DB.prepare("UPDATE shards SET copied_topo = ? WHERE id = ?").bind(cursor, open.id),
-        env.DB.prepare(
-          "INSERT OR IGNORE INTO block_route (hash, topoheight) SELECT hash, topoheight FROM blocks WHERE topoheight > ? AND topoheight <= ? AND hash IS NOT NULL"
-        ).bind(prev, cursor),
-        env.DB.prepare(
-          "INSERT OR IGNORE INTO tx_route (hash, block_topo) SELECT hash, block_topo FROM tx_index WHERE block_topo > ? AND block_topo <= ? AND hash IS NOT NULL"
-        ).bind(prev, cursor),
-      ]);
+      await env.DB.prepare("UPDATE shards SET copied_topo = ? WHERE id = ?").bind(cursor, open.id).run();
     }
   }
 
@@ -1335,57 +1277,3 @@ async function sweepShardAssets(env: Env, s: ShardRow, deadline: number): Promis
   return { done: cursor >= last, deleted };
 }
 
-/** Bulk-insert (hash, topo) route rows into hot, chunked under D1's param cap. */
-async function insertRouteRows(env: Env, table: string, col: string, rows: Row[]): Promise<void> {
-  for (let i = 0; i < rows.length; i += ROUTE_INSERT_ROWS) {
-    const chunk = rows.slice(i, i + ROUTE_INSERT_ROWS);
-    const marks = chunk.map(() => "(?, ?)").join(",");
-    const binds = chunk.flatMap((r) => [String(r.hash), Number(r[col])]);
-    await env.DB.prepare(`INSERT OR IGNORE INTO ${table} (hash, ${col}) VALUES ${marks}`).bind(...binds).run();
-  }
-}
-
-/**
- * Populate block_route/tx_route for shards that were sealed before the copy
- * loop seeded routes itself. The hot rows are gone by then, so the keys are
- * enumerated from the shard (bounded topo windows, keyset tx paging) and
- * written into the hot route tables. Resumable per shard via `shard_routes_<id>`;
- * this is a one-time cost that makes cold hash lookups O(1) instead of a
- * fan-out over every sealed shard.
- */
-async function seedRoutesFromShards(env: Env, shards: ShardRow[], deadline: number): Promise<void> {
-  for (const s of shards) {
-    if (!s.sealed || s.last_topo == null) continue;
-    const stage = `shard_routes_${s.id}`;
-    let cursor = await cursorOf(env, stage, s.first_topo - 1);
-    while (cursor < s.last_topo && Date.now() < deadline) {
-      const hi = Math.min(s.last_topo, cursor + ROUTE_SWEEP_BLOCKS);
-      const blocks = await restQuery(
-        env, s.db_id,
-        "SELECT hash, topoheight FROM blocks WHERE topoheight > ? AND topoheight <= ? AND hash IS NOT NULL ORDER BY topoheight LIMIT ?",
-        [cursor, hi, ROUTE_SWEEP_BLOCKS],
-      );
-      await insertRouteRows(env, "block_route", "topoheight", blocks);
-      let kTopo: number | null = null;
-      let kHash = "";
-      for (;;) {
-        const keyset = kTopo == null ? "" : " AND (block_topo > ? OR (block_topo = ? AND hash > ?))";
-        const binds = kTopo == null ? [cursor, hi, ASSET_CHUNK] : [cursor, hi, kTopo, kTopo, kHash, ASSET_CHUNK];
-        const txs = await restQuery(
-          env, s.db_id,
-          `SELECT hash, block_topo FROM tx_index WHERE block_topo > ? AND block_topo <= ? AND hash IS NOT NULL${keyset} ORDER BY block_topo, hash LIMIT ?`,
-          binds,
-        );
-        if (!txs.length) break;
-        await insertRouteRows(env, "tx_route", "block_topo", txs);
-        const last = txs[txs.length - 1];
-        kTopo = Number(last.block_topo);
-        kHash = String(last.hash);
-        if (txs.length < ASSET_CHUNK) break;
-        if (Date.now() >= deadline) { await setCursor(env, stage, cursor); return; }
-      }
-      cursor = hi;
-      await setCursor(env, stage, cursor);
-    }
-  }
-}

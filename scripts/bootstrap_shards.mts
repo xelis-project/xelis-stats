@@ -350,6 +350,5 @@ if (cursor !== undefined && Number.isFinite(cursor)) importArgs.push(`--cursor=$
 runNode("import_d1.mts", importArgs);
 
 console.log(`
-Done. Next rotation will backfill tx_route/block_route from the sealed shards
-(seedRoutesFromShards) and cache their aggregates; until then cold hash lookups
-fan out across the shards.`);
+Done. Next rotation will cache sealed-shard aggregates; cold hash lookups fan
+out across the shards.`);
