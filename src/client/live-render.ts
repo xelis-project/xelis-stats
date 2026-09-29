@@ -219,19 +219,19 @@ export function liveDagHtml(d: LiveData): string {
     : null;
 
   const segs: string[] = [];
-  if (stable.length) {
-    segs.push(`<div class="live-dag-seg">
-      <div class="live-dag-seg-head"><span class="live-dag-cap">stable</span></div>
-      <div class="live-dag-nodes">${stable.map(dagNode).join("")}</div>
-    </div>`);
-  }
-  if (boundary) {
-    segs.push(`<div class="live-dag-sep" title="${esc(`stability boundary · topo ${boundary.from} → ${boundary.to}`)}" aria-hidden="true"></div>`);
-  }
   if (unstable.length) {
     segs.push(`<div class="live-dag-seg">
       <div class="live-dag-seg-head"><span class="live-dag-cap unstable">unstable · may reorg</span></div>
       <div class="live-dag-nodes">${unstable.map(dagNode).join("")}</div>
+    </div>`);
+  }
+  if (boundary) {
+    segs.push(`<div class="live-dag-sep" title="${esc(`stability boundary · topo ${boundary.to} → ${boundary.from}`)}" aria-hidden="true"></div>`);
+  }
+  if (stable.length) {
+    segs.push(`<div class="live-dag-seg">
+      <div class="live-dag-seg-head"><span class="live-dag-cap">stable</span></div>
+      <div class="live-dag-nodes">${stable.map(dagNode).join("")}</div>
     </div>`);
   }
 
