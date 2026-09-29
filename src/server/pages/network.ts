@@ -3,7 +3,6 @@ import type { Env } from "../app";
 import { layout, statCard } from "../../client/layout";
 import { fmt, fmtBytes, fmtInt } from "../../client/format";
 import { rpc } from "../xelis";
-import { getStatsCached, type StatsValue } from "../cache";
 import { esc, flaggedText, logErr, num } from "./shared";
 
 export const network = new Hono<{ Bindings: Env }>();
@@ -103,26 +102,19 @@ network.get("/network", async (c) => {
     logErr("page/network", err);
   }
 
-  // Live chain status from the node; cached stats cover info + chain size.
-  let stats: StatsValue | null = null;
-  let hashrate = "";
+  // Hard forks and dev fee thresholds from the node.
   let hardForks: HardFork[] = [];
   let devFees: DevFeeThreshold[] = [];
   try {
-    const [s, diff, hf, df] = await Promise.all([
-      getStatsCached(c.env),
-      rpc<{ hashrate_formatted?: string }>("get_difficulty", undefined, c.env.XELIS_NODE).catch(() => null),
+    const [hf, df] = await Promise.all([
       rpc<HardFork[]>("get_hard_forks", undefined, c.env.XELIS_NODE).catch(() => [] as HardFork[]),
       rpc<DevFeeThreshold[]>("get_dev_fee_thresholds", undefined, c.env.XELIS_NODE).catch(() => [] as DevFeeThreshold[]),
     ]);
-    stats = s;
-    hashrate = diff?.hashrate_formatted ?? "";
     hardForks = Array.isArray(hf) ? hf : [];
     devFees = Array.isArray(df) ? df : [];
   } catch (err) {
     logErr("page/network", err);
   }
-  const info = stats?.info;
   const total = countries.reduce((sum, r) => sum + num(r.peers), 0);
   const mapped = countries.filter((r) => (r.country_code ?? "").trim() !== "");
   const mappedTotal = mapped.reduce((sum, r) => sum + num(r.peers), 0);
@@ -151,17 +143,6 @@ network.get("/network", async (c) => {
   const s = snapshot;
   const nic = new Intl.NumberFormat("en-US");
 
-  const statusCards = `<div class="cards">
-    ${statCard("Block height", info ? fmtInt(info.height) : "—", info ? `topoheight ${fmtInt(info.topoheight)}` : "node unavailable")}
-    ${statCard("Stable topoheight", info ? fmtInt(info.stable_topoheight) : "—", info ? `lag ${fmtInt(Math.max(0, info.topoheight - info.stable_topoheight))} · irreversible` : "")}
-    ${statCard("Pruned topoheight", info?.pruned_topoheight != null ? fmtInt(info.pruned_topoheight) : "none", info?.pruned_topoheight != null ? "old blocks pruned" : "full history kept")}
-    ${statCard("Difficulty", info ? fmt(Number(info.difficulty)) : "—", hashrate || "network difficulty")}
-    ${statCard("Chain size", stats?.chainSize?.size_formatted ?? "—", stats?.chainSize ? `${fmtInt(stats.chainSize.size_bytes)} bytes on disk` : "node did not report size")}
-    ${statCard("Mempool", info ? fmtInt(info.mempool_size) : "—", "pending transactions")}
-    ${statCard("Contracts", stats && stats.contracts >= 0 ? fmtInt(stats.contracts) : "—", "deployed on-chain")}
-    ${statCard("Node", info?.version ?? "—", `${info?.network ?? "network unknown"} · block v${info?.block_version ?? "?"}`)}
-  </div>`;
-
   const forkRows = hardForks.length
     ? hardForks.map((f) => `<tr>
         <td class="num">${f.height != null ? `<a href="/block/${num(f.height)}"><span class="mint">${fmtInt(num(f.height))}</span></a>` : "—"}</td>
@@ -177,11 +158,6 @@ network.get("/network", async (c) => {
         <td class="num">${fmtInt(num(d.fee_percentage))}%</td>
       </tr>`).join("")
     : emptyRow(2);
-
-  const statusPanel = `<div class="panel">
-    <div class="panel-head"><h2>Chain status</h2></div>
-    ${statusCards}
-  </div>`;
 
   const forkPanel = `<div class="panel">
     <div class="panel-head"><h2>Hard forks &amp; dev fees</h2></div>
@@ -267,7 +243,6 @@ network.get("/network", async (c) => {
     : emptyRow(2);
 
   const content = `
-    ${statusPanel}
     <div class="panel">
       <div class="panel-head"><h2>Peer network <span style="color:var(--text-dim)">${esc(date)}</span></h2></div>
       ${cards}
