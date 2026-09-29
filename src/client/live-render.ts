@@ -146,7 +146,7 @@ export function liveStatsHtml(d: LiveData): string {
     card("Block reward", `${atomic(i.block_reward, REWARD_DECIMALS)} XEL`, `miner ${atomic(i.miner_reward, REWARD_DECIMALS)} + dev ${atomic(i.dev_reward, REWARD_DECIMALS)}`),
     card("Circulating", `${fmt(circ)} XEL`, pctMax),
     card("Active miners", w.count ? fmtInt(w.miners) : "—", `distinct in last ${fmtInt(w.count)} blocks`),
-    card("Side / Sync", w.count ? `${fmtInt(w.side + w.sync)}` : "—", `${fmtInt(w.side)} side · ${fmtInt(w.sync)} sync in window`),
+    card("Side / Sync", w.count ? `${fmtInt(w.side + w.sync)}` : "—", `${fmtInt(w.side)} side · ${fmtInt(w.sync)} sync`),
     card("Avg block size", w.count ? fmtBytes(w.avgSize) : "—", `mean across ${fmtInt(w.count)} blocks`),
     card("Fees burned", w.count ? `${atomic(w.feesBurned)} XEL` : "—", "across the recent window"),
     card("Peers", peers ? fmtInt(peers.total) : "—", peers ? `${fmtInt(peers.pruned)} pruned · ${fmtInt(peers.hidden)} hidden` : "peer lookup unavailable"),
