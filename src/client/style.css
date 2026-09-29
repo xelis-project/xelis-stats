@@ -1438,7 +1438,7 @@ html.reduce-motion *::after {
 /* Both columns of the live split stretch to the row height; the taller
    right-hand column defines it and the blocks table fills the left panel. */
 .live-split { align-items: stretch; }
-.live-split > .panel, .live-col > .panel:last-child { display: flex; flex-direction: column; }
+.live-split > .panel, .live-col > .panel:last-child { display: flex; flex-direction: column; flex: 1 1 auto; }
 .live-split > .panel .tablewrap.scroll-y, .live-col > .panel:last-child .tablewrap.scroll-y {
   flex: 1 1 0%; min-height: 14rem; max-height: none;
 }
