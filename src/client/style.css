@@ -1440,7 +1440,7 @@ html.reduce-motion *::after {
 .live-split { align-items: stretch; }
 .live-split > .panel, .live-col > .panel:last-child { display: flex; flex-direction: column; }
 .live-split > .panel .tablewrap.scroll-y, .live-col > .panel:last-child .tablewrap.scroll-y {
-  flex: 1; max-height: none; min-height: 6rem;
+  flex: 1 1 0%; min-height: 14rem; max-height: none;
 }
 .live-split > .panel { margin-bottom: 0; }
 
