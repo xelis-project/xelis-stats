@@ -51,7 +51,7 @@ livePage.get("/", async (c) => {
         <div id="live-miner-pie">${liveMinerPieHtml(live)}</div>
       </div>
       <div class="panel">
-        <div class="panel-head"><h2>Recent txs</h2><span class="live-hint">all txs in the window</span></div>
+        <div class="panel-head"><h2>Recent txs</h2></div>
         <div class="tablewrap scroll-y"><table>
           <thead><tr><th>Tx</th><th>Block</th><th>Type</th><th>Sender</th><th class="num">Fee</th><th class="num">Size</th></tr></thead>
           <tbody id="live-recent-txs">${liveRecentTxRowsHtml(live)}</tbody>
