@@ -1443,6 +1443,8 @@ html.reduce-motion *::after {
   flex: 1 1 0%; min-height: 14rem; max-height: none;
 }
 .live-split > .panel { margin-bottom: 0; }
+/* Recent blocks panel: never taller than 3x the mempool-panel viewport. */
+.live-split > .panel:first-child .tablewrap.scroll-y { max-height: 72rem; }
 
 /* Transaction-type bar graph */
 .live-types { display: flex; flex-direction: column; gap: 0.9rem; }
