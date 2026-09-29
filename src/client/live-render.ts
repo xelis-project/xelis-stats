@@ -249,9 +249,9 @@ export function liveDagHtml(d: LiveData): string {
 }
 
 export function liveBlocksRowsHtml(d: LiveData): string {
-  const blocks = (d.unstable ?? []).slice().reverse();
+  const blocks = dagBlocks(d).reverse();
   if (!blocks.length) {
-    return `<tr><td colspan="8" style="color:var(--text-dim)">${d.ok ? "No blocks above the stability boundary right now." : "Node data unavailable — retrying."}</td></tr>`;
+    return `<tr><td colspan="8" style="color:var(--text-dim)">${d.ok ? "No blocks in the current window." : "Node data unavailable — retrying."}</td></tr>`;
   }
   return blocks.map((b) => {
     const type = esc(b.block_type.toLowerCase());
