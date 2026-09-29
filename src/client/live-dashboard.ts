@@ -11,6 +11,7 @@ import {
   liveMempoolRowsHtml,
   liveRecentTxRowsHtml,
   liveTxTypesHtml,
+  liveMinerPieHtml,
   liveNodeTipHtml,
   type LiveData,
 } from "./live-render";
@@ -140,6 +141,7 @@ export function initLiveDashboard(): void {
     renderDag(d);
     set("live-blocks", liveBlocksRowsHtml(d));
     set("live-tx-types", liveTxTypesHtml(d));
+    set("live-miner-pie", liveMinerPieHtml(d));
     set("live-mempool-summary", liveMempoolSummaryHtml(d));
     set("live-mempool", liveMempoolRowsHtml(d));
     set("live-recent-txs", liveRecentTxRowsHtml(d));

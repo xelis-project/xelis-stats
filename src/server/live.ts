@@ -5,7 +5,7 @@
 import type { Env } from "./app";
 import { getInfo, rpc, type ChainInfo } from "./xelis";
 import { knownEntity } from "./entities";
-import type { LiveBlock, LiveData, LiveFees, LiveMempoolTx, LivePeers, LiveRecentTx } from "../client/live-render";
+import type { LiveBlock, LiveData, LiveFees, LiveMinerShare, LiveMempoolTx, LivePeers, LiveRecentTx } from "../client/live-render";
 
 // get_blocks_range_by_topoheight accepts at most a 20-topoheight span.
 const WINDOW = 100;        // blocks drawn: unstable tip blocks + stable boundary blocks
@@ -201,6 +201,7 @@ async function load(env: Env): Promise<LiveData> {
       unstable: [],
       boundary: [],
       window: { count: 0, miners: 0, side: 0, sync: 0, avgSize: 0, feesBurned: 0 },
+      minerShares: [],
       tips: [],
       mempool: { total: 0, transactions: [], valueFee: 0, bytes: 0 },
       recentTxs: [],
@@ -252,6 +253,25 @@ async function load(env: Env): Promise<LiveData> {
     avgSize: windowBlocks.length ? windowBlocks.reduce((s, b) => s + b.size, 0) / windowBlocks.length : 0,
     feesBurned: windowBlocks.reduce((s, b) => s + b.feesBurned, 0),
   };
+
+  // Per-miner block counts over the window, for the distribution pie. Top
+  // miners by count with the remainder folded into an "others" bucket so the
+  // chart stays legible.
+  const counts = new Map<string, number>();
+  for (const b of windowBlocks) {
+    if (!b.miner) continue;
+    counts.set(b.miner, (counts.get(b.miner) ?? 0) + 1);
+  }
+  const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  const TOP_MINERS = 8;
+  const minerShares: LiveMinerShare[] = ranked.slice(0, TOP_MINERS).map(([miner, count]) => ({
+    miner,
+    label: knownEntity(miner)?.label,
+    kind: knownEntity(miner)?.kind,
+    count,
+  }));
+  const rest = ranked.slice(TOP_MINERS).reduce((s, [, c]) => s + c, 0);
+  if (rest > 0) minerShares.push({ miner: "", label: "Others", count: rest });
 
   const mempoolTxs: LiveMempoolTx[] = (rawMempool?.transactions ?? []).map((t) => ({
     hash: String(t.hash ?? ""),
@@ -316,6 +336,7 @@ async function load(env: Env): Promise<LiveData> {
     unstable,
     boundary,
     window: windowStats,
+    minerShares,
     tips: Array.isArray(rawTips) ? rawTips.map(String) : [],
     mempool: {
       total: num(rawMempool?.total),

@@ -10,6 +10,7 @@ import {
   liveMempoolRowsHtml,
   liveRecentTxRowsHtml,
   liveTxTypesHtml,
+  liveMinerPieHtml,
 } from "../../client/live-render";
 
 export const livePage = new Hono<{ Bindings: Env }>();
@@ -44,6 +45,10 @@ livePage.get("/", async (c) => {
       <div class="panel">
         <div class="panel-head"><h2>Transactions by type</h2></div>
         <div id="live-tx-types">${liveTxTypesHtml(live)}</div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Miner distribution</h2><span class="live-hint">blocks won in the window</span></div>
+        <div id="live-miner-pie">${liveMinerPieHtml(live)}</div>
       </div>
       <div class="panel">
         <div class="panel-head"><h2>Recent txs</h2><span class="live-hint">all txs in the window</span></div>

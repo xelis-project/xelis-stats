@@ -93,6 +93,13 @@ export interface LivePeers {
   pruned: number;
 }
 
+export interface LiveMinerShare {
+  miner: string;
+  label?: string;
+  kind?: string;
+  count: number;
+}
+
 export interface LiveData {
   ok: boolean;
   error?: string;
@@ -103,6 +110,7 @@ export interface LiveData {
   unstable: LiveBlock[];
   boundary: LiveBlock[];
   window: LiveWindow;
+  minerShares: LiveMinerShare[];
   tips: string[];
   mempool: { total: number; transactions: LiveMempoolTx[]; valueFee: number; bytes: number };
   recentTxs: LiveRecentTx[];
@@ -346,4 +354,45 @@ export function liveTxTypesHtml(d: LiveData): string {
   const head = `<div class="live-type-head"><span>Type</span><span>Share</span><span>Count</span></div>`;
   return `<div class="live-types">${head}${rows}</div>
     <p class="live-dag-note">Across all ${fmtInt(total)} transaction${total === 1 ? "" : "s"} in the window.</p>`;
+}
+
+// Donut pie of which miner won each block in the window, drawn as a single
+// conic-gradient span with a legend beside it. Shares are precomputed on the
+// server (top miners + an "others" bucket) so the first paint and every poller
+// refresh render identically.
+const MINER_PIE_COLORS = [
+  "var(--mint)",
+  "var(--gold)",
+  "#7fa7ff",
+  "var(--danger)",
+  "#c58aff",
+  "#4fd1b0",
+  "#ffab70",
+  "#8fa0b8",
+];
+
+export function liveMinerPieHtml(d: LiveData): string {
+  const shares = d.minerShares ?? [];
+  if (!d.ok) return `<p class="live-empty">Node data unavailable.</p>`;
+  if (!shares.length) return `<p class="live-empty">${d.window.count ? "No miners in the window yet." : "No blocks in the current window."}</p>`;
+  const total = shares.reduce((s, m) => s + m.count, 0);
+  let acc = 0;
+  const slices: string[] = [];
+  const legend = shares.map((m, i) => {
+    const from = (acc / total) * 360;
+    acc += m.count;
+    const to = (acc / total) * 360;
+    slices.push(`${MINER_PIE_COLORS[i % MINER_PIE_COLORS.length]} ${from.toFixed(2)}deg ${to.toFixed(2)}deg`);
+    const name = m.label ?? (m.miner ? shortHash(m.miner, 8) : "Others");
+    const href = m.miner ? `<a href="/miner/${esc(m.miner)}">${esc(name)}</a>` : esc(name);
+    const pct = total ? (m.count / total) * 100 : 0;
+    return `<div class="live-miner-row" title="${esc(name)} · ${fmtInt(m.count)} of ${fmtInt(total)} blocks">
+      <span class="live-miner-dot" style="background:${MINER_PIE_COLORS[i % MINER_PIE_COLORS.length]}"></span>
+      <span class="live-miner-name">${href}</span>
+      <span class="live-type-count">${fmtInt(m.count)}<span class="live-type-pct">${pct.toFixed(1)}%</span></span>
+    </div>`;
+  }).join("");
+  const donut = `<div class="live-miner-donut" role="img" aria-label="Miner distribution across ${fmtInt(total)} window blocks" style="background:conic-gradient(${slices.join(", ")})"><span class="live-miner-donut-hole"></span></div>`;
+  return `<div class="live-miner-pie">${donut}<div class="live-miner-legend">${legend}</div></div>
+    <p class="live-dag-note">Across the ${fmtInt(total)} block${total === 1 ? "" : "s"} in the window.</p>`;
 }
