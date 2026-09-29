@@ -212,11 +212,6 @@ export function liveDagHtml(d: LiveData): string {
   }
   const stable = blocks.filter((b) => b.stable);
   const unstable = blocks.filter((b) => !b.stable);
-  const stableTopos = stable.map((b) => b.topoheight);
-  const unstableTopos = unstable.map((b) => b.topoheight);
-  const boundary = stableTopos.length && unstableTopos.length
-    ? { from: Math.max(...stableTopos), to: Math.min(...unstableTopos) }
-    : null;
 
   const segs: string[] = [];
   if (unstable.length) {
@@ -224,9 +219,6 @@ export function liveDagHtml(d: LiveData): string {
       <div class="live-dag-seg-head"><span class="live-dag-cap unstable">unstable · may reorg</span></div>
       <div class="live-dag-nodes">${unstable.map(dagNode).join("")}</div>
     </div>`);
-  }
-  if (boundary) {
-    segs.push(`<div class="live-dag-sep" title="${esc(`stability boundary · topo ${boundary.to} → ${boundary.from}`)}" aria-hidden="true"></div>`);
   }
   if (stable.length) {
     segs.push(`<div class="live-dag-seg">

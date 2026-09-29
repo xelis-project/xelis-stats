@@ -1368,7 +1368,6 @@ html.reduce-motion *::after {
 }
 .live-dag-cap.unstable { color: var(--gold); }
 .live-dag-range { font-family: var(--mono); font-size: 1.05rem; color: var(--text-dim2); }
-.live-dag-sep { flex: 0 0 auto; width: 2px; border-radius: 2px; background: var(--border); }
 .live-dag-nodes { display: flex; flex-wrap: wrap; gap: 0.7rem; }
 .live-node {
   width: 2rem; height: 2rem; border-radius: 0.5rem; display: inline-block;
