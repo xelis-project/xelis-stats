@@ -26,7 +26,7 @@ livePage.get("/", async (c) => {
   <div class="grid-2 live-split">
     <div class="panel">
       <div class="panel-head"><h2>Recent blocks</h2></div>
-      <div class="tablewrap"><table>
+      <div class="tablewrap scroll-y"><table>
         <thead><tr><th>Topo</th><th class="num">Height</th><th>Age</th><th class="num">Txs</th><th>Type</th><th>Status</th><th class="num">Reward</th><th>Miner</th></tr></thead>
         <tbody id="live-blocks">${liveBlocksRowsHtml(live)}</tbody>
       </table></div>
