@@ -302,7 +302,7 @@ export function liveMempoolRowsHtml(d: LiveData): string {
 export function liveRecentTxRowsHtml(d: LiveData): string {
   const txs = d.recentTxs ?? [];
   if (!txs.length) {
-    return `<tr><td colspan="6" style="color:var(--text-dim)">${d.ok ? "No transactions in the recent blocks." : "Node data unavailable — retrying."}</td></tr>`;
+    return `<tr><td colspan="6" style="color:var(--text-dim)">${d.ok ? "No transactions in the window blocks." : "Node data unavailable — retrying."}</td></tr>`;
   }
   return txs.map((t) => {
     const type = esc(t.tx_type || "other");
@@ -317,8 +317,8 @@ export function liveRecentTxRowsHtml(d: LiveData): string {
   }).join("");
 }
 
-// Bar graph of the transaction types seen in the newest included txs. Uses the
-// same `recentTxs` window as the table below it, so the shares and the rows agree.
+// Bar graph of the transaction types across every tx in the block window. Uses
+// the same `recentTxs` set as the table below it, so the shares and rows agree.
 // Every known type is listed even at zero so the shape is stable across refreshes.
 const TX_TYPES = ["transfer", "burn", "invoke_contract", "deploy_contract", "multisig"];
 
@@ -353,5 +353,5 @@ export function liveTxTypesHtml(d: LiveData): string {
     .join("");
   const head = `<div class="live-type-head"><span>Type</span><span>Share</span><span>Count</span></div>`;
   return `<div class="live-types">${head}${rows}</div>
-    <p class="live-dag-note">Across the newest ${fmtInt(total)} included transaction${total === 1 ? "" : "s"}.</p>`;
+    <p class="live-dag-note">Across all ${fmtInt(total)} transaction${total === 1 ? "" : "s"} in the window.</p>`;
 }

@@ -11,8 +11,8 @@ import type { LiveBlock, LiveData, LiveFees, LiveMempoolTx, LivePeers, LiveRecen
 const WINDOW = 100;        // blocks drawn: unstable tip blocks + stable boundary blocks
 const RPC_SPAN = 20;
 const MEMPOOL_LIMIT = 25;
-const RECENT_TX_LIMIT = 25; // txs pulled from the newest blocks for the live panel
 const TX_RPC_CHUNK = 20;    // get_transactions caps a single call at 20 hashes
+const TX_CONCURRENCY = 6;   // parallel get_transactions calls while walking the window
 const TTL_MS = 3000;
 
 let cached: { at: number; data: LiveData } | null = null;
@@ -137,37 +137,41 @@ function txTypeOf(t: Record<string, unknown>): string {
   return "other";
 }
 
-// Detail rows for the newest transactions included in the recent tip blocks,
-// newest first. Hashes come straight from the block summaries already fetched;
-// the node returns full txs in batches of 20.
+// Detail rows for every transaction included in the window blocks, newest
+// first. Hashes come straight from the block summaries already fetched; the
+// node returns full txs in batches of 20, fetched with a small concurrency cap
+// so a wide window cannot storm the node.
 async function recentTxs(env: Env, blocks: Array<Record<string, unknown>>): Promise<LiveRecentTx[]> {
   const want: Array<{ hash: string; topoheight: number }> = [];
-  for (let i = blocks.length - 1; i >= 0 && want.length < RECENT_TX_LIMIT; i--) {
+  for (let i = blocks.length - 1; i >= 0; i--) {
     const b = blocks[i];
     const topo = num(b.topoheight);
     const hashes = Array.isArray(b.txs_hashes) ? b.txs_hashes : [];
-    for (const h of hashes) {
-      want.push({ hash: String(h), topoheight: topo });
-      if (want.length >= RECENT_TX_LIMIT) break;
-    }
+    for (const h of hashes) want.push({ hash: String(h), topoheight: topo });
   }
   if (!want.length) return [];
 
-  const chunks: Array<Promise<Array<Record<string, unknown>>>> = [];
+  const slices: string[][] = [];
   for (let i = 0; i < want.length; i += TX_RPC_CHUNK) {
-    const hashes = want.slice(i, i + TX_RPC_CHUNK).map((c) => c.hash);
-    chunks.push(
-      rpc<Array<Record<string, unknown>>>("get_transactions", { tx_hashes: hashes }, env.XELIS_NODE)
-        .catch(() => [] as Array<Record<string, unknown>>),
-    );
+    slices.push(want.slice(i, i + TX_RPC_CHUNK).map((c) => c.hash));
   }
-  const results = await Promise.all(chunks);
   const byHash = new Map<string, Record<string, unknown>>();
-  for (const list of results) {
-    for (const t of Array.isArray(list) ? list : []) {
-      if (t?.hash) byHash.set(String(t.hash), t);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < slices.length) {
+      const hashes = slices[next++];
+      const list = await rpc<Array<Record<string, unknown>>>(
+        "get_transactions",
+        { tx_hashes: hashes },
+        env.XELIS_NODE,
+      ).catch(() => [] as Array<Record<string, unknown>>);
+      for (const t of Array.isArray(list) ? list : []) {
+        if (t?.hash) byHash.set(String(t.hash), t);
+      }
     }
-  }
+  };
+  await Promise.all(Array.from({ length: Math.min(TX_CONCURRENCY, slices.length) }, worker));
+
   return want.flatMap((c) => {
     const t = byHash.get(c.hash);
     if (!t) return [];
