@@ -8,7 +8,7 @@ import { knownEntity } from "./entities";
 import type { LiveBlock, LiveData, LiveFees, LiveMempoolTx, LivePeers, LiveRecentTx } from "../client/live-render";
 
 // get_blocks_range_by_topoheight accepts at most a 20-topoheight span.
-const STABLE_WINDOW = 10;  // stable blocks shown before the stability boundary
+const WINDOW = 100;        // blocks drawn: unstable tip blocks + stable boundary blocks
 const RPC_SPAN = 20;
 const MEMPOOL_LIMIT = 25;
 const RECENT_TX_LIMIT = 25; // txs pulled from the newest blocks for the live panel
@@ -208,11 +208,12 @@ async function load(env: Env): Promise<LiveData> {
   const top = info.topoheight;
   const stable = info.stable_topoheight;
   const lag = Math.max(0, top - stable);
-  // Fetch one contiguous range from the start of the stable history through the
-  // tip so no topoheight is skipped between the stability boundary and the
-  // newest block. Blocks at or below the boundary form the stable run; every
-  // block above it is the unstable window.
-  const from = Math.max(1, stable - STABLE_WINDOW + 1);
+  // Fetch a fixed WINDOW of contiguous topoheights ending at the tip so no
+  // topoheight is skipped between the stability boundary and the newest block.
+  // Blocks at or below the boundary form the stable run; every block above it is
+  // the unstable window. A pruned node cannot serve blocks below its prune
+  // point, so clamp there (the window shrinks to whatever remains).
+  const from = Math.max(1, num(info.pruned_topoheight), top - WINDOW + 1);
 
   const [rawBlocks, rawMempool, rawRates, rawKb, rawTips, rawPeers] = await Promise.all([
     from <= top
