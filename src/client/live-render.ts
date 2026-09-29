@@ -385,11 +385,10 @@ export function liveMinerPieHtml(d: LiveData): string {
     slices.push(`${MINER_PIE_COLORS[i % MINER_PIE_COLORS.length]} ${from.toFixed(2)}deg ${to.toFixed(2)}deg`);
     const name = m.label ?? (m.miner ? shortHash(m.miner, 8) : "Others");
     const href = m.miner ? `<a href="/miner/${esc(m.miner)}">${esc(name)}</a>` : esc(name);
-    const pct = total ? (m.count / total) * 100 : 0;
     return `<div class="live-miner-row" title="${esc(name)} · ${fmtInt(m.count)} of ${fmtInt(total)} blocks">
       <span class="live-miner-dot" style="background:${MINER_PIE_COLORS[i % MINER_PIE_COLORS.length]}"></span>
       <span class="live-miner-name">${href}</span>
-      <span class="live-type-count">${fmtInt(m.count)}<span class="live-type-pct">${pct.toFixed(1)}%</span></span>
+      <span class="live-type-count">${fmtInt(m.count)}</span>
     </div>`;
   }).join("");
   const donut = `<div class="live-miner-donut" role="img" aria-label="Miner distribution across ${fmtInt(total)} window blocks" style="background:conic-gradient(${slices.join(", ")})"><span class="live-miner-donut-hole"></span></div>`;
