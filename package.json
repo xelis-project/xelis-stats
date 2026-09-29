@@ -1,6 +1,6 @@
 {
   "name": "xelis-explorer",
-  "version": "0.1.30",
+  "version": "0.1.31",
   "private": true,
   "license": "BSD-3-Clause",
   "type": "module",
@@ -36,3 +36,4 @@
     "wrangler": "^4.0.0"
   }
 }
+

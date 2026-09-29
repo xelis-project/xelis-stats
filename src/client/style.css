@@ -1435,17 +1435,16 @@ html.reduce-motion *::after {
 .live-mempool-head { color: var(--text-dim); font-size: 1.25rem; margin-bottom: 1rem; }
 .live-divider { border-top: 1px solid var(--border); margin: 1.2rem 0; }
 
-/* Both columns of the live split stretch to the row height; the taller
-   right-hand column defines it and the blocks table fills the left panel. */
+/* Both columns of the live split stretch to the row height; the blocks
+   panel caps its own height and the recent txs table fills its panel. */
 .live-split { align-items: stretch; }
 .live-split > .panel, .live-col > .panel:last-child { display: flex; flex-direction: column; flex: 1 1 auto; }
 .live-split > .panel .tablewrap.scroll-y, .live-col > .panel:last-child .tablewrap.scroll-y {
   flex: 1 1 0%; min-height: 14rem; max-height: none;
 }
 .live-split > .panel { margin-bottom: 0; }
-/* Recent txs: bounded so the blocks table can fill the left panel exactly
-   (the row height is defined here) without stretching the page endlessly. */
-.live-col > .panel:last-child .tablewrap.scroll-y { max-height: 44rem; }
+/* Recent blocks: capped so a burst of blocks never stretches the page. */
+.live-split > .panel .tablewrap.scroll-y { max-height: 150rem; }
 
 /* Transaction-type bar graph */
 .live-types { display: flex; flex-direction: column; gap: 0.9rem; }
