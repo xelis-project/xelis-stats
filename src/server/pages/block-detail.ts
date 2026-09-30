@@ -9,6 +9,21 @@ import { PAGE_SIZE, pager, esc, jsq, entityTag, blkCopyScript, num, logErr } fro
 
 export const blockDetail = new Hono<{ Bindings: Env }>();
 
+// Edge-cache a numeric aggregate for 5 min to avoid re-scanning 24h of blocks per view.
+async function cached24h(key: string, compute: () => Promise<number>): Promise<number> {
+  const cache = (globalThis as unknown as { caches?: { default?: Cache } }).caches?.default;
+  const req = new Request(`https://cache.internal/block-detail/${encodeURIComponent(key)}`);
+  if (cache) {
+    const hit = await cache.match(req);
+    if (hit) return Number(await hit.text());
+  }
+  const v = await compute();
+  if (cache) {
+    await cache.put(req, new Response(String(v), { headers: { "Cache-Control": "public, max-age=300" } }));
+  }
+  return v;
+}
+
 blockDetail.get("/block/:id", async (c) => {
   const id = c.req.param("id");
   const db = c.env.DB;
@@ -78,12 +93,21 @@ blockDetail.get("/block/:id", async (c) => {
   let avgReward24h: number | null = null;
   let minerBlocks24h: number | null = null;
   try {
-    const agg = await db.prepare(
-      "SELECT AVG(miner_reward + dev_reward) AS avg_reward, SUM(CASE WHEN miner_address = ? THEN 1 ELSE 0 END) AS miner_blocks FROM blocks WHERE ts > ?"
-    ).bind(view.miner, Date.now() - 86400_000).first<{ avg_reward: number | null; miner_blocks: number | null }>();
-    if (agg) {
-      avgReward24h = Number(agg.avg_reward) || null;
-      minerBlocks24h = Number(agg.miner_blocks) || 0;
+    // Cutoff is bucketed to 5 min so results are reusable/cacheable.
+    const cutoff = Math.floor(Date.now() / 300_000) * 300_000 - 86400_000;
+    avgReward24h = await cached24h(`avg:${cutoff}`, async () => {
+      const r = await db.prepare(
+        "SELECT AVG(miner_reward + dev_reward) AS a FROM blocks WHERE ts > ?"
+      ).bind(cutoff).first<{ a: number | null }>();
+      return Number(r?.a) || 0;
+    }) || null;
+    if (view.miner) {
+      minerBlocks24h = await cached24h(`miner:${view.miner}:${cutoff}`, async () => {
+        const r = await db.prepare(
+          "SELECT COUNT(*) AS n FROM blocks WHERE miner_address = ? AND ts > ?"
+        ).bind(view.miner, cutoff).first<{ n: number }>();
+        return Number(r?.n) || 0;
+      });
     }
   } catch { /* db unavailable */ }
   const feePerByte = view.size > 0 ? view.fees / view.size : null; // atomic XEL per byte
