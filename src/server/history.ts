@@ -4,6 +4,24 @@ import { mergeGroups } from "./shards";
 
 export const history = new Hono<{ Bindings: Env }>();
 
+// Daily average price. Range is applied on raw `ts` (sargable on idx_market_ts)
+// instead of date(ts/1000) per row, and the result is edge-cached for 1h since
+// it scans the whole snapshot history for the requested span.
+async function dailyAvgPrice(db: D1Database, from: string, to: string): Promise<{ d: string; p: number }[]> {
+  const lo = Date.parse(from), hi = Date.parse(to) + 86400_000;
+  const cache = (globalThis as unknown as { caches?: { default?: Cache } }).caches?.default;
+  const req = new Request(`https://cache.internal/daily-price/${from}/${to}`);
+  if (cache) {
+    const hit = await cache.match(req);
+    if (hit) return await hit.json() as { d: string; p: number }[];
+  }
+  const rows = await db.prepare(
+    "SELECT date(ts/1000, 'unixepoch') d, AVG(last) p FROM market_snapshots WHERE ts >= ? AND ts < ? GROUP BY d"
+  ).bind(lo, hi).all<{ d: string; p: number }>().then((r) => r.results ?? []);
+  if (cache) await cache.put(req, new Response(JSON.stringify(rows), { headers: { "Cache-Control": "public, max-age=3600" } }));
+  return rows;
+}
+
 // Metric -> (column, table, aggregation across buckets). Metrics whose
 // daily_stats column is never populated (the export only writes a subset) are
 // computed from base tables instead: block-time (blocks), nakamoto/gini
@@ -348,9 +366,7 @@ history.get("/api/history/:metric", async (c) => {
         `SELECT date, circulating_supply FROM daily_stats ${whereDate} ORDER BY date`
       ).bind(...binds).all<{ date: string; circulating_supply: number }>().then((r) => r.results ?? []);
       if (!circ.length) throw new Error("no supply rows");
-      const snaps = await c.env.DB.prepare(
-        `SELECT date(ts/1000, 'unixepoch') d, AVG(last) p FROM market_snapshots WHERE date(ts/1000, 'unixepoch') >= ? AND date(ts/1000, 'unixepoch') <= ? GROUP BY d`
-      ).bind(circ[0].date, circ[circ.length - 1].date).all<{ d: string; p: number }>().then((r) => r.results ?? []);
+      const snaps = await dailyAvgPrice(c.env.DB, circ[0].date, circ[circ.length - 1].date);
       const prices = new Map<string, number>();
       for (const s of snaps) if (s.p) prices.set(s.d, Number(s.p));
       const groupKey = interval === "day" ? (d: string) => d : interval === "week" ? (d: string) => weekBucket(d) : interval === "month" ? (d: string) => d.slice(0, 7) : (d: string) => d.slice(0, 4);
@@ -381,9 +397,7 @@ history.get("/api/history/:metric", async (c) => {
       ).bind(...binds).all<{ date: string; miner_revenue: number }>().then((r) => r.results ?? []);
       const prices = new Map<string, number>();
       if (rev.length) {
-        const snaps = await c.env.DB.prepare(
-          `SELECT date(ts/1000, 'unixepoch') d, AVG(last) p FROM market_snapshots WHERE date(ts/1000, 'unixepoch') >= ? AND date(ts/1000, 'unixepoch') <= ? GROUP BY d`
-        ).bind(rev[0].date, rev[rev.length - 1].date).all<{ d: string; p: number }>().then((r) => r.results ?? []);
+        const snaps = await dailyAvgPrice(c.env.DB, rev[0].date, rev[rev.length - 1].date);
         for (const s of snaps) if (s.p) prices.set(s.d, s.p);
       }
       rows = rev.flatMap((r) => {
@@ -406,9 +420,7 @@ history.get("/api/history/:metric", async (c) => {
         `SELECT date, miner_revenue, hashrate FROM daily_stats ${whereDate} ORDER BY date`
       ).bind(...binds).all<{ date: string; miner_revenue: number; hashrate: number }>().then((r) => r.results ?? []);
       if (!daily.length) throw new Error("no daily rows");
-      const snaps = await c.env.DB.prepare(
-        `SELECT date(ts/1000, 'unixepoch') d, AVG(last) p FROM market_snapshots WHERE date(ts/1000, 'unixepoch') >= ? AND date(ts/1000, 'unixepoch') <= ? GROUP BY d`
-      ).bind(daily[0].date, daily[daily.length - 1].date).all<{ d: string; p: number }>().then((r) => r.results ?? []);
+      const snaps = await dailyAvgPrice(c.env.DB, daily[0].date, daily[daily.length - 1].date);
       const prices = new Map<string, number>();
       for (const s of snaps) if (s.p) prices.set(s.d, Number(s.p));
       const groupKey = interval === "day" ? (d: string) => d : interval === "week" ? (d: string) => weekBucket(d) : interval === "month" ? (d: string) => d.slice(0, 7) : (d: string) => d.slice(0, 4);
