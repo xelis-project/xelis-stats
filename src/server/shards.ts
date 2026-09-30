@@ -726,7 +726,17 @@ export async function countRaw(
     const cond = hotFloorBound(opts.floorCol, floor);
     hotWhere = where ? `${where} AND ${cond}` : `WHERE ${cond}`;
   }
-  const hot = await runOn(env, { kind: "hot" }, `SELECT COUNT(*) AS n FROM ${opts.table} ${hotWhere}`, binds);
+  let hot: Row[];
+  if (opts.table === "blocks" && !opts.extra && opts.floorCol === "topoheight" && floor >= 0) {
+    // topoheight is the rowid PK of a contiguous chain: MIN/MAX are O(1) b-tree
+    // edge reads, versus COUNT(*) walking millions of rows over the hot window.
+    const r = await runOn(env, { kind: "hot" },
+      "SELECT MIN(topoheight) AS lo, MAX(topoheight) AS hi FROM blocks WHERE topoheight > ?", [floor]);
+    const lo = Number(r[0]?.lo), hi = Number(r[0]?.hi);
+    hot = [{ n: Number.isFinite(lo) && Number.isFinite(hi) ? hi - lo + 1 : 0 }];
+  } else {
+    hot = await runOn(env, { kind: "hot" }, `SELECT COUNT(*) AS n FROM ${opts.table} ${hotWhere}`, binds);
+  }
   const n = sealedN + Number(hot[0]?.n ?? 0);
   countCache.set(key, { at: Date.now(), n });
   return n;
