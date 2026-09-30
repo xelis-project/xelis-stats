@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "./app";
 import { mergeGroups } from "./shards";
+import { cachedQuery } from "./pages/shared";
 
 export const history = new Hono<{ Bindings: Env }>();
 
@@ -9,17 +10,9 @@ export const history = new Hono<{ Bindings: Env }>();
 // it scans the whole snapshot history for the requested span.
 async function dailyAvgPrice(db: D1Database, from: string, to: string): Promise<{ d: string; p: number }[]> {
   const lo = Date.parse(from), hi = Date.parse(to) + 86400_000;
-  const cache = (globalThis as unknown as { caches?: { default?: Cache } }).caches?.default;
-  const req = new Request(`https://cache.internal/daily-price/${from}/${to}`);
-  if (cache) {
-    const hit = await cache.match(req);
-    if (hit) return await hit.json() as { d: string; p: number }[];
-  }
-  const rows = await db.prepare(
+  return cachedQuery(`daily-price:${from}:${to}`, 3600, () => db.prepare(
     "SELECT date(ts/1000, 'unixepoch') d, AVG(last) p FROM market_snapshots WHERE ts >= ? AND ts < ? GROUP BY d"
-  ).bind(lo, hi).all<{ d: string; p: number }>().then((r) => r.results ?? []);
-  if (cache) await cache.put(req, new Response(JSON.stringify(rows), { headers: { "Cache-Control": "public, max-age=3600" } }));
-  return rows;
+  ).bind(lo, hi).all<{ d: string; p: number }>().then((r) => r.results ?? []));
 }
 
 // Metric -> (column, table, aggregation across buckets). Metrics whose

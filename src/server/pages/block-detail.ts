@@ -5,24 +5,13 @@ import { icons } from "../../client/icons";
 import { fmt, fmtInt, fmtPct, fmtHash, shortHash, fmtTime, ago, atomic, atomicPrecise } from "../../client/format";
 import { rpc } from "../xelis";
 import { fetchBlock, fetchBlockTimes, runOn, type RawTarget } from "../shards";
-import { PAGE_SIZE, pager, esc, jsq, entityTag, blkCopyScript, num, logErr } from "./shared";
+import { PAGE_SIZE, pager, esc, jsq, entityTag, blkCopyScript, num, logErr, cachedQuery } from "./shared";
 
 export const blockDetail = new Hono<{ Bindings: Env }>();
 
 // Edge-cache a numeric aggregate for 5 min to avoid re-scanning 24h of blocks per view.
-async function cached24h(key: string, compute: () => Promise<number>): Promise<number> {
-  const cache = (globalThis as unknown as { caches?: { default?: Cache } }).caches?.default;
-  const req = new Request(`https://cache.internal/block-detail/${encodeURIComponent(key)}`);
-  if (cache) {
-    const hit = await cache.match(req);
-    if (hit) return Number(await hit.text());
-  }
-  const v = await compute();
-  if (cache) {
-    await cache.put(req, new Response(String(v), { headers: { "Cache-Control": "public, max-age=300" } }));
-  }
-  return v;
-}
+const cached24h = (key: string, compute: () => Promise<number>): Promise<number> =>
+  cachedQuery(`block-detail:${key}`, 300, compute);
 
 blockDetail.get("/block/:id", async (c) => {
   const id = c.req.param("id");
