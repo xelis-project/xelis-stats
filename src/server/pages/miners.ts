@@ -4,7 +4,7 @@ import { layout } from "../../client/layout";
 import { fmt, fmtInt, shortHash } from "../../client/format";
 import { srvSort, TOP_COLS } from "../sort";
 import { filterButton, filterPop, filterField } from "../filters";
-import { entityTag, esc, num, PAGE_SIZE, pager, clampInt, logErr } from "./shared";
+import { entityTag, esc, num, PAGE_SIZE, pager, clampInt, logErr, cachedQuery } from "./shared";
 
 export const miners = new Hono<{ Bindings: Env }>();
 
@@ -43,41 +43,54 @@ miners.get("/miners", async (c) => {
   // day/week/month leaderboard isn't mistaken for the all-time one.
   let rangeLabel = "";
   try {
+    const memo = <T>(k: string, fn: () => Promise<T>) => cachedQuery(`miners:${k}:${srt.order}:${page}`, 300, fn);
     if (period === "all") {
-      total = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners`)
+      [total, rows] = await memo(String("all"), async () => {
+        const t = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners`)
         .first<{ n: number }>().then((r) => num(r?.n)).catch(() => 0);
-      rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(blocks_found) - SUM(sync_count) - SUM(side_count) normal, SUM(sync_count) sync, SUM(side_count) side, SUM(rewards_earned) rewards
+        const r = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(blocks_found) - SUM(sync_count) - SUM(side_count) normal, SUM(sync_count) sync, SUM(side_count) side, SUM(rewards_earned) rewards
         FROM daily_miners GROUP BY address ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
         .bind(PAGE_SIZE, (page - 1) * PAGE_SIZE)
         .all<Record<string, unknown>>().then((r) => r.results ?? []);
+        return [t, r] as [number, Record<string, unknown>[]];
+      });
       rangeLabel = "all time";
     } else if (period === "month") {
       const month = date || new Date().toISOString().slice(0, 7);
-      total = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners WHERE date LIKE ? || '%'`)
+      [total, rows] = await memo(String(month), async () => {
+        const t = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners WHERE date LIKE ? || '%'`)
         .bind(month).first<{ n: number }>().then((r) => num(r?.n)).catch(() => 0);
-      rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(blocks_found) - SUM(sync_count) - SUM(side_count) normal, SUM(sync_count) sync, SUM(side_count) side, SUM(rewards_earned) rewards
+        const r = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(blocks_found) - SUM(sync_count) - SUM(side_count) normal, SUM(sync_count) sync, SUM(side_count) side, SUM(rewards_earned) rewards
         FROM daily_miners WHERE date LIKE ? || '%' GROUP BY address ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
         .bind(month, PAGE_SIZE, (page - 1) * PAGE_SIZE)
         .all<Record<string, unknown>>().then((r) => r.results ?? []);
+        return [t, r] as [number, Record<string, unknown>[]];
+      });
       rangeLabel = month;
     } else if (period === "week") {
       const anchor = date || new Date().toISOString().slice(0, 10);
-      total = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners WHERE date > date(?, '-7 days')`)
+      [total, rows] = await memo(String(anchor), async () => {
+        const t = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners WHERE date > date(?, '-7 days')`)
         .bind(anchor)
         .first<{ n: number }>().then((r) => num(r?.n)).catch(() => 0);
-      rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(blocks_found) - SUM(sync_count) - SUM(side_count) normal, SUM(sync_count) sync, SUM(side_count) side, SUM(rewards_earned) rewards
+        const r = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(blocks_found) - SUM(sync_count) - SUM(side_count) normal, SUM(sync_count) sync, SUM(side_count) side, SUM(rewards_earned) rewards
         FROM daily_miners WHERE date > date(?, '-7 days') GROUP BY address ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
         .bind(anchor, PAGE_SIZE, (page - 1) * PAGE_SIZE)
         .all<Record<string, unknown>>().then((r) => r.results ?? []);
+        return [t, r] as [number, Record<string, unknown>[]];
+      });
       rangeLabel = `7 days to ${anchor}`;
     } else {
       const day = date || await latestDay();
-      total = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners WHERE date = ?`)
+      [total, rows] = await memo(String(day), async () => {
+        const t = await db.prepare(`SELECT COUNT(DISTINCT address) n FROM daily_miners WHERE date = ?`)
         .bind(day).first<{ n: number }>().then((r) => num(r?.n)).catch(() => 0);
-      rows = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(blocks_found) - SUM(sync_count) - SUM(side_count) normal, SUM(sync_count) sync, SUM(side_count) side, SUM(rewards_earned) rewards
+        const r = await db.prepare(`SELECT address, SUM(blocks_found) blocks, SUM(blocks_found) - SUM(sync_count) - SUM(side_count) normal, SUM(sync_count) sync, SUM(side_count) side, SUM(rewards_earned) rewards
         FROM daily_miners WHERE date = ? GROUP BY address ORDER BY ${srt.order} LIMIT ? OFFSET ?`)
         .bind(day, PAGE_SIZE, (page - 1) * PAGE_SIZE)
         .all<Record<string, unknown>>().then((r) => r.results ?? []);
+        return [t, r] as [number, Record<string, unknown>[]];
+      });
       rangeLabel = day;
     }
   } catch (err) { logErr("page/miners", err); }

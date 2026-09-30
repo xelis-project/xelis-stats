@@ -5,7 +5,7 @@ import { icons } from "../../client/icons";
 import { fmt, fmtInt, fmtHash, shortHash, fmtTime, ago, atomic } from "../../client/format";
 import { srvSort, BLOCK_COLS } from "../sort";
 import { filterButton, filterPop, filterField, selectOpts } from "../filters";
-import { esc, jsq, entityTag, blkCopyScript, num, PAGE_SIZE, pager, clampInt, logErr } from "./shared";
+import { esc, jsq, entityTag, blkCopyScript, num, PAGE_SIZE, pager, clampInt, logErr, cachedQuery } from "./shared";
 import { topNRaw, countRaw, mergeAgg } from "../shards";
 
 interface MinerTotals {
@@ -174,12 +174,16 @@ minerDetail.get("/miner/:address", async (c) => {
 
   // ---- all-time rank among observed miners ----
   try {
-    const r = await db.prepare(
-      "SELECT COUNT(*) AS ahead FROM (SELECT address, SUM(blocks_found) s FROM daily_miners GROUP BY address) WHERE s > ?"
-    ).bind(totals.blocks).first<{ ahead: number }>();
-    const t = await db.prepare("SELECT COUNT(*) AS n FROM (SELECT address FROM daily_miners GROUP BY address)").first<{ n: number }>();
-    rank = num(r?.ahead) + 1;
-    totalMiners = num(t?.n);
+    const [ahead, n] = await Promise.all([
+      cachedQuery(`miner-ahead:${totals.blocks}`, 600, async () => num((await db.prepare(
+        "SELECT COUNT(*) AS ahead FROM (SELECT address, SUM(blocks_found) s FROM daily_miners GROUP BY address) WHERE s > ?"
+      ).bind(totals.blocks).first<{ ahead: number }>())?.ahead)),
+      cachedQuery("miner-total", 600, async () => num((await db.prepare(
+        "SELECT COUNT(*) AS n FROM (SELECT address FROM daily_miners GROUP BY address)"
+      ).first<{ n: number }>())?.n)),
+    ]);
+    rank = ahead + 1;
+    totalMiners = n;
   } catch { /* rank unavailable */ }
 
   // ---- daily series for charts (last 90 days) ----

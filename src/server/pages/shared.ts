@@ -99,3 +99,20 @@ export const flaggedText = (value: unknown): string => {
 export const blkCopyScript = `function blkCopy(txt,btn){var flip=function(){var t=btn.textContent;btn.textContent="copied";btn.classList.add("done");setTimeout(function(){btn.textContent=t;btn.classList.remove("done");},1200);};if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(flip);}else{var i=document.createElement("textarea");i.value=txt;document.body.appendChild(i);i.select();try{document.execCommand("copy");}catch(e){}document.body.removeChild(i);flip();}}`;
 
 export const num = (v: unknown): number => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
+
+/** Edge-cache (Workers Cache API) a JSON-serialisable query result for `ttl` seconds. */
+export async function cachedQuery<T>(key: string, ttl: number, fn: () => Promise<T>): Promise<T> {
+  const cache = (globalThis as unknown as { caches?: { default?: Cache } }).caches?.default;
+  const req = new Request(`https://cache.internal/q/${encodeURIComponent(key)}`);
+  if (cache) {
+    try {
+      const hit = await cache.match(req);
+      if (hit) return await hit.json() as T;
+    } catch { /* fall through to compute */ }
+  }
+  const v = await fn();
+  if (cache) {
+    try { await cache.put(req, new Response(JSON.stringify(v), { headers: { "Cache-Control": `public, max-age=${ttl}` } })); } catch { /* best-effort */ }
+  }
+  return v;
+}
