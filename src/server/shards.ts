@@ -733,7 +733,9 @@ export async function countRaw(
     // topoheight is the rowid PK of a contiguous chain: MIN/MAX are O(1) b-tree
     // edge reads, versus COUNT(*) walking millions of rows over the hot window.
     const r = await runOn(env, { kind: "hot" },
-      "SELECT MIN(topoheight) AS lo, MAX(topoheight) AS hi FROM blocks WHERE topoheight > ?", [floor]);
+      // SQLite only applies its O(1) min/max optimization to a lone MIN or MAX
+      // aggregate, so combining them in one SELECT full-scans; use subqueries.
+      "SELECT (SELECT MIN(topoheight) FROM blocks WHERE topoheight > ?) AS lo, (SELECT MAX(topoheight) FROM blocks) AS hi", [floor]);
     const lo = Number(r[0]?.lo), hi = Number(r[0]?.hi);
     hot = [{ n: Number.isFinite(lo) && Number.isFinite(hi) ? hi - lo + 1 : 0 }];
   } else {
