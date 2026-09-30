@@ -91,10 +91,13 @@ blockDetail.get("/block/:id", async (c) => {
       return Number(r?.a) || 0;
     }) || null;
     if (view.miner) {
-      minerBlocks24h = await cached24h(`miner:${view.miner}:${cutoff}`, async () => {
+      // Per-miner counts are the costly query (scans every block the miner
+      // found in 24h); a 1h bucket + 1h TTL cuts repeats 12x, precision is moot.
+      const mCutoff = Math.floor(Date.now() / 3_600_000) * 3_600_000 - 86400_000;
+      minerBlocks24h = await cachedQuery(`block-detail:miner:${view.miner}:${mCutoff}`, 3600, async () => {
         const r = await db.prepare(
           "SELECT COUNT(*) AS n FROM blocks WHERE miner_address = ? AND ts > ?"
-        ).bind(view.miner, cutoff).first<{ n: number }>();
+        ).bind(view.miner, mCutoff).first<{ n: number }>();
         return Number(r?.n) || 0;
       });
     }
