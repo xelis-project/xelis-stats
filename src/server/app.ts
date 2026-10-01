@@ -104,7 +104,7 @@ app.get("/dashboard", (c) => {
       <button class="btn" id="btn-add-widget">${icons.plus} Add widget</button>
       <button class="btn ghost icon-btn" id="btn-dash-fullscreen" type="button" title="Fullscreen (F)" aria-label="Enter fullscreen" aria-pressed="false">${icons.maximize}</button>
       <div class="dash-menu" id="dash-menu">
-        <button class="btn ghost" id="dash-menu-toggle" title="Layout actions" aria-haspopup="menu" aria-expanded="false" aria-label="Layout actions">${icons.more}</button>
+        <button class="btn ghost icon-btn" id="dash-menu-toggle" title="Layout actions" aria-haspopup="menu" aria-expanded="false" aria-label="Layout actions">${icons.more}</button>
         <div class="dash-menu-items" id="dash-menu-items" role="menu" hidden>
           <button class="btn ghost" id="btn-auto-arrange" role="menuitem" title="Tidy the layout into rows">${icons.layout} Auto-arrange</button>
           <button class="btn ghost" id="btn-export" role="menuitem" title="Download the layout as JSON">${icons.download} Export</button>
