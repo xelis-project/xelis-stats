@@ -85,8 +85,20 @@ function initChartsHub(): void {
     } else {
       p.set("range", selRange!.value);
     }
-    if ((MARKET_METRICS.has(selMetric!.value) || chartType() === "candles") && selExchange?.value) p.set("exchange", selExchange.value);
+    if (MARKET_METRICS.has(selMetric!.value) && selExchange?.value) p.set("exchange", selExchange.value);
     return p;
+  }
+
+  function syncTypeOptions(): void {
+    if (!selType) return;
+    const allow = selMetric!.value === "price";
+    const opt = Array.from(selType.options).find((o) => o.value === "candles");
+    if (allow && !opt) selType.insertAdjacentHTML("beforeend", '<option value="candles">candles</option>');
+    else if (!allow && opt) {
+      const wasCandles = selType.value === "candles";
+      opt.remove();
+      if (wasCandles) selType.value = "line";
+    }
   }
 
   function syncIntervals(): void {
@@ -101,6 +113,7 @@ function initChartsHub(): void {
 
   // show/hide metric-specific filters; prefill custom dates
   function syncControls(): void {
+    syncTypeOptions();
     const candleMode = chartType() === "candles";
     syncIntervals();
     if (selFeestat) {
@@ -108,7 +121,7 @@ function initChartsHub(): void {
       selFeestat.hidden = !isFee;
       if (isFee) selFeestat.value = selMetric!.value;
     }
-    if (selExchange) selExchange.hidden = !(MARKET_METRICS.has(selMetric!.value) || candleMode);
+    if (selExchange) selExchange.hidden = !MARKET_METRICS.has(selMetric!.value);
     if (selCompare) selCompare.hidden = candleMode;
     for (const inp of [chkCum, chkLog]) {
       const lab = inp?.closest("label");
@@ -151,7 +164,7 @@ function initChartsHub(): void {
       if (inpTo?.value) q.set("to", inpTo.value);
     }
     if (selInterval!.value !== "day") q.set("interval", selInterval!.value);
-    if ((MARKET_METRICS.has(selMetric!.value) || chartType() === "candles") && selExchange?.value) q.set("exchange", selExchange.value);
+    if (MARKET_METRICS.has(selMetric!.value) && selExchange?.value) q.set("exchange", selExchange.value);
     if (selCompare?.value) q.set("compare", selCompare.value);
     if (chkCum?.checked) q.set("cum", "1");
     if (chkLog?.checked) q.set("log", "1");

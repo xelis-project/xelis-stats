@@ -34,7 +34,10 @@ charts.get("/charts", async (c) => {
   const rangeParam = c.req.query("range") ?? "90d";
   const range = ["7d", "30d", "90d", "1y", "all", "custom"].includes(rangeParam) ? rangeParam : "90d";
   const chartTypeParam = c.req.query("type") ?? "line";
-  const chartType = chartTypeParam === "bar" || chartTypeParam === "candles" ? chartTypeParam : "line";
+  // candle charts read /api/candles (XEL price OHLC), so the type only applies
+  // to the price metric; anything else falls back to line/bar
+  const allowCandles = metric === "price";
+  const chartType = allowCandles && chartTypeParam === "candles" ? "candles" : chartTypeParam === "bar" ? "bar" : "line";
   // candle charts read /api/candles, which only buckets by hour/day/week
   const candleMode = chartType === "candles";
   const intervalOptsAll = candleMode ? ["hour", "day", "week"] : ["day", "week", "month", "year"];
@@ -81,7 +84,7 @@ charts.get("/charts", async (c) => {
   csvQuery.set("format", "csv");
   if ((MARKET_METRICS.has(metric) || candleMode) && exchange) csvQuery.set("exchange", exchange);
   const csvHref = candleMode ? `/api/candles?${csvQuery.toString()}` : `/api/history/${metric}?${csvQuery.toString()}`;
-  const showExchange = MARKET_METRICS.has(metric) || candleMode;
+  const showExchange = MARKET_METRICS.has(metric);
 
   const content = `
     <div class="panel">
@@ -100,7 +103,7 @@ charts.get("/charts", async (c) => {
         <select id="sel-type" title="Chart type">
           <option value="line" ${chartType === "line" ? "selected" : ""}>line</option>
           <option value="bar" ${chartType === "bar" ? "selected" : ""}>bar</option>
-          <option value="candles" ${candleMode ? "selected" : ""}>candles</option>
+          ${allowCandles ? `<option value="candles" ${candleMode ? "selected" : ""}>candles</option>` : ""}
         </select>
         <a class="btn ghost" id="btn-csv" href="${csvHref}">CSV</a>
       </div>
