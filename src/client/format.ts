@@ -52,6 +52,7 @@ export function fmtXel(n: number | null | undefined): string {
 // reports it in (whole XEL for fees, bytes for chain size, plain numbers else)
 export function metricFormatter(metric: string): (n: number) => string {
   if (metric === "chain-size") return fmtBytes;
+  if (metric === "contract-gas") return fmtXel;
   if (FEE_METRICS.has(metric)) return fmtXel;
   if (metric === "hashprice") return (n) => `$${fmt(n, 2)}`;
   return (n) => fmt(n, 2);

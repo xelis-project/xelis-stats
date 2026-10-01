@@ -1,5 +1,5 @@
 import { renderChart, renderCompare, cumulativePoints, splitByType, ACCENTS, accentHex, type SeriesPoint, type LineWidth } from "./charts";
-import { fmt, fmtInt, fmtPct, fmtBytes, fmtHash, shortHash, atomic, ago, metricFormatter } from "./format";
+import { fmt, fmtInt, fmtPct, fmtBytes, fmtHash, shortHash, atomic, atomicPrecise, ago, metricFormatter } from "./format";
 import { icons, gripIcon } from "./icons";
 import { containsBadWord } from "./badwords";
 import { refreshSort } from "./sortable";
@@ -54,6 +54,7 @@ interface WidgetOpts {
   dir?: "asc" | "desc";
   txType?: string;
   blockType?: string;
+  feeStat?: "avg" | "median" | "p90" | "p99";
   hiddenCols?: string[];
 }
 
@@ -106,6 +107,8 @@ interface Summary {
   chain_size_formatted?: string | null;
   peers?: number;
   hashprice?: number | null;
+  fee_per_kb?: number | null;
+  predicated_fee_per_kb?: number | null;
   counts?: { transactions?: number; accounts?: number; assets?: number; contracts?: number };
   supply?: { circulating?: number; emitted?: number; burned?: number; max?: number };
   market?: { price?: number; change_pct_24h?: number | null; quote_volume_24h?: number; exchanges?: number } | null;
@@ -133,21 +136,22 @@ const CATALOG: CatalogItem[] = [
   { key: "stat-contracts", kind: "stat", field: "contracts", label: "Contracts", desc: "Deployed smart contracts", w: 3, h: 2 },
   { key: "stat-pruned", kind: "stat", field: "pruned", label: "Pruned to", desc: "Node pruning boundary", w: 3, h: 2 },
   { key: "stat-node", kind: "stat", field: "node", label: "Node", desc: "Node version and network", w: 3, h: 2 },
-  { key: "stat-height", kind: "stat", field: "height", label: "Block height", desc: "Linear chain height", w: 3, h: 2 },
   { key: "stat-quote-vol", kind: "stat", field: "quotevol", label: "24h volume", desc: "USDT quote volume, all exchanges", w: 3, h: 2 },
   { key: "stat-exchanges", kind: "stat", field: "exchanges", label: "Exchanges", desc: "Active market feeds", w: 3, h: 2 },
   { key: "stat-reward", kind: "stat", field: "reward", label: "Block reward", desc: "Miner + dev reward per block", w: 3, h: 2 },
   { key: "stat-peers", kind: "stat", field: "peers", label: "Peers", desc: "Connected peers (2-min snapshot)", w: 3, h: 2 },
   { key: "stat-hashprice", kind: "stat", field: "hashprice", label: "Hashprice", desc: "Miner revenue per MH/s per day", w: 3, h: 2 },
+  { key: "stat-basefee", kind: "stat", field: "basefee", label: "Base fee", desc: "Protocol fee rate per KiB", w: 3, h: 2 },
 
   { key: "chart-txs", kind: "chart", metric: "txs", label: "Transactions / day", desc: "Daily transaction count", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-price", kind: "chart", metric: "price", label: "XEL price", desc: "Median USDT quote over time", range: "30d", interval: "day", w: 6, h: 5 },
   { key: "chart-active-accounts", kind: "chart", metric: "active-accounts", label: "Active accounts", desc: "Distinct senders per bucket", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-hashrate", kind: "chart", metric: "hashrate", label: "Hashrate", desc: "Difficulty-based estimate", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-difficulty", kind: "chart", metric: "difficulty", label: "Difficulty", desc: "Average network difficulty", range: "90d", interval: "day", w: 6, h: 5 },
+  { key: "chart-cum-difficulty", kind: "chart", metric: "cum-difficulty", label: "Cumulative difficulty", desc: "Total accumulated network difficulty", range: "1y", interval: "week", w: 6, h: 5 },
   { key: "chart-hashprice", kind: "chart", metric: "hashprice", label: "Hashprice", desc: "Miner revenue per MH/s per day (USD)", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-miners", kind: "chart", metric: "miners", label: "Unique miners", desc: "Distinct mining addresses", range: "90d", interval: "day", w: 6, h: 5 },
-  { key: "chart-fees", kind: "chart", metric: "fees", label: "Average fee", desc: "Mean fee per transaction", range: "90d", interval: "day", w: 6, h: 5 },
+  { key: "chart-fees", kind: "chart", metric: "fees", label: "Fees", desc: "Fee per transaction (avg / median / P90 / P99)", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "chart-supply", kind: "chart", metric: "supply", label: "Supply", desc: "Circulating supply", range: "1y", interval: "week", w: 6, h: 5 },
   { key: "chart-market-cap", kind: "chart", metric: "market-cap", label: "Market cap", desc: "Supply x price where covered", range: "1y", interval: "week", w: 6, h: 5 },
   { key: "chart-transfers", kind: "chart", metric: "transfers", label: "Transfers", desc: "Transfer outputs per bucket", range: "90d", interval: "day", w: 6, h: 5 },
@@ -166,19 +170,21 @@ const CATALOG: CatalogItem[] = [
   { key: "chart-chainsize", kind: "chart", metric: "chain-size", label: "Blockchain size", desc: "Node on-disk chain size over time", range: "1y", interval: "week", w: 6, h: 5 },
   { key: "chart-peers", kind: "chart", metric: "peers", label: "Peer count", desc: "Connected peers over time", range: "7d", interval: "day", w: 6, h: 5 },
   { key: "chart-peers-pruned", kind: "chart", metric: "peers-pruned", label: "Pruned peers", desc: "Pruned nodes over time", range: "7d", interval: "day", w: 6, h: 5 },
+  { key: "chart-peers-lagging", kind: "chart", metric: "peers-lagging", label: "Lagging peers", desc: "Peers more than 50 blocks behind", range: "7d", interval: "day", w: 6, h: 5 },
+  { key: "chart-peer-lag", kind: "chart", metric: "peer-lag", label: "Average peer lag", desc: "Mean topoheight lag across peers", range: "7d", interval: "day", w: 6, h: 5 },
   { key: "chart-active-contracts", kind: "chart", metric: "active-contracts", label: "Active contracts", desc: "Distinct contracts active per bucket", range: "90d", interval: "day", w: 6, h: 5 },
+  { key: "chart-contract-invokes", kind: "chart", metric: "contract-invokes", label: "Contract invokes", desc: "Contract calls per day", range: "90d", interval: "day", w: 6, h: 5 },
+  { key: "chart-contract-gas", kind: "chart", metric: "contract-gas", label: "Contract gas", desc: "Gas burned by contracts, in XEL", range: "90d", interval: "day", w: 6, h: 5 },
+  { key: "chart-contract-deploys", kind: "chart", metric: "contract-deploys", label: "Contract deploys", desc: "Contracts deployed per day", range: "90d", interval: "day", w: 6, h: 5 },
 
   { key: "compare-price-volume", kind: "compare", metrics: ["price", "quote-volume"], log: true, label: "Price vs volume", desc: "Median price against USDT volume", range: "30d", interval: "day", w: 6, h: 5 },
   { key: "compare-txs-accounts", kind: "compare", metrics: ["txs", "active-accounts"], label: "Txs vs senders", desc: "Transactions against active senders", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "compare-hashrate-miners", kind: "compare", metrics: ["hashrate", "miners"], log: true, label: "Hashrate vs miners", desc: "Hashrate against unique miners", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "compare-fee-p90-txs", kind: "compare", metrics: ["fees", "fee-p90"], label: "Fee avg vs P90", desc: "Mean fee against 90th percentile", range: "90d", interval: "day", w: 6, h: 5 },
-  { key: "compare-hashrate-difficulty", kind: "compare", metrics: ["hashrate", "difficulty"], log: true, label: "Hashrate vs difficulty", desc: "Hashrate against network difficulty", range: "90d", interval: "day", w: 6, h: 5 },
   { key: "compare-contract-invokes-deploys", kind: "compare", metrics: ["contract-invokes", "contract-deploys"], label: "Invokes vs deploys", desc: "Contract invocations against deployments", range: "90d", interval: "day", w: 6, h: 5 },
 
   { key: "rank-miners", kind: "rank", src: "miners", period: "week", limit: 10, label: "Top miners", desc: "Weekly blocks found by address", w: 6, h: 5 },
-  { key: "rank-miners-month", kind: "rank", src: "miners", period: "month", limit: 10, label: "Top miners (month)", desc: "Monthly blocks found by address", w: 6, h: 5 },
   { key: "rank-senders", kind: "rank", src: "senders", period: "week", limit: 10, label: "Top senders", desc: "Weekly most-active senders", w: 6, h: 5 },
-  { key: "rank-senders-month", kind: "rank", src: "senders", period: "month", limit: 10, label: "Top senders (month)", desc: "Monthly most-active senders", w: 6, h: 5 },
   { key: "rank-burners", kind: "rank", src: "burners", period: "week", limit: 10, label: "Top burners", desc: "Weekly XEL burned by address", w: 6, h: 5 },
   { key: "rank-assets", kind: "rank", src: "assets", period: "week", limit: 10, label: "Top assets", desc: "Weekly most-used assets", w: 6, h: 5 },
   { key: "rank-contracts", kind: "rank", src: "contracts", period: "week", limit: 10, label: "Top contracts", desc: "Weekly most-invoked contracts", w: 6, h: 5 },
@@ -211,13 +217,14 @@ const EXPLAIN: Record<string, string> = {
   "stat-reward": "Total reward paid per block, split between the miner reward and the developer reward.",
   "stat-peers": "Connected peers counted from the periodic peer snapshot, refreshed roughly every two minutes.",
   "stat-hashprice": "The latest rolled-up day's miner revenue (USD) divided by that day's estimated hashrate, expressed per megahash per day. XEL's network hashrate is small (tens of MH/s), so it is quoted per MH/s rather than the per-terahash convention used by large chains.",
+  "stat-basefee": "The protocol's current base fee rate per KiB from the node's get_estimated_fee_per_kb RPC, in XEL. Xelis has no user-set priority fee: the rate auto-regulates with chain usage, and the subtitle shows the projected next value.",
   // charts
   "chart-txs": "Every indexed transaction is counted per day and summed across the bucket.",
   "chart-price": "Median USDT quote across connected exchanges. Buckets with no market coverage are omitted rather than zero-filled.",
   "chart-active-accounts": "Distinct sender addresses that signed at least one transaction in the day, averaged within the bucket.",
   "chart-hashrate": "Estimated from network difficulty and observed block time, then averaged. Read it as a trend, not an exact hashrate.",
   "chart-miners": "How many distinct mining addresses produced at least one block in the day, averaged across the bucket. A rising line means mining is spreading out.",
-  "chart-fees": "Mean fee paid per transaction, averaged within the bucket.",
+  "chart-fees": "Fee paid per transaction, averaged within the bucket. The fee statistic selector switches between the mean, median, 90th and 99th percentile.",
   "chart-supply": "Circulating XEL supply in whole XEL. This is a cumulative value maintained by the ingestion pipeline.",
   "chart-market-cap": "Circulating supply multiplied by the latest price on each day that has market coverage.",
   "chart-transfers": "Number of transfer outputs seen in the transaction index, summed per bucket.",
@@ -236,15 +243,20 @@ const EXPLAIN: Record<string, string> = {
   "chart-chainsize": "On-disk blockchain size sampled from the node's get_size_on_disk RPC, averaged within the bucket. Grows with chain history and pruning is not reflected until a node prunes.",
   "chart-peers": "Average number of connected peers from periodic peer snapshots.",
   "chart-peers-pruned": "Average number of peers advertising pruned mode (they do not retain full history).",
-  "chart-difficulty": "Average network difficulty per bucket, computed from every block in the bucket. Rising difficulty means more mining effort is required; it moves inversely with observed block time.",
-  "chart-hashprice": "Daily miner revenue in USD divided by the estimated hashrate, scaled to USD per megahash per day. It combines emission, price and hashrate into a single miner-profitability trend.",
+  "chart-peers-lagging": "Average number of peers whose topoheight is more than 50 blocks behind ours, from the periodic peer snapshots.",
+  "chart-peer-lag": "Mean topoheight (block) lag across connected peers, averaged within the bucket.",
   "chart-active-contracts": "Number of distinct contracts that had at least one invoke or deploy in the bucket, from the daily contract rollup. A rising line means more contracts are being used.",
+  "chart-contract-invokes": "Contract invocations per bucket, from the daily contract rollup.",
+  "chart-contract-gas": "Gas burned by contract invocations per day, in whole XEL, from the daily contract rollup.",
+  "chart-contract-deploys": "New contracts deployed per bucket, from the daily contract rollup.",
+  "chart-difficulty": "Average network difficulty per bucket, computed from every block in the bucket. Rising difficulty means more mining effort is required; it moves inversely with observed block time.",
+  "chart-cum-difficulty": "Running total of network difficulty accumulated over the chain, summed per bucket. It grows steadily and steepens when more mining work is applied.",
+  "chart-hashprice": "Daily miner revenue in USD divided by the estimated hashrate, scaled to USD per megahash per day. It combines emission, price and hashrate into a single miner-profitability trend.",
   // comparisons
   "compare-price-volume": "Median price and summed USDT volume on one chart. The y-axis is logarithmic because trading volume dwarfs the price.",
   "compare-txs-accounts": "Transaction count and active sender count over the same buckets, to compare activity with breadth of participation.",
   "compare-hashrate-miners": "Hashrate and unique-miner count overlaid on a logarithmic axis to show whether hashrate growth tracks miner count.",
   "compare-fee-p90-txs": "Average transaction fee against the 90th-percentile fee, highlighting how far high fees sit above the mean.",
-  "compare-hashrate-difficulty": "Estimated hashrate and network difficulty on a logarithmic axis. They track closely, since hashrate is difficulty divided by the observed block time.",
   "compare-contract-invokes-deploys": "Contract invocations against new contract deployments. Invokes usually dwarf deploys once the ecosystem is established.",
 };
 
@@ -290,15 +302,20 @@ const DEFAULT_TABS: Array<{ name: string; widgets: Array<[string, number, number
   {
     name: "Mining",
     widgets: [
-      ["chart-hashrate", 0, 0, 6, 5],
-      ["chart-miners", 6, 0, 6, 5],
-      ["compare-hashrate-miners", 0, 5, 6, 5],
-      ["chart-miner-revenue", 6, 5, 6, 5],
-      ["rank-miners", 0, 10, 6, 5],
-      ["rank-miners-month", 6, 10, 6, 5],
-      ["chart-difficulty", 0, 15, 6, 5],
-      ["chart-hashprice", 6, 15, 6, 5],
-      ["compare-hashrate-difficulty", 0, 20, 6, 5],
+      ["stat-hashrate", 0, 0, 3, 2],
+      ["stat-hashprice", 3, 0, 3, 2],
+      ["stat-reward", 6, 0, 3, 2],
+      ["stat-blocktime", 9, 0, 3, 2],
+      ["chart-hashrate", 0, 2, 6, 5],
+      ["chart-miners", 6, 2, 6, 5],
+      ["compare-hashrate-miners", 0, 7, 6, 5],
+      ["chart-miner-revenue", 6, 7, 6, 5],
+      ["rank-miners", 0, 12, 6, 5],
+      ["chart-miner-rev-usd", 6, 12, 6, 5],
+      ["chart-difficulty", 0, 17, 6, 5],
+      ["chart-hashprice", 6, 17, 6, 5],
+      ["chart-cum-difficulty", 0, 22, 6, 5],
+      ["chart-block-time", 6, 22, 6, 5],
     ],
   },
   {
@@ -322,6 +339,24 @@ const DEFAULT_TABS: Array<{ name: string; widgets: Array<[string, number, number
       ["list-peers", 0, 7, 6, 5],
       ["list-peer-tags", 6, 7, 6, 5],
       ["list-peer-countries", 6, 2, 6, 5],
+      ["chart-peers-pruned", 0, 12, 6, 5],
+      ["chart-peers-lagging", 6, 12, 6, 5],
+    ],
+  },
+  {
+    name: "Contracts",
+    widgets: [
+      ["stat-contracts", 0, 0, 3, 2],
+      ["stat-assets", 3, 0, 3, 2],
+      ["stat-basefee", 6, 0, 3, 2],
+      ["chart-contract-invokes", 0, 2, 6, 5],
+      ["chart-contract-gas", 6, 2, 6, 5],
+      ["chart-active-contracts", 0, 7, 6, 5],
+      ["chart-contract-deploys", 6, 7, 6, 5],
+      ["compare-contract-invokes-deploys", 0, 12, 6, 5],
+      ["rank-contracts", 6, 12, 6, 5],
+      ["chart-tx-types", 0, 17, 6, 5],
+      ["chart-fees", 6, 17, 6, 5],
     ],
   },
 ];
@@ -374,6 +409,10 @@ const LIMITS = [5, 10, 25, 50];
 // Values the /api/transactions and /api/blocks ?type= filters accept
 const TX_TYPES = ["transfer", "burn", "invoke_contract", "deploy_contract", "multisig"];
 const BLOCK_TYPES = ["Normal", "Side", "Sync"];
+// Fee statistic on the Fees chart widget -> history metric, mirroring the
+// selector on the /charts hub.
+const FEE_STAT_METRIC: Record<string, string> = { avg: "fees", median: "fees-median", p90: "fee-p90", p99: "fees-p99" };
+const FEE_STAT_LABELS: Record<string, string> = { avg: "Average fee", median: "Median fee", p90: "Fee P90", p99: "Fee P99" };
 
 function sanitizeOpts(raw: unknown, item?: CatalogItem): WidgetOpts {
   const out: WidgetOpts = {};
@@ -401,6 +440,7 @@ function sanitizeOpts(raw: unknown, item?: CatalogItem): WidgetOpts {
   if (typeof v.txType === "string" && TX_TYPES.includes(v.txType)) out.txType = v.txType;
   const blockType = v.blockType;
   if (typeof blockType === "string" && BLOCK_TYPES.some((b) => b.toLowerCase() === blockType.toLowerCase())) out.blockType = blockType;
+  if (typeof v.feeStat === "string" && Object.hasOwn(FEE_STAT_METRIC, v.feeStat)) out.feeStat = v.feeStat as NonNullable<WidgetOpts["feeStat"]>;
   if (Array.isArray(v.hiddenCols)) {
     const allowed = item ? tableCols(item).map((c) => c.key) : [];
     const hid = v.hiddenCols.filter((k) => typeof k === "string" && allowed.includes(k));
@@ -580,6 +620,11 @@ function statValue(field: string | undefined, s: Summary): { value: string; sub:
     }
     case "peers": return { value: fmtInt(s.peers ?? NaN), sub: `${fmtInt(s.peers ?? 0)} connected peers` };
     case "hashprice": return { value: s.hashprice ? `$${fmt(s.hashprice, 2)}` : "—", sub: "miner revenue per MH/s per day" };
+    case "basefee": {
+      const cur = s.fee_per_kb;
+      const next = s.predicated_fee_per_kb;
+      return { value: cur != null ? `${atomicPrecise(cur)} XEL/KiB` : "—", sub: next != null ? `next ${atomicPrecise(next)} XEL/KiB` : "protocol base fee" };
+    }
     case "supply": {
       const circ = (s.supply?.circulating ?? 0) / 1e8;
       const max = (s.supply?.max ?? 0) / 1e8;
@@ -1108,6 +1153,10 @@ function mountChart(w: Widget): void {
   const prev = charts.get(w.id);
   if (prev) { prev.destroy(); charts.delete(w.id); }
   const gen = nextGen(w.id);
+  // the Fees widget can chart any fee statistic from the settings selector
+  const feeStat = item.metric === "fees" ? o.feeStat ?? "avg" : null;
+  const metric = feeStat ? FEE_STAT_METRIC[feeStat] : item.metric;
+  const label = feeStat ? FEE_STAT_LABELS[feeStat] ?? item.label : item.label;
   const p = new URLSearchParams();
   if (o.range === "custom" && (o.from || o.to)) {
     if (o.from) p.set("from", o.from);
@@ -1117,7 +1166,7 @@ function mountChart(w: Widget): void {
   }
   p.set("interval", o.interval ?? item.interval ?? "day");
   setLoading(w, true);
-  void fetchJson<{ points?: SeriesPoint[] }>(`/api/history/${item.metric}?${p.toString()}`)
+  void fetchJson<{ points?: SeriesPoint[] }>(`/api/history/${metric}?${p.toString()}`)
     .then((j) => {
       if (mountGen.get(w.id) !== gen) return;
       setLoading(w, false);
@@ -1134,7 +1183,7 @@ function mountChart(w: Widget): void {
         return;
       }
       if (o.cum) points = cumulativePoints(points);
-      const inst = renderChart(body, points, item.label, metricFormatter(item.metric ?? ""), { type: o.type, log: o.log, accent: o.accent, fill: o.fill, points: o.points, lineWidth: o.lineWidth });
+      const inst = renderChart(body, points, label, metricFormatter(metric ?? ""), { type: o.type, log: o.log, accent: o.accent, fill: o.fill, points: o.points, lineWidth: o.lineWidth });
       if (inst) charts.set(w.id, inst);
     })
     .catch(() => {
@@ -1440,7 +1489,8 @@ function settingsHtml(w: Widget, mode: SetMode): string {
                 <label class="w-set-chk"><input type="checkbox" data-opt="log" ${o.log ? "checked" : ""}/> log</label>
                 <label class="w-set-chk"><input type="checkbox" data-opt="cum" ${o.cum ? "checked" : ""}/> cumulative</label>
               </span>
-            </div>`;
+            </div>
+            ${item.metric === "fees" ? `<div class="w-set-row"><label>Fee stat ${sel(o.feeStat ?? "avg", Object.keys(FEE_STAT_METRIC), "feeStat")}</label></div>` : ""}`;
         }
         if (item?.kind === "compare") {
           const range = o.range ?? item.range ?? "90d";

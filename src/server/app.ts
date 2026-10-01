@@ -8,7 +8,7 @@ import { handleCron } from "./cron";
 import { top } from "./rankings";
 import { seo } from "./seo";
 import { api } from "./api";
-import { getStatsCached } from "./cache";
+import { getStatsCached, getFeeRatesCached } from "./cache";
 import { getMarketCached } from "./market-cache";
 
 export interface Env {
@@ -143,7 +143,7 @@ app.get("/api/market", async (c) => {
 });
 
 app.get("/api/summary", async (c) => {
-  const [s, m] = await Promise.all([getStatsCached(c.env), getMarketCached(c.env)]);
+  const [s, m, feeRates] = await Promise.all([getStatsCached(c.env), getMarketCached(c.env), getFeeRatesCached(c.env)]);
   // Hashprice for the latest rolled-up day: daily miner revenue (whole XEL) at
   // the current price divided by that day's estimated hashrate, in USD/MH/day.
   let hashprice: number | null = null;
@@ -171,6 +171,8 @@ app.get("/api/summary", async (c) => {
     chain_size_formatted: s.chainSize?.size_formatted ?? null,
     peers: s.peers,
     hashprice,
+    fee_per_kb: feeRates.fee_per_kb,
+    predicated_fee_per_kb: feeRates.predicated_fee_per_kb,
     counts: { transactions: s.txCount, accounts: s.accounts, assets: s.assets, contracts: s.contracts },
     supply: {
       circulating: s.info.circulating_supply,
