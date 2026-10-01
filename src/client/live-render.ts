@@ -252,7 +252,6 @@ export function liveDagHtml(d: LiveData): string {
     <span class="live-key"><span class="live-key-dot normal"></span>Normal</span>
     <span class="live-key"><span class="live-key-dot side"></span>Side</span>
     <span class="live-key"><span class="live-key-dot sync"></span>Sync</span>
-    <span class="live-key live-key-fill">white fill = transactions, relative to the busiest block in the window</span>
   </div>`;
   return `<div class="live-dag"><div class="live-dag-track">${segs.join("")}</div></div>${note}${legend}`;
 }
