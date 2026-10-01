@@ -1,4 +1,4 @@
-import { renderChart, renderCompare, cumulativePoints, splitByType, fmtAuto, type ChartOpts, type SeriesPoint } from "./charts";
+import { renderChart, renderCompare, renderCandles, cumulativePoints, splitByType, fmtAuto, type Candle, type ChartOpts, type SeriesPoint } from "./charts";
 import { metricFormatter, FEE_METRICS } from "./format";
 import { refreshSort } from "./sortable";
 import { attachDatePickers, setDatePickerValue } from "./datepicker";
@@ -196,6 +196,11 @@ function initMarket(): void {
   let histLoaded = false;
   let volLoaded = false;
   let capLoaded = false;
+  let candlesLoaded = false;
+
+  const candleEl = document.getElementById("u-candles");
+  const candleRange = document.getElementById("candle-range") as HTMLSelectElement | null;
+  const candleInterval = document.getElementById("candle-interval") as HTMLSelectElement | null;
 
   function marketError(): void {
     if (loaded) return;
@@ -208,7 +213,29 @@ function initMarket(): void {
     if (vol && !volLoaded) vol.innerHTML = '<p class="w-empty">Failed to load series.</p>';
     const cap = document.getElementById("u-market-cap");
     if (cap && !capLoaded) cap.innerHTML = '<p class="w-empty">Failed to load series.</p>';
+    if (candleEl && !candlesLoaded) candleEl.innerHTML = '<p class="w-empty">Failed to load candles.</p>';
   }
+
+  async function loadCandles(user: boolean): Promise<void> {
+    if (!candleEl) return;
+    const range = candleRange?.value ?? "30d";
+    const interval = candleInterval?.value ?? "day";
+    try {
+      const res = await fetch(`/api/candles?range=${range}&interval=${interval}`);
+      const data = (await res.json()) as { candles?: Candle[] };
+      if (data.candles?.length) {
+        candlesLoaded = true;
+        renderCandles(candleEl, data.candles);
+      } else if (user || !candlesLoaded) {
+        candleEl.innerHTML = '<p class="w-empty">No candle data for this range.</p>';
+      }
+    } catch {
+      if (user || !candlesLoaded) candleEl.innerHTML = '<p class="w-empty">Failed to load candles.</p>';
+    }
+  }
+
+  candleRange?.addEventListener("change", () => void loadCandles(true));
+  candleInterval?.addEventListener("change", () => void loadCandles(true));
 
   async function load(): Promise<void> {
     try {
@@ -292,6 +319,8 @@ function initMarket(): void {
       // market cap history chart (circulating supply x price)
       const capEl = document.getElementById("u-market-cap");
       if (capEl && cap.points.length) { capLoaded = true; renderChart(capEl, cap.points, "Market cap (USDT)", fmtAuto, { fill: true }); }
+
+      await loadCandles(false);
     } catch {
       marketError();
     }

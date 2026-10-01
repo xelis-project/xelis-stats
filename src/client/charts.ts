@@ -4,6 +4,8 @@ import { getNumberFormat } from "./prefs";
 
 export interface SeriesPoint { date: string; value: number }
 
+export interface Candle { t: string; o: number; h: number; l: number; c: number; n?: number }
+
 export type LineWidth = "thin" | "normal" | "thick";
 
 export interface ChartOpts {
@@ -175,12 +177,17 @@ function baseScales(log: boolean): uPlot.Options["scales"] {
   return log ? { x: { time: true }, y: { distr: 3, log: 10 } } : { x: { time: true } };
 }
 
-// Bucket labels come in several shapes from /api/history depending on the
-// interval: "YYYY-MM-DD" (day), "YYYY-Www" (week), "YYYY-MM" (month),
-// "YYYY" (year) and "YYYY-MM-DD-type" (block types). Date.parse rejects most
-// of them, so normalize each shape to a UTC timestamp; unparseable values map
-// to null and fall back to their index.
+// Bucket labels come in several shapes from /api/history and /api/candles
+// depending on the interval: "YYYY-MM-DD" (day), "YYYY-MM-DDTHH:MM:SSZ"
+// (hour), "YYYY-Www" (week), "YYYY-MM" (month), "YYYY" (year) and
+// "YYYY-MM-DD-type" (block types). Date.parse rejects most of them, so
+// normalize each shape to a UTC timestamp; unparseable values map to null and
+// fall back to their index.
 function bucketToMs(d: string): number | null {
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(d)) {
+    const t = Date.parse(d);
+    return Number.isFinite(t) ? t : null;
+  }
   if (/^\d{4}-\d{2}-\d{2}/.test(d)) return Date.parse(`${d.slice(0, 10)}T00:00:00Z`);
   if (/^\d{4}-\d{2}$/.test(d)) return Date.parse(`${d}-01T00:00:00Z`);
   if (/^\d{4}$/.test(d)) return Date.parse(`${d}-01-01T00:00:00Z`);
@@ -216,15 +223,17 @@ function xValues(dates: string[]): number[] {
   return ts as number[];
 }
 
-function dateLabel(ts: number): string {
+function dateLabel(ts: number, withTime = false): string {
   const d = new Date(ts * 1000);
-  return Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10) : String(ts);
+  if (!Number.isFinite(d.getTime())) return String(ts);
+  const iso = d.toISOString();
+  return withTime ? iso.slice(5, 16).replace("T", " ") : iso.slice(0, 10);
 }
 
 // approx px width of "2026-07-19" at uPlot's default 10px axis font + padding
 const X_LABEL_W = 76;
 
-function dateAxis(): uPlot.Axis {
+function dateAxis(withTime = false): uPlot.Axis {
   return {
     stroke: AXIS,
     grid: { stroke: GRID },
@@ -234,7 +243,7 @@ function dateAxis(): uPlot.Axis {
     values: (u: uPlot, splits: number[]) => {
       const avail = Math.max(1, (u.bbox?.width ?? 600) - 24);
       const stride = Math.max(1, Math.ceil((splits.length * X_LABEL_W) / avail));
-      return splits.map((ts, i) => (i % stride === 0 ? dateLabel(ts) : null));
+      return splits.map((ts, i) => (i % stride === 0 ? dateLabel(ts, withTime) : null));
     },
   };
 }
@@ -486,6 +495,160 @@ export function renderCompare(el: HTMLElement, series: Array<{ label: string; po
   const u = new uPlot(uOpts, data as unknown as uPlot.AlignedData, el);
   liveCharts.set(el, u);
   return u;
+}
+
+// OHLC candle chart backed by /api/candles. uPlot has no candlestick paths, so
+// the first data series owns a custom path builder that draws every candle
+// (wick + body) straight to the canvas and returns null to skip uPlot's own
+// stroke/fill; the remaining O/H/L/C series stay visible but draw nothing, so
+// their data still feeds the y-scale autoscaler and the shared x cursor.
+const CANDLE_UP = "#02ffcf";
+const CANDLE_DOWN = "#ff6b81";
+
+function candlePaths(u: uPlot, _seriesIdx: number, idx0: number, idx1: number): null {
+  const ctx = u.ctx;
+  const xs = u.data[0] as ArrayLike<number>;
+  const os = u.data[1] as ArrayLike<number>;
+  const hs = u.data[2] as ArrayLike<number>;
+  const ls = u.data[3] as ArrayLike<number>;
+  const cs = u.data[4] as ArrayLike<number>;
+  const i0 = Math.max(0, idx0);
+  const i1 = Math.min(xs.length - 1, idx1);
+
+  const gaps: number[] = [];
+  for (let i = i0; i < i1; i++) {
+    const d = u.valToPos(xs[i + 1], "x", true) - u.valToPos(xs[i], "x", true);
+    if (d > 0) gaps.push(d);
+  }
+  gaps.sort((a, b) => a - b);
+  const slot = gaps.length ? gaps[gaps.length >> 1] : (u.bbox?.width ?? 600) / Math.max(1, i1 - i0 + 1);
+  const bodyW = Math.max(1.5, Math.min(slot * 0.7, 22));
+
+  ctx.save();
+  ctx.lineWidth = 1;
+  for (let i = i0; i <= i1; i++) {
+    const o = os[i], h = hs[i], l = ls[i], c = cs[i];
+    if (!Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l) || !Number.isFinite(c)) continue;
+    const cx = u.valToPos(xs[i], "x", true);
+    const yo = u.valToPos(o, "y", true);
+    const yc = u.valToPos(c, "y", true);
+    const color = c >= o ? CANDLE_UP : CANDLE_DOWN;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(cx, u.valToPos(h, "y", true));
+    ctx.lineTo(cx, u.valToPos(l, "y", true));
+    ctx.stroke();
+    ctx.fillRect(cx - bodyW / 2, Math.min(yo, yc), bodyW, Math.max(1, Math.abs(yc - yo)));
+  }
+  ctx.restore();
+  return null;
+}
+
+function noopPaths(): null {
+  return null;
+}
+
+function candleTimeLabel(t: string): string {
+  return t.includes("T") ? `${t.slice(0, 16).replace("T", " ")} UTC` : t;
+}
+
+function candleTooltipPlugin(candles: Candle[], fmt: (v: number) => string): uPlot.Plugin {
+  let el: HTMLDivElement | null = null;
+
+  const update = (u: uPlot) => {
+    if (!el) return;
+    const idx = u.cursor.idx;
+    const cd = idx == null ? null : candles[idx];
+    if (!cd) {
+      el.style.display = "none";
+      return;
+    }
+    const chg = cd.o > 0 ? ((cd.c - cd.o) / cd.o) * 100 : 0;
+    const color = cd.c >= cd.o ? CANDLE_UP : CANDLE_DOWN;
+    const row = (label: string, val: string) =>
+      `<div class="uplot-tooltip-row"><span class="uplot-tooltip-label">${label}</span><span class="uplot-tooltip-val">${val}</span></div>`;
+    el.innerHTML =
+      `<div class="uplot-tooltip-date">${escapeHtml(candleTimeLabel(cd.t))}</div>` +
+      row("Open", fmt(cd.o)) +
+      row("High", fmt(cd.h)) +
+      row("Low", fmt(cd.l)) +
+      row("Close", fmt(cd.c)) +
+      `<div class="uplot-tooltip-row"><span class="uplot-tooltip-label">Change</span>` +
+      `<span class="uplot-tooltip-val" style="color:${color}">${(chg >= 0 ? "+" : "") + chg.toFixed(2)}%</span></div>`;
+    el.style.display = "block";
+
+    const ttW = el.offsetWidth;
+    const ttH = el.offsetHeight;
+    const overW = u.over.clientWidth;
+    const overH = u.over.clientHeight;
+    const cx = u.cursor.left ?? 0;
+    const cy = u.cursor.top ?? 0;
+    let x = cx + 14;
+    if (x + ttW > overW - 6) x = cx - ttW - 14;
+    if (x < 6) x = 6;
+    let y = cy - ttH - 12;
+    if (y < 6) y = cy + 14;
+    if (y + ttH > overH - 6) y = overH - ttH - 6;
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+  };
+
+  return {
+    hooks: {
+      ready(u: uPlot) {
+        el = document.createElement("div");
+        el.className = "uplot-tooltip";
+        el.style.display = "none";
+        u.over.appendChild(el);
+      },
+      setCursor(u: uPlot) { update(u); },
+      destroy() { el = null; },
+    },
+  };
+}
+
+export function renderCandles(el: HTMLElement, candles: Candle[], fmt: (v: number) => string = fmtPrice): uPlot | null {
+  if (!candles.length || !el) return null;
+  destroyChart(el);
+  el.innerHTML = "";
+
+  const data = [
+    xValues(candles.map((cd) => cd.t)),
+    candles.map((cd) => cd.o),
+    candles.map((cd) => cd.h),
+    candles.map((cd) => cd.l),
+    candles.map((cd) => cd.c),
+  ];
+
+  const uOpts: uPlot.Options = {
+    width: el.clientWidth || 600,
+    height: el.clientHeight || 320,
+    scales: { x: { time: true } },
+    series: [
+      {},
+      { label: "XEL/USDT", paths: candlePaths, points: { show: false }, width: 0 },
+      { label: "high", paths: noopPaths, points: { show: false }, width: 0 },
+      { label: "low", paths: noopPaths, points: { show: false }, width: 0 },
+      { label: "close", paths: noopPaths, points: { show: false }, width: 0 },
+    ],
+    axes: [dateAxis(true), yAxis(fmt)],
+    legend: { show: false },
+    cursor: { points: { show: false } },
+    focus: { alpha: 1 },
+    plugins: [autoResizePlugin(el), candleTooltipPlugin(candles, fmt)],
+  };
+
+  const u = new uPlot(uOpts, data as unknown as uPlot.AlignedData, el);
+  liveCharts.set(el, u);
+  return u;
+}
+
+export function fmtPrice(v: number): string {
+  if (!Number.isFinite(v)) return "—";
+  const a = Math.abs(v);
+  const digits = a >= 100 ? 2 : a >= 1 ? 3 : 4;
+  return "$" + v.toFixed(digits);
 }
 
 export function fmtAuto(v: number): string {

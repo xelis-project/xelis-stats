@@ -28,13 +28,23 @@ market.get("/market", async (c) => {
        </table></div></div>`
     : "";
   const skCols = [42, 66, 38, 74, 55, 84, 61, 90, 70, 52, 78, 46].map((h) => `<span class="sk-bar sk-col" style="height:${h}%"></span>`).join("");
+  const candleRanges: Array<[string, string]> = [["7d", "7d"], ["30d", "30d"], ["90d", "90d"], ["1y", "1y"]];
+  const candleIntervals: Array<[string, string]> = [["hour", "hourly"], ["day", "daily"], ["week", "weekly"]];
+  const candleOpts = (opts: Array<[string, string]>, selected: string) =>
+    opts.map(([v, l]) => `<option value="${v}"${v === selected ? " selected" : ""}>${l}</option>`).join("");
+  const candlePanel = `<div class="panel"><h2>Price candles</h2>
+    <div class="chart-filters">
+      <select id="candle-range" title="Period">${candleOpts(candleRanges, "30d")}</select>
+      <select id="candle-interval" title="Candle interval">${candleOpts(candleIntervals, "day")}</select>
+    </div>
+    <div id="u-candles" style="min-height:320px"><div class="w-skel sk-chart">${skCols}</div></div></div>`;
   const priceHistoryPanel = `<div class="panel"><h2>Price history</h2><div id="u-price-history" style="min-height:260px"><div class="w-skel sk-chart">${skCols}</div></div></div>`;
   const volumeHistoryPanel = `<div class="panel"><h2>Volume history</h2><div id="u-volume-history" style="min-height:260px"><div class="w-skel sk-chart">${skCols}</div></div></div>`;
   const marketCapPanel = `<div class="panel"><h2>Market cap history</h2><div id="u-market-cap" style="min-height:260px"><div class="w-skel sk-chart">${skCols}</div></div></div>`;
   const secondRow = retiredPanel
     ? `<div class="grid-2" style="margin-top:2rem">${retiredPanel}${marketCapPanel}</div>`
     : `<div style="margin-top:2rem">${marketCapPanel}</div>`;
-  const historyRow = `<div class="grid-2">${priceHistoryPanel}${volumeHistoryPanel}</div>${secondRow}`;
+  const historyRow = `${candlePanel}<div class="grid-2">${priceHistoryPanel}${volumeHistoryPanel}</div>${secondRow}`;
   const content = `
     <div class="panel"><h2>XEL Markets</h2>
       <div id="market-cards" class="cards">${Array.from({ length: 6 }, () =>
