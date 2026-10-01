@@ -29,6 +29,11 @@ function initChartsHub(): void {
   // cached series for client-side re-renders (cum/log/type toggles)
   let data1: SeriesPoint[] = [];
   let data2: SeriesPoint[] | null = null;
+  let candles: Candle[] = [];
+
+  function chartType(): "line" | "bar" | "candles" {
+    return selType?.value === "candles" ? "candles" : selType?.value === "bar" ? "bar" : "line";
+  }
 
   function renderOpts(): ChartOpts {
     return { type: selType?.value === "bar" ? "bar" : "line", log: !!chkLog?.checked };
@@ -39,6 +44,11 @@ function initChartsHub(): void {
   }
 
   function draw(): void {
+    if (chartType() === "candles") {
+      if (!candles.length) { showEmpty(); return; }
+      renderCandles(chartTarget, candles);
+      return;
+    }
     const m = selMetric!.value;
     const o = renderOpts();
     const useCum = !!chkCum?.checked;
@@ -75,18 +85,35 @@ function initChartsHub(): void {
     } else {
       p.set("range", selRange!.value);
     }
-    if (MARKET_METRICS.has(selMetric!.value) && selExchange?.value) p.set("exchange", selExchange.value);
+    if ((MARKET_METRICS.has(selMetric!.value) || chartType() === "candles") && selExchange?.value) p.set("exchange", selExchange.value);
     return p;
+  }
+
+  function syncIntervals(): void {
+    if (!selInterval) return;
+    const want = chartType() === "candles" ? ["hour", "day", "week"] : ["day", "week", "month", "year"];
+    const cur = want.includes(selInterval.value) ? selInterval.value : want[0];
+    if (Array.from(selInterval.options, (o) => o.value).join() !== want.join()) {
+      selInterval.innerHTML = want.map((v) => `<option value="${v}">${v}</option>`).join("");
+    }
+    selInterval.value = cur;
   }
 
   // show/hide metric-specific filters; prefill custom dates
   function syncControls(): void {
+    const candleMode = chartType() === "candles";
+    syncIntervals();
     if (selFeestat) {
-      const isFee = FEE_METRICS.has(selMetric!.value);
+      const isFee = FEE_METRICS.has(selMetric!.value) && !candleMode;
       selFeestat.hidden = !isFee;
       if (isFee) selFeestat.value = selMetric!.value;
     }
-    if (selExchange) selExchange.hidden = !MARKET_METRICS.has(selMetric!.value);
+    if (selExchange) selExchange.hidden = !(MARKET_METRICS.has(selMetric!.value) || candleMode);
+    if (selCompare) selCompare.hidden = candleMode;
+    for (const inp of [chkCum, chkLog]) {
+      const lab = inp?.closest("label");
+      if (lab) lab.hidden = candleMode;
+    }
     const custom = selRange!.value === "custom";
     if (inpFrom && inpTo) {
       inpFrom.hidden = !custom;
@@ -124,11 +151,11 @@ function initChartsHub(): void {
       if (inpTo?.value) q.set("to", inpTo.value);
     }
     if (selInterval!.value !== "day") q.set("interval", selInterval!.value);
-    if (MARKET_METRICS.has(selMetric!.value) && selExchange?.value) q.set("exchange", selExchange.value);
+    if ((MARKET_METRICS.has(selMetric!.value) || chartType() === "candles") && selExchange?.value) q.set("exchange", selExchange.value);
     if (selCompare?.value) q.set("compare", selCompare.value);
     if (chkCum?.checked) q.set("cum", "1");
     if (chkLog?.checked) q.set("log", "1");
-    if (selType?.value === "bar") q.set("type", "bar");
+    if (selType?.value && selType.value !== "line") q.set("type", selType.value);
     const qs = q.toString();
     history.replaceState(null, "", qs ? `/charts?${qs}` : "/charts");
   }
@@ -140,6 +167,19 @@ function initChartsHub(): void {
     const qs = apiParams();
     qs.set("interval", selInterval!.value);
     const query = qs.toString();
+    if (chartType() === "candles") {
+      if (csvBtn) csvBtn.setAttribute("href", `/api/candles?${query}&format=csv`);
+      syncUrl();
+      try {
+        const res = await fetch(`/api/candles?${query}`);
+        const json = (await res.json()) as { candles?: Candle[] };
+        candles = json.candles ?? [];
+        draw();
+      } catch {
+        chartTarget.innerHTML = '<p style="color:var(--text-dim)">Failed to load candles.</p>';
+      }
+      return;
+    }
     if (csvBtn) csvBtn.setAttribute("href", `/api/history/${m}?${query}&format=csv`);
     syncUrl();
     try {
@@ -174,9 +214,17 @@ function initChartsHub(): void {
     });
   }
   // rendering-only toggles: redraw from cached series without refetching
-  for (const el of [chkCum, chkLog, selType]) {
+  for (const el of [chkCum, chkLog]) {
     el?.addEventListener("change", () => { syncUrl(); draw(); });
   }
+  // candles come from /api/candles, so crossing the candles boundary refetches
+  let lastType = chartType();
+  selType?.addEventListener("change", () => {
+    const t = chartType();
+    if (t === "candles" || lastType === "candles") load();
+    else { syncUrl(); draw(); }
+    lastType = t;
+  });
   load();
 }
 
@@ -196,11 +244,6 @@ function initMarket(): void {
   let histLoaded = false;
   let volLoaded = false;
   let capLoaded = false;
-  let candlesLoaded = false;
-
-  const candleEl = document.getElementById("u-candles");
-  const candleRange = document.getElementById("candle-range") as HTMLSelectElement | null;
-  const candleInterval = document.getElementById("candle-interval") as HTMLSelectElement | null;
 
   function marketError(): void {
     if (loaded) return;
@@ -213,29 +256,7 @@ function initMarket(): void {
     if (vol && !volLoaded) vol.innerHTML = '<p class="w-empty">Failed to load series.</p>';
     const cap = document.getElementById("u-market-cap");
     if (cap && !capLoaded) cap.innerHTML = '<p class="w-empty">Failed to load series.</p>';
-    if (candleEl && !candlesLoaded) candleEl.innerHTML = '<p class="w-empty">Failed to load candles.</p>';
   }
-
-  async function loadCandles(user: boolean): Promise<void> {
-    if (!candleEl) return;
-    const range = candleRange?.value ?? "30d";
-    const interval = candleInterval?.value ?? "day";
-    try {
-      const res = await fetch(`/api/candles?range=${range}&interval=${interval}`);
-      const data = (await res.json()) as { candles?: Candle[] };
-      if (data.candles?.length) {
-        candlesLoaded = true;
-        renderCandles(candleEl, data.candles);
-      } else if (user || !candlesLoaded) {
-        candleEl.innerHTML = '<p class="w-empty">No candle data for this range.</p>';
-      }
-    } catch {
-      if (user || !candlesLoaded) candleEl.innerHTML = '<p class="w-empty">Failed to load candles.</p>';
-    }
-  }
-
-  candleRange?.addEventListener("change", () => void loadCandles(true));
-  candleInterval?.addEventListener("change", () => void loadCandles(true));
 
   async function load(): Promise<void> {
     try {
@@ -319,8 +340,6 @@ function initMarket(): void {
       // market cap history chart (circulating supply x price)
       const capEl = document.getElementById("u-market-cap");
       if (capEl && cap.points.length) { capLoaded = true; renderChart(capEl, cap.points, "Market cap (USDT)", fmtAuto, { fill: true }); }
-
-      await loadCandles(false);
     } catch {
       marketError();
     }

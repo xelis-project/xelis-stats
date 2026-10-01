@@ -33,8 +33,13 @@ charts.get("/charts", async (c) => {
   const metric = metrics.some(([m]) => m === metricParam) ? metricParam : "txs";
   const rangeParam = c.req.query("range") ?? "90d";
   const range = ["7d", "30d", "90d", "1y", "all", "custom"].includes(rangeParam) ? rangeParam : "90d";
-  const intervalParam = c.req.query("interval") ?? "day";
-  const interval = ["day", "week", "month", "year"].includes(intervalParam) ? intervalParam : "day";
+  const chartTypeParam = c.req.query("type") ?? "line";
+  const chartType = chartTypeParam === "bar" || chartTypeParam === "candles" ? chartTypeParam : "line";
+  // candle charts read /api/candles, which only buckets by hour/day/week
+  const candleMode = chartType === "candles";
+  const intervalOptsAll = candleMode ? ["hour", "day", "week"] : ["day", "week", "month", "year"];
+  const intervalParam = c.req.query("interval") ?? (candleMode ? "hour" : "day");
+  const interval = intervalOptsAll.includes(intervalParam) ? intervalParam : (candleMode ? "hour" : "day");
   // strict YYYY-MM-DD validation doubles as HTML-attribute sanitization
   const isDate = (v: string | undefined) => !!v && /^\d{4}-\d{2}-\d{2}$/.test(v);
   const from = isDate(c.req.query("from")) ? c.req.query("from")! : "";
@@ -42,11 +47,10 @@ charts.get("/charts", async (c) => {
   const custom = range === "custom";
   const cum = c.req.query("cum") === "1";
   const log = c.req.query("log") === "1";
-  const chartType = c.req.query("type") === "bar" ? "bar" : "line";
 
   const metricOpts = metrics.map(([m, name]) => `<option value="${m}" ${metric === m ? "selected" : ""}>${name}</option>`).join("");
   const rangeOpts = ["7d", "30d", "90d", "1y", "all", "custom"].map((r) => `<option value="${r}" ${range === r ? "selected" : ""}>${r === "custom" ? "custom period" : r}</option>`).join("");
-  const intervalOpts = ["day", "week", "month", "year"].map((i) => `<option value="${i}" ${interval === i ? "selected" : ""}>${i}</option>`).join("");
+  const intervalOpts = intervalOptsAll.map((i) => `<option value="${i}" ${interval === i ? "selected" : ""}>${i}</option>`).join("");
 
   const feeStatOpts = ["fees", "fees-median", "fee-p90", "fees-p99"].map((m) => `<option value="${m}" ${metric === m ? "selected" : ""}>${FEE_METRICS[m]}</option>`).join("");
 
@@ -75,26 +79,28 @@ charts.get("/charts", async (c) => {
   const csvQuery = new URLSearchParams(periodQuery);
   csvQuery.set("interval", interval);
   csvQuery.set("format", "csv");
-  if (MARKET_METRICS.has(metric) && exchange) csvQuery.set("exchange", exchange);
-  const csvHref = `/api/history/${metric}?${csvQuery.toString()}`;
+  if ((MARKET_METRICS.has(metric) || candleMode) && exchange) csvQuery.set("exchange", exchange);
+  const csvHref = candleMode ? `/api/candles?${csvQuery.toString()}` : `/api/history/${metric}?${csvQuery.toString()}`;
+  const showExchange = MARKET_METRICS.has(metric) || candleMode;
 
   const content = `
     <div class="panel">
       <div class="chart-filters">
         <select id="sel-metric" title="Metric">${metricOpts}</select>
-        <select id="sel-feestat" title="Fee statistic" ${FEE_METRICS[metric] ? "" : "hidden"}>${feeStatOpts}</select>
+        <select id="sel-feestat" title="Fee statistic" ${FEE_METRICS[metric] && !candleMode ? "" : "hidden"}>${feeStatOpts}</select>
         <select id="sel-range" title="Period">${rangeOpts}</select>
         <input type="text" class="period" data-datepicker id="inp-from" value="${from}" aria-label="Period start" ${custom ? "" : "hidden"} />
         <span id="period-sep" aria-hidden="true" style="color:var(--text-dim)" ${custom ? "" : "hidden"}>${icons.arrowRight}</span>
         <input type="text" class="period" data-datepicker id="inp-to" value="${to}" aria-label="Period end" ${custom ? "" : "hidden"} />
         <select id="sel-interval" title="Bucket interval">${intervalOpts}</select>
-        <select id="sel-exchange" title="Exchange" ${MARKET_METRICS.has(metric) ? "" : "hidden"}>${exchangeOpts}</select>
-        <select id="sel-compare" title="Overlay a second metric">${compareOpts}</select>
-        <label class="chk" title="Show running total instead of per-bucket value"><input type="checkbox" id="chk-cum" ${cum ? "checked" : ""}/> cum</label>
-        <label class="chk" title="Logarithmic Y axis"><input type="checkbox" id="chk-log" ${log ? "checked" : ""}/> log</label>
+        <select id="sel-exchange" title="Exchange" ${showExchange ? "" : "hidden"}>${exchangeOpts}</select>
+        <select id="sel-compare" title="Overlay a second metric" ${candleMode ? "hidden" : ""}>${compareOpts}</select>
+        <label class="chk" title="Show running total instead of per-bucket value" ${candleMode ? "hidden" : ""}><input type="checkbox" id="chk-cum" ${cum ? "checked" : ""}/> cum</label>
+        <label class="chk" title="Logarithmic Y axis" ${candleMode ? "hidden" : ""}><input type="checkbox" id="chk-log" ${log ? "checked" : ""}/> log</label>
         <select id="sel-type" title="Chart type">
           <option value="line" ${chartType === "line" ? "selected" : ""}>line</option>
           <option value="bar" ${chartType === "bar" ? "selected" : ""}>bar</option>
+          <option value="candles" ${candleMode ? "selected" : ""}>candles</option>
         </select>
         <a class="btn ghost" id="btn-csv" href="${csvHref}">CSV</a>
       </div>

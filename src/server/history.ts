@@ -566,14 +566,14 @@ history.get("/api/candles", async (c) => {
   const range = c.req.query("range") ?? "30d";
   const intervalParam = c.req.query("interval") ?? "day";
   const interval = intervalParam === "hour" || intervalParam === "week" ? intervalParam : "day";
+  const format = c.req.query("format") ?? "json";
   const from = parseDateParam(c.req.query("from"));
   const to = parseDateParam(c.req.query("to"));
   const days = rangeToDays(range);
   const exchange = (c.req.query("exchange") ?? "").slice(0, 64);
 
   const cacheKey = `candles:v1:${range}|${interval}|${from ?? ""}|${to ?? ""}|${exchange}`;
-  const hit = await c.env.KV.get<Candle[]>(cacheKey, "json").catch(() => null);
-  if (hit) return c.json({ range, interval, ...(exchange ? { exchange } : {}), candles: hit });
+  let candles = await c.env.KV.get<Candle[]>(cacheKey, "json").catch(() => null) ?? [];
 
   // hourly bucket labels stay ISO-8601 with a trailing Z so the client parses
   // them as UTC; day/week labels match the /api/history bucket shapes.
@@ -583,57 +583,66 @@ history.get("/api/candles", async (c) => {
       ? "strftime('%Y-W%W', ts/1000, 'unixepoch')"
       : "date(ts/1000, 'unixepoch')";
 
-  const conds: string[] = ["ts > 0", "last > 0"];
-  const binds: (string | number)[] = [];
-  if (from) {
-    conds.push("ts >= ?");
-    binds.push(Date.parse(from));
-  } else if (Number.isFinite(days)) {
-    conds.push("ts > ?");
-    binds.push(Date.now() - days * 86400_000);
-  }
-  if (to) {
-    conds.push("ts < ?");
-    binds.push(Date.parse(to) + 86400_000);
-  }
-  if (exchange) {
-    conds.push("exchange = ?");
-    binds.push(exchange);
-  }
-  const where = `WHERE ${conds.join(" AND ")}`;
+  if (!candles.length) {
+    const conds: string[] = ["ts > 0", "last > 0"];
+    const binds: (string | number)[] = [];
+    if (from) {
+      conds.push("ts >= ?");
+      binds.push(Date.parse(from));
+    } else if (Number.isFinite(days)) {
+      conds.push("ts > ?");
+      binds.push(Date.now() - days * 86400_000);
+    }
+    if (to) {
+      conds.push("ts < ?");
+      binds.push(Date.parse(to) + 86400_000);
+    }
+    if (exchange) {
+      conds.push("exchange = ?");
+      binds.push(exchange);
+    }
+    const where = `WHERE ${conds.join(" AND ")}`;
 
-  let candles: Candle[] = [];
-  try {
-    const rows = await c.env.DB.prepare(
-      `WITH per_exchange AS (
-         SELECT ${bucket} bucket, exchange, ts, last FROM market_snapshots ${where}
-       ),
-       ranked AS (
-         SELECT bucket, exchange, last,
-           ROW_NUMBER() OVER (PARTITION BY bucket, exchange ORDER BY ts) ra,
-           ROW_NUMBER() OVER (PARTITION BY bucket, exchange ORDER BY ts DESC) rd
-         FROM per_exchange
-       ),
-       per_bucket AS (
-         SELECT bucket, exchange,
-           MAX(CASE WHEN ra = 1 THEN last END) o,
-           MAX(last) h, MIN(last) l,
-           MAX(CASE WHEN rd = 1 THEN last END) c,
-           COUNT(*) n
-         FROM ranked GROUP BY bucket, exchange
-       )
-       SELECT bucket, AVG(o) o, MAX(h) h, MIN(l) l, AVG(c) c, SUM(n) n
-       FROM per_bucket GROUP BY bucket ORDER BY bucket`
-    ).bind(...binds).all<{ bucket: string; o: number; h: number; l: number; c: number; n: number }>();
-    candles = (rows.results ?? [])
-      .map((r) => ({ t: String(r.bucket), o: Number(r.o), h: Number(r.h), l: Number(r.l), c: Number(r.c), n: Number(r.n) }))
-      .filter((cd) => Number.isFinite(cd.o) && Number.isFinite(cd.h) && Number.isFinite(cd.l) && Number.isFinite(cd.c));
-  } catch {
-    candles = [];
+    try {
+      const rows = await c.env.DB.prepare(
+        `WITH per_exchange AS (
+           SELECT ${bucket} bucket, exchange, ts, last FROM market_snapshots ${where}
+         ),
+         ranked AS (
+           SELECT bucket, exchange, last,
+             ROW_NUMBER() OVER (PARTITION BY bucket, exchange ORDER BY ts) ra,
+             ROW_NUMBER() OVER (PARTITION BY bucket, exchange ORDER BY ts DESC) rd
+           FROM per_exchange
+         ),
+         per_bucket AS (
+           SELECT bucket, exchange,
+             MAX(CASE WHEN ra = 1 THEN last END) o,
+             MAX(last) h, MIN(last) l,
+             MAX(CASE WHEN rd = 1 THEN last END) c,
+             COUNT(*) n
+           FROM ranked GROUP BY bucket, exchange
+         )
+         SELECT bucket, AVG(o) o, MAX(h) h, MIN(l) l, AVG(c) c, SUM(n) n
+         FROM per_bucket GROUP BY bucket ORDER BY bucket`
+      ).bind(...binds).all<{ bucket: string; o: number; h: number; l: number; c: number; n: number }>();
+      candles = (rows.results ?? [])
+        .map((r) => ({ t: String(r.bucket), o: Number(r.o), h: Number(r.h), l: Number(r.l), c: Number(r.c), n: Number(r.n) }))
+        .filter((cd) => Number.isFinite(cd.o) && Number.isFinite(cd.h) && Number.isFinite(cd.l) && Number.isFinite(cd.c));
+    } catch {
+      candles = [];
+    }
+
+    if (candles.length) {
+      await c.env.KV.put(cacheKey, JSON.stringify(candles), { expirationTtl: 120 }).catch(() => { /* cache best effort */ });
+    }
   }
 
-  if (candles.length) {
-    await c.env.KV.put(cacheKey, JSON.stringify(candles), { expirationTtl: 120 }).catch(() => { /* cache best effort */ });
+  if (format === "csv") {
+    const periodLabel = from || to ? `${from ?? "start"}_${to ?? "latest"}` : range;
+    const exLabel = exchange ? `-${exchange.replace(/[^\w.-]+/g, "").slice(0, 32)}` : "";
+    const csv = ["bucket,open,high,low,close,snapshots", ...candles.map((cd) => `${cd.t},${cd.o},${cd.h},${cd.l},${cd.c},${cd.n}`)].join("\n");
+    return c.body(csv, 200, { "Content-Type": "text/csv", "Content-Disposition": `attachment; filename="candles${exLabel}-${periodLabel}.csv"` });
   }
+
   return c.json({ range, interval, ...(exchange ? { exchange } : {}), candles });
 });
