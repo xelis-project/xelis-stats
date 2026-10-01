@@ -108,6 +108,7 @@ charts.get("/charts", async (c) => {
         <a class="btn ghost" id="btn-csv" href="${csvHref}">CSV</a>
       </div>
       <div id="u-chart" style="height:320px"></div>
+      <p class="chart-hint">Drag to zoom · Shift+drag to pan · Ctrl/⌘ + scroll to zoom · Double-click to reset</p>
     </div>`;
   return c.html(layout("Charts", content, "/charts"));
 });

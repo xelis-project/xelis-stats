@@ -120,6 +120,9 @@ function hoverCursor(lineWidth: number): uPlot.Cursor {
   return {
     focus: { prox: 1e6 },
     points: { one: true, size: hoverMarkerSize(lineWidth), width: 1.5, stroke: () => RING },
+    // dist keeps the tiniest mouse movement while hovering from starting a
+    // zoom selection (the default is 0, so any drift zoomed on release)
+    drag: { x: true, y: false, dist: DRAG_DIST },
     move: (u: uPlot, left: number, top: number): [number, number] => {
       if (left < 0) return [left, top];
       const xs = u.data[0];
@@ -143,6 +146,159 @@ function hoverHighlightPlugin(bases: number[]): uPlot.Plugin {
           if (s.width !== w) { s.width = w; dirty = true; }
         });
         if (dirty) u.redraw(false);
+      },
+    },
+  };
+}
+
+// Drag threshold in CSS px before a press turns into a zoom selection.
+const DRAG_DIST = 8;
+// Wheel zoom step per notch (range multiplier).
+const WHEEL_STEP = 1.25;
+
+// Zoom affordances on top of uPlot's x-only drag selection. Stock uPlot
+// starts a selection on any movement and only advertises the way back via an
+// undiscoverable double-click, so this plugin adds:
+//   - Shift+drag pans the zoomed window (clamped to the initial range)
+//   - Ctrl/Cmd/Shift + wheel zooms around the pointer (plain wheel scrolls)
+//   - a "Reset zoom" chip while the x-scale is off its initial range
+//   - a live date-range label above the drag selection
+function chartZoomPlugin(): uPlot.Plugin {
+  let chip: HTMLButtonElement | null = null;
+  let selLabel: HTMLDivElement | null = null;
+  let dragCfg: uPlot.Cursor.Drag | null = null;
+  let cleanup: (() => void) | null = null;
+  let initial = { min: 0, max: 0 };
+  let pan: { px: number; min: number; max: number } | null = null;
+
+  const span = (): number => initial.max - initial.min;
+
+  // Keep a window inside the initial extent without changing its width, so
+  // panning and zoom-out slide against the edges instead of squashing.
+  const fit = (min: number, max: number): [number, number] => {
+    const full = span();
+    if (!(full > 0) || max - min >= full) return [initial.min, initial.max];
+    if (min < initial.min) { max += initial.min - min; min = initial.min; }
+    if (max > initial.max) { min -= max - initial.max; max = initial.max; }
+    return [min, max];
+  };
+
+  const isZoomed = (u: uPlot): boolean => {
+    const full = span();
+    const sc = u.scales.x;
+    return full > 0 && sc.min != null && sc.max != null &&
+      (Math.abs(sc.min - initial.min) > full * 1e-6 || Math.abs(sc.max - initial.max) > full * 1e-6);
+  };
+
+  const hideLabel = (): void => {
+    if (selLabel) selLabel.style.display = "none";
+  };
+
+  return {
+    hooks: {
+      ready(u: uPlot) {
+        const sc = u.scales.x;
+        initial = { min: sc.min ?? 0, max: sc.max ?? 0 };
+        dragCfg = u.cursor.drag ?? null;
+
+        chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "uplot-reset";
+        chip.textContent = "Reset zoom";
+        chip.hidden = true;
+        const swallow = (e: Event) => e.stopPropagation();
+        chip.addEventListener("mousedown", swallow);
+        chip.addEventListener("dblclick", swallow);
+        chip.addEventListener("click", (e) => {
+          e.stopPropagation();
+          u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
+          u.setScale("x", { min: initial.min, max: initial.max });
+        });
+        u.over.appendChild(chip);
+
+        selLabel = document.createElement("div");
+        selLabel.className = "uplot-select-label";
+        selLabel.style.display = "none";
+        u.over.appendChild(selLabel);
+
+        // Wheel zoom needs a modifier so a plain wheel keeps scrolling the
+        // page (dashboards put many charts in the scroll path).
+        const onWheel = (e: WheelEvent) => {
+          if (!(e.ctrlKey || e.metaKey || e.shiftKey)) return;
+          const min = u.scales.x.min;
+          const max = u.scales.x.max;
+          if (min == null || max == null || u.data[0].length < 2) return;
+          e.preventDefault();
+          const val = u.posToVal(e.clientX - u.over.getBoundingClientRect().left, "x");
+          const ratio = (val - min) / (max - min || 1);
+          // zoom around the pointer, but never closer than ~2 buckets
+          const floor = (span() / (u.data[0].length - 1)) * 2;
+          const width = Math.max((max - min) * (e.deltaY < 0 ? 1 / WHEEL_STEP : WHEEL_STEP), Math.min(floor, span()));
+          const [newMin, newMax] = fit(val - width * ratio, val + width * (1 - ratio));
+          u.setScale("x", { min: newMin, max: newMax });
+        };
+        u.over.addEventListener("wheel", onWheel, { passive: false });
+
+        // Shift+drag pans: disable the selection for this gesture (drag.x) and
+        // follow raw pointer pixels, so the snapped crosshair from hoverCursor
+        // can't make the window stutter between buckets.
+        const onDown = (e: MouseEvent) => {
+          const min = u.scales.x.min;
+          const max = u.scales.x.max;
+          if (!e.shiftKey || e.button !== 0 || min == null || max == null) return;
+          pan = { px: e.clientX - u.over.getBoundingClientRect().left, min, max };
+          if (dragCfg) dragCfg.x = false;
+          u.over.classList.add("panning");
+        };
+        const onMove = (e: MouseEvent) => {
+          if (!pan) return;
+          const dx = ((e.clientX - u.over.getBoundingClientRect().left - pan.px) / Math.max(1, u.over.clientWidth)) * (pan.max - pan.min);
+          const [min, max] = fit(pan.min - dx, pan.max - dx);
+          u.setScale("x", { min, max });
+        };
+        const onUp = () => {
+          if (pan) {
+            pan = null;
+            if (dragCfg) dragCfg.x = true;
+            u.over.classList.remove("panning");
+          }
+          hideLabel();
+        };
+        u.over.addEventListener("mousedown", onDown);
+        window.addEventListener("mousemove", onMove);
+        window.addEventListener("mouseup", onUp);
+
+        cleanup = () => {
+          u.over.removeEventListener("wheel", onWheel);
+          u.over.removeEventListener("mousedown", onDown);
+          window.removeEventListener("mousemove", onMove);
+          window.removeEventListener("mouseup", onUp);
+        };
+      },
+      setScale(u: uPlot) {
+        if (chip) chip.hidden = !isZoomed(u);
+      },
+      setCursor(u: uPlot) {
+        if (!selLabel) return;
+        const sel = u.select;
+        if (sel.width <= 0) { hideLabel(); return; }
+        const a = u.posToVal(sel.left, "x");
+        const b = u.posToVal(sel.left + sel.width, "x");
+        const withTime = Math.abs(b - a) < 2 * 86400;
+        selLabel.textContent = `${dateLabel(a, withTime)} – ${dateLabel(b, withTime)}`;
+        selLabel.style.display = "block";
+        const half = selLabel.offsetWidth / 2;
+        const overW = u.over.clientWidth;
+        const cx = Math.min(Math.max(sel.left + sel.width / 2, half + 4), Math.max(half + 4, overW - half - 4));
+        selLabel.style.left = `${cx}px`;
+        selLabel.style.top = "6px";
+      },
+      destroy() {
+        cleanup?.();
+        cleanup = null;
+        chip = null;
+        selLabel = null;
+        pan = null;
       },
     },
   };
@@ -436,7 +592,7 @@ export function renderChart(el: HTMLElement, points: SeriesPoint[], label = "", 
     legend: { show: false },
     cursor: hoverCursor(seriesOpts.width),
     focus: { alpha: 0.22 },
-    plugins: [autoResizePlugin(el), tooltipPlugin([{ label, fmt: fmtVal }]), hoverHighlightPlugin([seriesOpts.width])],
+    plugins: [autoResizePlugin(el), tooltipPlugin([{ label, fmt: fmtVal }]), hoverHighlightPlugin([seriesOpts.width]), chartZoomPlugin()],
   };
 
   const u = new uPlot(uOpts, data, el);
@@ -489,7 +645,7 @@ export function renderCompare(el: HTMLElement, series: Array<{ label: string; po
     legend: { show: series.length > 1 },
     cursor: hoverCursor(seriesOpts[0].width),
     focus: { alpha: 0.22 },
-    plugins: [autoResizePlugin(el), tooltipPlugin(series.map((s) => ({ label: s.label, fmt }))), hoverHighlightPlugin(seriesOpts.map((o) => o.width))],
+    plugins: [autoResizePlugin(el), tooltipPlugin(series.map((s) => ({ label: s.label, fmt }))), hoverHighlightPlugin(seriesOpts.map((o) => o.width)), chartZoomPlugin()],
   };
 
   const u = new uPlot(uOpts, data as unknown as uPlot.AlignedData, el);
@@ -634,9 +790,9 @@ export function renderCandles(el: HTMLElement, candles: Candle[], fmt: (v: numbe
     ],
     axes: [dateAxis(true), yAxis(fmt)],
     legend: { show: false },
-    cursor: { points: { show: false } },
+    cursor: { points: { show: false }, drag: { x: true, y: false, dist: DRAG_DIST } },
     focus: { alpha: 1 },
-    plugins: [autoResizePlugin(el), candleTooltipPlugin(candles, fmt)],
+    plugins: [autoResizePlugin(el), candleTooltipPlugin(candles, fmt), chartZoomPlugin()],
   };
 
   const u = new uPlot(uOpts, data as unknown as uPlot.AlignedData, el);

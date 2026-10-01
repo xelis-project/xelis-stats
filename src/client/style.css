@@ -446,6 +446,53 @@ label.chk input:focus-visible,
 .uplot-tooltip-label { color: var(--text-dim); margin-right: 1rem; }
 .uplot-tooltip-val { margin-left: auto; font-weight: 700; font-variant-numeric: tabular-nums; }
 
+/* Chart zoom interactions. uPlot's stock drag selection is nearly invisible on
+   the dark canvas, so give it the accent color, and pair it with a live range
+   label plus a "Reset zoom" chip that only appears while the x-scale is zoomed
+   (double-click still resets, Shift+drag pans, Ctrl/Cmd/Shift+wheel zooms). */
+.uplot .u-over { cursor: crosshair; }
+.uplot .u-over.panning { cursor: grabbing; }
+.uplot .u-select {
+  background: rgba(2, 255, 207, 0.08);
+  border: 1px solid rgba(2, 255, 207, 0.45);
+  border-radius: 0.3rem;
+}
+.uplot-select-label {
+  position: absolute;
+  z-index: 9;
+  transform: translateX(-50%);
+  pointer-events: none;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--border-hover);
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--panel-solid) 88%, transparent);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 1.05rem;
+  white-space: nowrap;
+}
+.uplot-reset {
+  position: absolute;
+  z-index: 11;
+  top: 0.6rem;
+  left: 0.6rem;
+  padding: 0.15rem 0.7rem;
+  border: 1px solid var(--border-hover);
+  border-radius: 99rem;
+  background: color-mix(in srgb, var(--panel-solid) 88%, transparent);
+  color: var(--mint);
+  font: inherit;
+  font-size: 1.05rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
+}
+.uplot-reset:hover {
+  background: rgba(2, 255, 207, 0.12);
+  box-shadow: 0 0 10px var(--mint-glow);
+}
+.chart-hint { margin-top: 0.6rem; color: var(--text-dim); font-size: 1.15rem; }
+
 /* Type badges */
 .badge {
   display: inline-block; padding: 0.2rem 0.7rem; border-radius: 0.5rem;
