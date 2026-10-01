@@ -295,8 +295,6 @@ const DEFAULT_TABS: Array<{ name: string; widgets: Array<[string, number, number
       ["chart-chainsize", 0, 22, 6, 5],
       ["stat-chainsize", 6, 22, 6, 2],
       ["stat-contracts", 6, 24, 6, 2],
-      ["chart-active-contracts", 0, 27, 6, 5],
-      ["compare-contract-invokes-deploys", 6, 27, 6, 5],
     ],
   },
   {
