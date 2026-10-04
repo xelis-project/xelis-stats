@@ -159,23 +159,20 @@ network.get("/network", async (c) => {
       </tr>`).join("")
     : emptyRow(2);
 
-  const forkPanel = `<div class="panel">
-    <div class="panel-head"><h2>Hard forks &amp; dev fees</h2></div>
-    <div class="grid-2">
-      <div>
-        <h3 class="sub-h">Hard forks</h3>
-        <div class="tablewrap"><table>
-          <thead><tr><th class="num">Height</th><th class="num">Version</th><th>Changelog</th><th>Requires</th></tr></thead>
-          <tbody>${forkRows}</tbody>
-        </table></div>
-      </div>
-      <div>
-        <h3 class="sub-h">Dev fee thresholds</h3>
-        <div class="tablewrap"><table>
-          <thead><tr><th class="num">From height</th><th class="num">Dev fee</th></tr></thead>
-          <tbody>${devFeeRows}</tbody>
-        </table></div>
-      </div>
+  const forkPanels = `<div class="grid-2" style="align-items:start">
+    <div class="panel">
+      <div class="panel-head"><h2>Hard forks</h2></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th class="num">Height</th><th class="num">Version</th><th>Changelog</th><th>Requires</th></tr></thead>
+        <tbody>${forkRows}</tbody>
+      </table></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2>Dev fee thresholds</h2></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th class="num">From height</th><th class="num">Dev fee</th></tr></thead>
+        <tbody>${devFeeRows}</tbody>
+      </table></div>
     </div>
   </div>`;
 
@@ -289,7 +286,7 @@ network.get("/network", async (c) => {
       </div>
     </div>
 
-    ${forkPanel}
+    ${forkPanels}
 
     <script type="application/json" id="net-map-data">${mapJson}</script>`;
 
