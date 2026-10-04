@@ -144,7 +144,9 @@ network.get("/network", async (c) => {
   const nic = new Intl.NumberFormat("en-US");
 
   const forkRows = hardForks.length
-    ? hardForks.map((f) => `<tr>
+    ? [...hardForks]
+        .sort((a, b) => (a.height ?? Infinity) - (b.height ?? Infinity))
+        .map((f) => `<tr>
         <td class="num">${f.height != null ? `<a href="/block/${num(f.height)}"><span class="mint">${fmtInt(num(f.height))}</span></a>` : "—"}</td>
         <td class="num">v${fmtInt(num(f.version))}</td>
         <td>${f.changelog ? esc(String(f.changelog)) : "—"}</td>
