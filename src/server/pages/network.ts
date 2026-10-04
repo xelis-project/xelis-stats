@@ -243,21 +243,22 @@ network.get("/network", async (c) => {
     <div class="panel">
       <div class="panel-head"><h2>Peer network <span style="color:var(--text-dim)">${esc(date)}</span></h2></div>
       ${cards}
-      <div class="grid-2">
-        <div>
-          <h3 class="sub-h">Node versions</h3>
-          <div class="tablewrap"><table>
-            <thead><tr><th>Version</th><th class="num">Peers</th><th class="num">Pruned</th></tr></thead>
-            <tbody>${versionRows}</tbody>
-          </table></div>
-        </div>
-        <div>
-          <h3 class="sub-h">Peer tags</h3>
-          <div class="tablewrap"><table>
-            <thead><tr><th>Tag</th><th class="num">Peers</th></tr></thead>
-            <tbody>${tagRows}</tbody>
-          </table></div>
-        </div>
+    </div>
+
+    <div class="grid-2" style="align-items:start">
+      <div class="panel">
+        <div class="panel-head"><h2>Node versions</h2></div>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Version</th><th class="num">Peers</th><th class="num">Pruned</th></tr></thead>
+          <tbody>${versionRows}</tbody>
+        </table></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Peer tags</h2></div>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Tag</th><th class="num">Peers</th></tr></thead>
+          <tbody>${tagRows}</tbody>
+        </table></div>
       </div>
     </div>
 
