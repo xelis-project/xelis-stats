@@ -155,7 +155,9 @@ network.get("/network", async (c) => {
     : emptyRow(4);
 
   const devFeeRows = devFees.length
-    ? devFees.map((d) => `<tr>
+    ? [...devFees]
+        .sort((a, b) => (b.height ?? -Infinity) - (a.height ?? -Infinity))
+        .map((d) => `<tr>
         <td class="num">${d.height != null ? fmtInt(num(d.height)) : "—"}</td>
         <td class="num">${fmtInt(num(d.fee_percentage))}%</td>
       </tr>`).join("")
