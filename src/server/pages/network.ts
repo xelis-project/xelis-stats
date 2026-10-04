@@ -145,7 +145,7 @@ network.get("/network", async (c) => {
 
   const forkRows = hardForks.length
     ? [...hardForks]
-        .sort((a, b) => (a.height ?? Infinity) - (b.height ?? Infinity))
+        .sort((a, b) => (b.height ?? -Infinity) - (a.height ?? -Infinity))
         .map((f) => `<tr>
         <td class="num">${f.height != null ? `<a href="/block/${num(f.height)}"><span class="mint">${fmtInt(num(f.height))}</span></a>` : "—"}</td>
         <td class="num">v${fmtInt(num(f.version))}</td>
