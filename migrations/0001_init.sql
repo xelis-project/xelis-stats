@@ -77,7 +77,9 @@ CREATE TABLE IF NOT EXISTS tx_assets (
 );
 CREATE INDEX IF NOT EXISTS idx_tx_assets_asset ON tx_assets(asset);
 
--- Transfer amounts/receivers are encrypted on mainnet; per-transfer rows are not indexed.
+-- Transfer amounts are encrypted on mainnet, but destination addresses and asset
+-- ids are plaintext: the flow is public. Receiver addresses are indexed as
+-- accounts (received_count, migration 0006); per-transfer rows are not stored.
 -- Asset involvement per tx is public and stored in tx_assets.
 
 -- accounts: observed public sender activity only (no balances).
@@ -122,8 +124,9 @@ CREATE TABLE IF NOT EXISTS daily_miners (
 );
 CREATE INDEX IF NOT EXISTS idx_daily_miners_addr ON daily_miners(address);
 
--- Sender-observation stats only. 'sent' counts transfer outputs publicly visible
--- as counts, not amounts. No 'received' column (receivers are encrypted).
+-- Sender-observation rollup only: 'sent' counts publicly visible transfer
+-- outputs by count, not amount. Receivers are public on-chain but tracked in
+-- accounts.received_count, not here, so sender rankings stay sender-only.
 CREATE TABLE IF NOT EXISTS daily_address_stats (
   date TEXT, address TEXT, tx_count INTEGER, transfer_outputs INTEGER, burned INTEGER,
   PRIMARY KEY (date, address)

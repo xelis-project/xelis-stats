@@ -272,7 +272,7 @@ export class StatsCollector {
     else if (data.deploy_contract) { txType = "deploy_contract"; contractId = hash; }
     else if (t.multisig) txType = "multisig";
     else if (data.transfers) txType = "transfer";
-    const transfers = Array.isArray(data.transfers) ? (data.transfers as Array<{ asset?: string }>) : [];
+    const transfers = Array.isArray(data.transfers) ? (data.transfers as Array<{ asset?: string; destination?: string }>) : [];
     const burn = data.burn as Record<string, unknown> | undefined;
     const burnAmount = burn ? Number(burn.amount ?? 0) : 0;
     const burnAsset = burn && typeof burn.asset === "string" ? burn.asset : (burn ? "" : null);
@@ -291,6 +291,16 @@ export class StatsCollector {
       ),
     ];
     for (const tr of transfers) {
+      // transfer destinations are plaintext (only amounts are encrypted), so
+      // record the receiver as an observed account — including addresses that
+      // never send and never mine and would otherwise have no row here
+      const destination = tr && typeof tr.destination === "string" ? tr.destination : "";
+      if (destination) {
+        stmts.push(this.env.DB.prepare(
+          `INSERT INTO accounts (address, first_seen, last_active, received_count) VALUES (?, ?, ?, 1)
+           ON CONFLICT(address) DO UPDATE SET last_active = MAX(last_active, excluded.last_active), received_count = received_count + 1`
+        ).bind(destination, ts, ts));
+      }
       if (tr && typeof tr.asset === "string") {
         stmts.push(this.env.DB.prepare("INSERT OR IGNORE INTO tx_assets (tx_hash, asset) VALUES (?, ?)").bind(hash, tr.asset));
         // register unknown assets (metadata is best-effort)

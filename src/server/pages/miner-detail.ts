@@ -123,7 +123,7 @@ minerDetail.get("/miner/:address", async (c) => {
   const copyNote = `<script>${blkCopyScript}</script>`;
   const lockNote = `<div class="tx-note">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-      <span>Mining data is public on-chain: block production, rewards and difficulty are indexed here. Balances, transfers and receivers remain encrypted and are never inferred.</span>
+      <span>Mining data is public on-chain: block production, rewards and difficulty are indexed here. Transfer amounts and balances are encrypted and never inferred; destinations are public and indexed on the account pages.</span>
     </div>`;
 
   if (!isMiner) {

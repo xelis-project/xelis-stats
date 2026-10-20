@@ -373,6 +373,12 @@ function dumpJsonl(table: string, keyCol: string, chunkRows: number, dir: string
 // ---------- aggregates (small, D1) ----------
 
 console.log("Exporting aggregates (D1)…");
+// receivers are not in tx_index, so received_count cannot be derived; it must
+// come from the accounts row. Older backfill DBs predate the column, so fall
+// back to 0 when it is absent (a fresh backfill repopulates it).
+const ACCT_HAS_RECEIVED = (db.prepare("PRAGMA table_info(accounts)").all() as Array<{ name: string }>)
+  .some((c) => c.name === "received_count");
+const RECEIVED_SEL = ACCT_HAS_RECEIVED ? "COALESCE(a.received_count, 0) received_count" : "0 received_count";
 const AGG_JOBS: Array<[string, string, string[], string]> = [
   ["daily_stats", "daily_stats", ["date", "active_accounts", "new_accounts", "tx_count", "avg_fee", "hashrate", "unique_miners", "side_count", "miner_revenue", "fee_total_sum", "fees_vs_rewards_pct", "emitted_supply", "burned_supply", "circulating_supply"],
     `WITH per_day AS (
@@ -413,10 +419,12 @@ const AGG_JOBS: Array<[string, string, string[], string]> = [
   ["daily_block_types", "daily_block_types", ["date", "block_type", "count"],
     `SELECT date(ts/1000,'unixepoch') date, block_type, COUNT(*) count FROM blocks GROUP BY 1,2 ORDER BY 1`],
   // transfer_count is derived from full local tx history rather than the stored
-  // accounts column so a re-export refreshes it even on older backfill DBs
-  ["accounts", "accounts", ["address", "first_seen", "last_active", "tx_count", "transfer_count"],
+  // accounts column so a re-export refreshes it even on older backfill DBs;
+  // received_count has no tx_index source and is read from the stored column
+  ["accounts", "accounts", ["address", "first_seen", "last_active", "tx_count", "transfer_count", "received_count"],
     `SELECT a.address, a.first_seen, a.last_active, a.tx_count,
-            COALESCE(t.transfers, 0) transfer_count
+            COALESCE(t.transfers, 0) transfer_count,
+            ${RECEIVED_SEL}
      FROM accounts a
      LEFT JOIN (SELECT sender, SUM(transfer_count) transfers FROM tx_index GROUP BY sender) t
        ON t.sender = a.address

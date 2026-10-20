@@ -77,6 +77,7 @@ export const ACCT_COLS: Record<string, SortCol> = {
   last: { sql: "last_active", def: "desc" },
   txs: { sql: "tx_count", def: "desc" },
   transfers: { sql: "transfer_count", def: "desc" },
+  received: { sql: "received_count", def: "desc" },
 };
 
 // /api/top rankings; ORDER BY aliases must match each ranking query

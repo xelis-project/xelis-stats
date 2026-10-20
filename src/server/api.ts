@@ -221,7 +221,7 @@ api.get("/api/accounts", async (c) => {
       ? parseSort((n) => c.req.query(n), ACCT_COLS, "last", "address").order
       : c.req.query("sort") === "txs" ? "tx_count DESC" : "last_active DESC"; // legacy active|txs
     const rows = await c.env.DB.prepare(
-      "SELECT address, first_seen, last_active, tx_count, transfer_count FROM accounts ORDER BY " + order + " LIMIT ?"
+      "SELECT address, first_seen, last_active, tx_count, transfer_count, received_count FROM accounts ORDER BY " + order + " LIMIT ?"
     ).bind(limit).all().then((r) => r.results);
     return c.json({ accounts: (rows as Row[]).map((r) => tagAddress(r, "address")) });
   } catch (err) {

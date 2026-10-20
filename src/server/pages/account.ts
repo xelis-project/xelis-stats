@@ -185,6 +185,7 @@ account.get("/account/:address", async (c) => {
   const encCount = num(agg?.enc);
   const okPct = txCount > 0 ? (okCount / txCount) * 100 : null;
   const minedTotal = minedAll;
+  const receivedCount = num(acct?.received_count);
 
   const ent = knownEntity(address);
   const dbLabel = (acct?.label as string) ?? "";
@@ -211,7 +212,7 @@ account.get("/account/:address", async (c) => {
           ${registered ? '<span class="badge ok">registered</span>' : '<span class="badge">unregistered</span>'}
           ${ms ? `<span class="badge">multisig ${fmtInt(ms.threshold)}/${fmtInt(ms.participants.length)}</span>` : ""}
           ${mempool && mempool.pending > 0 ? `<span class="badge">${fmtInt(mempool.pending)} pending</span>` : ""}
-          ${txCount > 0 ? `<span class="badge">${fmtInt(txCount)} sent tx${txCount === 1 ? "" : "s"}</span>` : '<span class="badge">no observed activity</span>'}
+          ${txCount > 0 ? `<span class="badge">${fmtInt(txCount)} sent tx${txCount === 1 ? "" : "s"}</span>` : receivedCount > 0 ? `<span class="badge">${fmtInt(receivedCount)} received</span>` : '<span class="badge">no observed activity</span>'}
           ${minedTotal > 0 ? `<span class="badge ok">miner</span>` : ""}
           <span class="blk-when">${lastActive ? `last active ${ago(lastActive)}` : "never observed"}</span>
         </div>
@@ -228,6 +229,7 @@ account.get("/account/:address", async (c) => {
     <div class="cards blk-cards">
       ${statCard("Sent Txs", txCount > 0 ? fmtInt(txCount) : "—", txCount > 0 ? "observed since indexing" : "no sends indexed")}
       ${statCard("Fees Paid", txCount > 0 ? `${atomic(fees, 4)} XEL` : "—", avgFee > 0 ? `avg ${atomic(avgFee, 6)} / tx` : "public metadata only")}
+      ${statCard("Received", receivedCount > 0 ? fmtInt(receivedCount) : "—", receivedCount > 0 ? "transfer outputs received" : "none indexed")}
       ${statCard("First Seen", firstSeen ? fmtTime(firstSeen) : "—", firstSeen ? ago(firstSeen) : "not in indexed data")}
       ${statCard("Last Active", lastActive ? ago(lastActive) : "—", lastActive ? fmtTime(lastActive) : "")}
       ${statCard("Blocks Mined", minedTotal > 0 ? fmtInt(minedTotal) : "—", minedTotal > 0 ? "all-time rollups" : "payment-only account")}
@@ -240,6 +242,7 @@ account.get("/account/:address", async (c) => {
     <tr><td>First seen</td><td>${firstSeen ? fmtTime(firstSeen) : "—"}</td></tr>
     <tr><td>Last active</td><td>${lastActive ? `${fmtTime(lastActive)} (${ago(lastActive)})` : "—"}</td></tr>
     <tr><td>Observed sent txs</td><td>${txCount > 0 ? fmtInt(txCount) : "—"}</td></tr>
+    <tr><td>Observed received transfers</td><td>${receivedCount > 0 ? fmtInt(receivedCount) : "—"}</td></tr>
     <tr><td>On-chain registration</td><td>${registered
       ? `registered${registrationTopo ? ` at <a href="/block/${registrationTopo}"><span class="mint">#${fmtInt(registrationTopo)}</span></a>` : ""}`
       : '<span style="color:var(--text-dim)">not registered on-chain</span>'}</td></tr>
@@ -427,7 +430,7 @@ account.get("/account/:address", async (c) => {
     ${deployedPanel}
     <div class="tx-note">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-      <span>Sender-observation page: shows this address's publicly visible sending activity. Xelis balances and transfer amounts are encrypted; receiver addresses are public and shown on transaction pages.</span>
+      <span>Observed-account page: shows this address's publicly visible tx activity. Senders, transfer destinations and assets are plaintext on-chain and indexed here; balances and transfer amounts are encrypted, so received amounts are not shown and a sender can still obscure the flow with zero-amount transfers.</span>
     </div>
     <script>${blkCopyScript}</script>`;
   return c.html(layout(`Account ${esc(shortHash(address, 6))}`, content, "/accounts"));

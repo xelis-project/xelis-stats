@@ -4,8 +4,11 @@
  * Pass 2: transaction details via get_transaction for each txs_hashes entry.
  * Local SQLite, resumable, INSERT OR REPLACE (idempotent).
  *
- * NOTE: XELIS is privacy-preserving — transfer amounts/receivers are encrypted.
- * We index tx counts, types, fees, sizes, senders, miners, supply. Not balances.
+ * NOTE: XELIS encrypts balances and transfer amounts, but the tx flow is public:
+ * senders, transfer destination addresses and asset ids are plaintext on-chain
+ * (a sender can still obfuscate the flow by splitting into many zero-amount
+ * transfers). We index tx counts, types, fees, sizes, senders, receivers,
+ * miners, supply. Not balances.
  *
  * Usage: node --experimental-strip-types scripts/backfill.mts [--txs]
  * Env:   BACKFILL_NODE (default http://192.168.18.20:8080)
@@ -68,6 +71,7 @@ CREATE INDEX IF NOT EXISTS idx_blocks_txcount ON blocks(tx_count, topoheight);
 
 CREATE TABLE IF NOT EXISTS accounts (
   address TEXT PRIMARY KEY, first_seen INTEGER, last_active INTEGER, tx_count INTEGER,
+  transfer_count INTEGER DEFAULT 0, received_count INTEGER DEFAULT 0,
   is_labeled INTEGER DEFAULT 0, label TEXT
 );
 
@@ -138,6 +142,9 @@ function migrate(): void {
   const mcols = (db.prepare("PRAGMA table_info(daily_miners)").all() as Array<{ name: string }>).map((c) => c.name);
   if (!mcols.includes("side_count")) db.exec("ALTER TABLE daily_miners ADD COLUMN side_count INTEGER NOT NULL DEFAULT 0");
   if (!mcols.includes("sync_count")) db.exec("ALTER TABLE daily_miners ADD COLUMN sync_count INTEGER NOT NULL DEFAULT 0");
+  const acols = (db.prepare("PRAGMA table_info(accounts)").all() as Array<{ name: string }>).map((c) => c.name);
+  if (!acols.includes("transfer_count")) db.exec("ALTER TABLE accounts ADD COLUMN transfer_count INTEGER DEFAULT 0");
+  if (!acols.includes("received_count")) db.exec("ALTER TABLE accounts ADD COLUMN received_count INTEGER DEFAULT 0");
   try { db.exec("CREATE TABLE IF NOT EXISTS contracts (contract_id TEXT PRIMARY KEY, deployer TEXT, deploy_topo INTEGER, invoke_count INTEGER, gas_total INTEGER, events_count INTEGER);"); } catch { /* exists */ }
   try { db.exec("CREATE INDEX IF NOT EXISTS idx_contracts_deployer ON contracts(deployer);"); } catch { /* exists */ }
   // contract ids are the TXIDs of their deploy transactions; repair deploys
@@ -226,6 +233,20 @@ const upsertAccount = db.prepare(`
 `);
 const upsertAccountNoCount = db.prepare(`
   INSERT INTO accounts (address, first_seen, last_active, tx_count)
+  VALUES (?, ?, ?, 0)
+  ON CONFLICT(address) DO UPDATE SET last_active = MAX(last_active, ?)
+`);
+// transfer destinations are plaintext, so receivers are observed accounts too;
+// tx_count stays sent-only, received_count counts transfer outputs received
+const upsertAccountReceived = db.prepare(`
+  INSERT INTO accounts (address, first_seen, last_active, received_count)
+  VALUES (?, ?, ?, 1)
+  ON CONFLICT(address) DO UPDATE SET
+    last_active = MAX(last_active, ?),
+    received_count = received_count + 1
+`);
+const upsertAccountReceivedNoCount = db.prepare(`
+  INSERT INTO accounts (address, first_seen, last_active, received_count)
   VALUES (?, ?, ?, 0)
   ON CONFLICT(address) DO UPDATE SET last_active = MAX(last_active, ?)
 `);
@@ -428,8 +449,13 @@ async function processTx(t: any, tsMs: number, force = false): Promise<boolean> 
     insertContractRegistry.run(contractId, String(t.source ?? ""), blockTopo);
   }
 
-  // capture asset ids (amounts/receivers are encrypted, ids are visible)
+  // capture asset ids and destination addresses: the tx flow is public (only
+  // amounts are encrypted), so record receivers as observed accounts too
+  const receivedStmt = force ? upsertAccountReceivedNoCount : upsertAccountReceived;
   for (const tr of transfers) {
+    if (tr && typeof tr.destination === "string" && tr.destination) {
+      receivedStmt.run(String(tr.destination), blockTs, blockTs, blockTs);
+    }
     if (tr && typeof tr.asset === "string") {
       const assetId = String(tr.asset);
       insertTxAsset.run(hash, assetId);
