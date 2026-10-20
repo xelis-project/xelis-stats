@@ -88,6 +88,7 @@ export; Workers Logs retention is 3 days on Free and 7 days on Paid.
 | Command                      | Purpose                                    |
 | ---------------------------- | ------------------------------------------ |
 | `npm run backfill`         | Resumable local historical scan (SQLite)   |
+| `npm run backfill:receivers` | One-off re-scan for historical receiver addresses |
 | `npm run backfill:monitor` | Backfill progress and ETA                  |
 | `npm run export`           | Export the live local D1 to D1 SQL / R2 JSONL chunks |
 | `npm run import:history`   | Import legacy market + chain-size CSV into D1 SQL |
@@ -98,6 +99,16 @@ One-shot legacy/rebuild helpers live in `scripts/legacy/`. You only need
 `contracts` to seed the contract registry ahead of the tx pass, and
 `import:history` when rebuilding from the old Postgres cluster; neither runs
 during normal operation.
+
+`npm run backfill:receivers` is a one-off pass for databases indexed before
+receiver tracking existed. Transfer destinations are plaintext on-chain but were
+never stored, so it re-fetches each historical tx from the node to populate
+`accounts.received_count` and add receiver-only addresses. It is resumable via
+its own `recv_cursor` checkpoint and walks the chain independently of the
+block/tx passes. History below the node's `pruned_topoheight` cannot be
+recovered. Run it against the historical backfill database before importing:
+on a database that already counts receivers live, the overlapping window would
+be counted twice.
 
 ### Export and D1 import
 

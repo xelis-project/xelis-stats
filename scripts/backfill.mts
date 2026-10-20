@@ -10,7 +10,10 @@
  * transfers). We index tx counts, types, fees, sizes, senders, receivers,
  * miners, supply. Not balances.
  *
- * Usage: node --experimental-strip-types scripts/backfill.mts [--txs]
+ * Usage: node --experimental-strip-types scripts/backfill.mts [--txs] [--receivers]
+ *        --receivers re-walks historical txs to index transfer destinations
+ *        (receiver addresses) that predate receiver tracking; resumable via its
+ *        own checkpoint, independent of the block/tx passes.
  * Env:   BACKFILL_NODE (default http://192.168.18.20:8080)
  *        BACKFILL_DB   (default data/backfill.db)
  *        BATCH (default 20 — daemon max), CONCURRENCY (default 8)
@@ -28,6 +31,7 @@ const DB_PATH = process.env.BACKFILL_DB ?? "data/backfill.db";
 const BATCH = Number(process.env.BATCH ?? 20); // daemon max range is 20
 const CONCURRENCY = Number(process.env.CONCURRENCY ?? 8);
 const TXS_ONLY = process.argv.includes("--txs");
+const RECEIVERS_ONLY = process.argv.includes("--receivers");
 
 // ---------- sqlite setup ----------
 
@@ -43,6 +47,7 @@ CREATE TABLE IF NOT EXISTS sync_state (
   blocks_done INTEGER NOT NULL DEFAULT 0,
   tx_cursor INTEGER NOT NULL DEFAULT 0,
   tx_done INTEGER NOT NULL DEFAULT 0,
+  recv_cursor INTEGER NOT NULL DEFAULT 0,
   started_at INTEGER,
   updated_at INTEGER
 );
@@ -115,6 +120,7 @@ function migrate(): void {
   const cols = (db.prepare("PRAGMA table_info(sync_state)").all() as Array<{ name: string }>).map((c) => c.name);
   if (!cols.includes("tx_cursor")) db.exec("ALTER TABLE sync_state ADD COLUMN tx_cursor INTEGER NOT NULL DEFAULT 0");
   if (!cols.includes("tx_done")) db.exec("ALTER TABLE sync_state ADD COLUMN tx_done INTEGER NOT NULL DEFAULT 0");
+  if (!cols.includes("recv_cursor")) db.exec("ALTER TABLE sync_state ADD COLUMN recv_cursor INTEGER NOT NULL DEFAULT 0");
   const bcols = (db.prepare("PRAGMA table_info(blocks)").all() as Array<{ name: string }>).map((c) => c.name);
   if (!bcols.includes("txs_hashes")) db.exec("ALTER TABLE blocks ADD COLUMN txs_hashes TEXT");
   const tcols = (db.prepare("PRAGMA table_info(tx_index)").all() as Array<{ name: string }>).map((c) => c.name);
@@ -242,6 +248,7 @@ const upsertAccountReceived = db.prepare(`
   INSERT INTO accounts (address, first_seen, last_active, received_count)
   VALUES (?, ?, ?, 1)
   ON CONFLICT(address) DO UPDATE SET
+    first_seen = MIN(first_seen, excluded.first_seen),
     last_active = MAX(last_active, ?),
     received_count = received_count + 1
 `);
@@ -722,10 +729,158 @@ async function backfillTxs(): Promise<void> {
   console.log(`[txs] pass complete through topo ${txCursor}`);
 }
 
+// ---------- pass 3: transfer receivers (historical re-scan) ----------
+
+// Transfer destinations are plaintext, but tx_index never stored them, so
+// databases indexed before receiver tracking existed have no received_count and
+// no receiver-only accounts rows. This one-off pass re-fetches each historical
+// tx from the node and records its destination addresses. It walks the whole
+// chain independently of the block/tx passes, with its own sync_state.recv_cursor
+// checkpoint, so it is safe to interrupt and re-run. Only the node's unpruned
+// window can be recovered.
+function saveRecvCursor(cursor: number): void {
+  db.prepare(`INSERT INTO sync_state (id, recv_cursor, updated_at) VALUES (1, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET recv_cursor = excluded.recv_cursor, updated_at = excluded.updated_at`)
+    .run(cursor, Date.now());
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function recordReceivers(t: any, tsMs: number): number {
+  const transfers = Array.isArray(t?.data?.transfers) ? t.data.transfers : [];
+  let n = 0;
+  for (const tr of transfers) {
+    if (tr && typeof tr.destination === "string" && tr.destination) {
+      upsertAccountReceived.run(String(tr.destination), tsMs, tsMs, tsMs);
+      n++;
+    }
+  }
+  return n;
+}
+
+async function backfillReceivers(): Promise<void> {
+  const info = await rpc<{ stable_topoheight: number; pruned_topoheight: number | null }>("get_info");
+  const stable = info.stable_topoheight;
+  const state = db.prepare("SELECT recv_cursor FROM sync_state WHERE id = 1").get() as { recv_cursor: number } | undefined;
+  let cursor = state?.recv_cursor ?? 0;
+  // a pruned node can no longer serve txs below its floor; skip past it
+  const pruned = info.pruned_topoheight;
+  if (pruned != null && pruned > cursor) {
+    console.log(`[recv] node pruned to ${pruned}; skipping earlier (unrecoverable)`);
+    cursor = pruned;
+    saveRecvCursor(cursor);
+  }
+  if (stable <= cursor) {
+    console.log(`[recv] nothing to do (cursor ${cursor} >= stable ${stable})`);
+    return;
+  }
+  console.log(`[recv] scanning receivers from topo > ${cursor} to ${stable}`);
+
+  const RECV_POOL = Math.max(CONCURRENCY, 8);
+  let running = 0;
+  const pending: Array<() => void> = [];
+  const acquire = (): Promise<void> => running < RECV_POOL ? (running++, Promise.resolve()) : new Promise((r) => pending.push(r));
+  const release = (): void => {
+    running--;
+    const next = pending.shift();
+    if (next) { running++; next(); }
+  };
+
+  let received = 0;
+  let failed = 0;
+
+  const fetchOne = async (c: { hash: string; ts: number }): Promise<void> => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const t = await rpc<any>("get_transaction", { hash: c.hash });
+        received += recordReceivers(t, c.ts);
+        return;
+      } catch (err) {
+        const msg = (err as Error).message;
+        // pruned/orphaned txs: daemon wording varies ("not found", NON_EXISTENT)
+        if (/not found|couldn'?t find|doesn'?t exist|non.?existent|no transaction/i.test(msg)) return;
+        if (attempt >= 15) { failed++; return; }
+        await new Promise((r) => setTimeout(r, Math.min(Math.pow(2, Math.min(attempt, 6)) * 1000, 60_000)));
+      }
+    }
+  };
+
+  const fetchChunk = async (chunk: Array<{ hash: string; ts: number }>): Promise<void> => {
+    await acquire();
+    try {
+      for (let attempt = 0; ; attempt++) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const txs = await rpc<any[]>("get_transactions", { tx_hashes: chunk.map((c) => c.hash) });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const byHash = new Map<string, any>();
+          for (const t of txs ?? []) if (t?.hash) byHash.set(String(t.hash), t);
+          for (const c of chunk) {
+            const t = byHash.get(c.hash);
+            if (t) received += recordReceivers(t, c.ts);
+          }
+          return;
+        } catch {
+          if (attempt >= 6) {
+            // one bad hash fails the whole batch; retry each on this slot
+            if (chunk.length > 1) { for (const c of chunk) await fetchOne(c); }
+            else await fetchOne(chunk[0]);
+            return;
+          }
+          await new Promise((r) => setTimeout(r, Math.min(Math.pow(2, Math.min(attempt, 6)) * 1000, 60_000)));
+        }
+      }
+    } finally { release(); }
+  };
+
+  const CHECKPOINT_EVERY = 20_000;
+  const startedAt = Date.now();
+  let sinceCheckpoint = 0;
+  for (;;) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows: any[] = db.prepare(`
+      SELECT topoheight, ts, txs_hashes FROM blocks
+      WHERE tx_count > 0 AND topoheight > ? AND topoheight <= ?
+      ORDER BY topoheight LIMIT 200
+    `).all(cursor, stable);
+    if (!rows.length) break;
+
+    const chunks: Array<Array<{ hash: string; ts: number }>> = [];
+    for (const row of rows) {
+      let hashes: unknown = null;
+      try { hashes = JSON.parse(row.txs_hashes ?? "[]"); } catch { hashes = null; }
+      if (!Array.isArray(hashes)) continue;
+      for (const h of hashes) {
+        if (typeof h !== "string" || !h) continue;
+        if (chunks.length === 0 || chunks[chunks.length - 1].length >= 20) chunks.push([]);
+        chunks[chunks.length - 1].push({ hash: h, ts: Number(row.ts) });
+      }
+    }
+    await Promise.all(chunks.map((c) => fetchChunk(c)));
+
+    cursor = Number(rows[rows.length - 1].topoheight);
+    sinceCheckpoint += rows.length;
+    if (sinceCheckpoint >= CHECKPOINT_EVERY) {
+      saveRecvCursor(cursor);
+      sinceCheckpoint = 0;
+      const elapsed = (Date.now() - startedAt) / 1000;
+      console.log(`[recv] cursor=${cursor}/${stable} · ${received.toLocaleString()} outputs · ${(received / Math.max(elapsed, 1)).toFixed(0)}/s`);
+    }
+  }
+
+  saveRecvCursor(cursor);
+  if (failed) console.error(`[recv] ${failed} txs could not be fetched after retries (skipped)`);
+  console.log(`[recv] pass complete through topo ${cursor}; ${received.toLocaleString()} transfer outputs recorded`);
+}
+
 // ---------- main ----------
 
 async function main(): Promise<void> {
   console.log(`Backfill: node=${NODE} db=${DB_PATH} batch=${BATCH} concurrency=${CONCURRENCY}`);
+  if (RECEIVERS_ONLY) {
+    await backfillReceivers();
+    return;
+  }
   try {
     await syncAssetRegistry();
   } catch (err) {

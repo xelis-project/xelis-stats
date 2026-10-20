@@ -1,6 +1,6 @@
 {
   "name": "xelis-explorer",
-  "version": "0.1.54",
+  "version": "0.1.55",
   "private": true,
   "license": "BSD-3-Clause",
   "type": "module",
@@ -15,6 +15,7 @@
     "cf-typegen": "wrangler types",
     "decompiler:wasm": "node wasm/build.mjs",
     "backfill": "node --experimental-strip-types scripts/backfill.mts",
+    "backfill:receivers": "node --experimental-strip-types scripts/backfill.mts --receivers",
     "backfill:monitor": "node --experimental-strip-types scripts/monitor.mts",
     "export": "node --experimental-strip-types scripts/export.mts",
     "import:d1": "node --experimental-strip-types scripts/import_d1.mts",

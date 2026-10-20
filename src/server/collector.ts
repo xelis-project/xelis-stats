@@ -298,7 +298,7 @@ export class StatsCollector {
       if (destination) {
         stmts.push(this.env.DB.prepare(
           `INSERT INTO accounts (address, first_seen, last_active, received_count) VALUES (?, ?, ?, 1)
-           ON CONFLICT(address) DO UPDATE SET last_active = MAX(last_active, excluded.last_active), received_count = received_count + 1`
+           ON CONFLICT(address) DO UPDATE SET first_seen = MIN(first_seen, excluded.first_seen), last_active = MAX(last_active, excluded.last_active), received_count = received_count + 1`
         ).bind(destination, ts, ts));
       }
       if (tr && typeof tr.asset === "string") {
